@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { FaSpinner } from 'react-icons/fa';
@@ -42,6 +43,7 @@ export default function PriceTracker() {
       setProducts(data);
       setTotalPages(totalPages);
     } catch (err) {
+      console.log(err);
       setError("Failed to fetch products");
       setProducts([]); // Clear products on error
     } finally {
@@ -62,6 +64,7 @@ export default function PriceTracker() {
         setIsTracking(true);
       }
     } catch (err) {
+      console.log(err);
       setError("Error starting tracking");
     }
   };
@@ -75,6 +78,7 @@ export default function PriceTracker() {
         setIsTracking(false);
       }
     } catch (err) {
+      console.log(err);
       setError("Error stopping tracking");
     }
   };
@@ -103,7 +107,7 @@ export default function PriceTracker() {
     const pageNumbers = [];
     const maxVisiblePages = 5;
     let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
-    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+    const endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
 
     if (endPage - startPage + 1 < maxVisiblePages) {
       startPage = Math.max(1, endPage - maxVisiblePages + 1);
@@ -200,9 +204,11 @@ export default function PriceTracker() {
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  <img
+                  <Image
                     src={product.imageUrl || `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,h_272,w_252/${product.variations?.[0]?.images?.[0]}`}
                     alt={product.productName}
+                    width={252}
+                    height={272}
                     className="w-full h-full object-cover"
                   />
                   <span className="absolute top-0 left-0 bg-black bg-opacity-100 text-white px-2 py-1 text-sm font-bold rounded-br-md">

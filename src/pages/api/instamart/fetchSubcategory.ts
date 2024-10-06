@@ -11,11 +11,6 @@ interface FetchSubcategoryRequest {
   offset: number;
 }
 
-// Error response type
-interface ErrorResponse {
-  error: string;
-}
-
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse

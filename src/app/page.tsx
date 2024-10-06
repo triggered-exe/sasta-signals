@@ -47,7 +47,6 @@ export default function Home() {
   const [selectedWebsite, setSelectedWebsite] = useState<string | null>(null);
   const [websiteData, setWebsiteData] = useState<Category[]>([]);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
-  const [subcategoryData, setSubcategoryData] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>("");
 
@@ -71,7 +70,7 @@ export default function Home() {
       }
 
       const response = await axios.get("/api/instamart/store");
-      let data: Category[] = response.data?.data?.widgets[1]?.data.map(
+      const data: Category[] = response.data?.data?.widgets[1]?.data.map(
         (item: any) => {
           return {
             nodeId: item.nodeId,

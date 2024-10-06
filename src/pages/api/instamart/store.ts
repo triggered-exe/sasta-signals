@@ -23,6 +23,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       res.status(200).json(response.data); // Return the response data as JSON
     } catch (error) {
+      console.log(error);
       res.status(500).json({ error: 'Error fetching Instamart data' });
     }
   } else {
