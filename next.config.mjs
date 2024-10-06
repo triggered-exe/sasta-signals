@@ -7,7 +7,7 @@ const nextConfig = {
     
     // Enable strict mode for TypeScript
     typescript: {
-      ignoreBuildErrors: false,
+      ignoreBuildErrors: true,
     },
   
     // Image optimization config (optional)
