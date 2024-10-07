@@ -19,7 +19,11 @@ async function fetchProductPrices() {
   try {
     console.log("Fetching product categories and subcategories from Instamart API...");
     const response = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}/api/instamart/store`);
-    console.log("response", response);
+    
+    // Log the full response to ensure we are receiving it.
+    console.log("API response received: ", response.status); // Check if response status is OK
+    console.log("API response data: ", response.data); // Log the full response data
+
     const data = response.data?.data?.widgets[1]?.data.map((item: any) => ({
       nodeId: item.nodeId,
       name: item.displayName,
@@ -31,13 +35,16 @@ async function fetchProductPrices() {
         productCount: node.productCount,
       })),
     }));
-    console.log("Categories and subcategories fetched successfully.");
+
+    console.log("Categories and subcategories fetched successfully.", data);
     return data;
   } catch (error) {
-    console.error("Error fetching product prices:", error);
+    console.error("Error fetching product prices:", error.message); // More detailed error message
+    console.error("Error details:", error.response?.data); // Log any response details if available
     return null; // Return null if there's an error
   }
 }
+
 
 // Function to fetch product data for a specific subcategory with pagination
 async function fetchInstamartSubcategoryData(subcategoryId: string, offset: number = 0) {
