@@ -102,7 +102,6 @@ export default function Home() {
 
   const toggleCategory = (categoryId: string) => {
     setExpandedCategory((prev) => (prev === categoryId ? null : categoryId));
-    setSubcategoryData([]);
   };
 
   const fetchInstamartSubcategoryData = async (
