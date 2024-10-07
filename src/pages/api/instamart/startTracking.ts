@@ -15,18 +15,33 @@ async function getMongoClient() {
 }
 
 // Helper function to fetch product categories and subcategories from Instamart API
+// Helper function to fetch product categories and subcategories from Instamart API
 async function fetchProductPrices() {
   try {
     console.log("Fetching product categories and subcategories from Instamart API...");
-    const response = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}/api/instamart/store`, {
-      timeout: 5000 // Set a 5-second timeout for the request
-    });
+    console.log("NEXT_PUBLIC_BASE_URL:", process.env.NEXT_PUBLIC_BASE_URL);
     
-    // Log the full response to ensure we are receiving it.
-    console.log("API response received: ", response.status); // Check if response status is OK
-    console.log("API response data: ", response.data); // Log the full response data
+    const url = `${process.env.NEXT_PUBLIC_BASE_URL}/api/instamart/store`;
+    console.log("Request URL:", url);
 
-    const data = response.data?.data?.widgets[1]?.data.map((item: any) => ({
+    const response = await axios.get(url, { timeout: 10000 }); // Add a 10-second timeout
+    
+    console.log("API response received: ", response.status);
+    console.log("API response headers:", response.headers);
+    console.log("API response data:", JSON.stringify(response.data, null, 2));
+
+    if (!response.data?.data?.widgets || !Array.isArray(response.data.data.widgets)) {
+      console.error("Unexpected response structure:", response.data);
+      return null;
+    }
+
+    const widget = response.data.data.widgets.find((w: any) => Array.isArray(w.data));
+    if (!widget) {
+      console.error("Could not find widget with data array");
+      return null;
+    }
+
+    const data = widget.data.map((item: any) => ({
       nodeId: item.nodeId,
       name: item.displayName,
       image: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,w_294/${item.imageId}`,
@@ -38,12 +53,18 @@ async function fetchProductPrices() {
       })),
     }));
 
-    console.log("Categories and subcategories fetched successfully.", data);
+    console.log("Categories and subcategories fetched successfully.", JSON.stringify(data, null, 2));
     return data;
   } catch (error) {
-    console.error("Error fetching product prices:", error.message); // More detailed error message
-    console.error("Error details:", error.response?.data); // Log any response details if available
-    return null; // Return null if there's an error
+    console.error("Error fetching product prices:", error.message);
+    if (axios.isAxiosError(error)) {
+      console.error("Axios error details:", {
+        response: error.response?.data,
+        request: error.request,
+        config: error.config,
+      });
+    }
+    return null;
   }
 }
 
