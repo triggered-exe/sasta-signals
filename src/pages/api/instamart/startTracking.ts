@@ -19,6 +19,7 @@ async function fetchProductPrices() {
   try {
     console.log("Fetching product categories and subcategories from Instamart API...");
     const response = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}/api/instamart/store`);
+    console.log("response", response);
     const data = response.data?.data?.widgets[1]?.data.map((item: any) => ({
       nodeId: item.nodeId,
       name: item.displayName,
