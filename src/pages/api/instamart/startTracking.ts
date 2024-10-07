@@ -124,6 +124,8 @@ async function trackProductPrices() {
     if (!categories) {
       console.log("No product data available.");
       return;
+    }else{
+      console.log("Categories fetched successfully.");
     }
 
     client = await getMongoClient();
