@@ -1,12 +1,7 @@
-// pages/api/search.ts
+// pages/api/search.js
+const axios = require("axios");
 
-import type { NextApiRequest, NextApiResponse } from "next";
-import axios from "axios";
-
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
+export default async function handler(req, res) {
   // Only allow POST requests
   if (req.method !== "POST") {
     res.setHeader("Allow", ["POST"]);
