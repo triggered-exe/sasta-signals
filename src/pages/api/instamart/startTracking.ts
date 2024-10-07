@@ -18,7 +18,9 @@ async function getMongoClient() {
 async function fetchProductPrices() {
   try {
     console.log("Fetching product categories and subcategories from Instamart API...");
-    const response = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}/api/instamart/store`);
+    const response = await axios.get(`${process.env.NEXT_PUBLIC_BASE_URL}/api/instamart/store`, {
+      timeout: 5000 // Set a 5-second timeout for the request
+    });
     
     // Log the full response to ensure we are receiving it.
     console.log("API response received: ", response.status); // Check if response status is OK
