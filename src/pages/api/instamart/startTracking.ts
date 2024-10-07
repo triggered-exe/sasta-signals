@@ -119,7 +119,7 @@ async function processProduct(product: any, category: any, subcategory: any, col
 async function trackProductPrices() {
   let client;
   try {
-    console.log("Tracking product prices...");
+    console.log("Tracking product prices... process.env.NEXT_PUBLIC_BASE_URL", process.env.NEXT_PUBLIC_BASE_URL);
     const categories = await fetchProductPrices();
     if (!categories) {
       console.log("No product data available.");
