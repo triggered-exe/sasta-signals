@@ -201,11 +201,11 @@ export default function PriceTracker() {
                     height={272}
                     className="w-full h-full object-cover"
                   />
-                  <span className="absolute top-0 left-0 bg-black bg-opacity-100 text-white px-2 py-1 text-sm font-bold rounded-br-md">
+                  <span className="absolute top-0 left-0 bg-white bg-opacity-100 text-black-700 px-2 py-1 text-sm font-bold rounded-br-md">
                     ₹{product.price}
                   </span>
                   {product.discount && (
-                    <span className="absolute top-0 right-0 bg-green-500 text-white px-2 py-1 text-xs font-bold rounded-bl-md">
+                    <span className="absolute top-0 right-0 text-green-700 font-semibold text-sm bg-white px-2 py-1 rounded-bl-md">
                       {product.discount}%
                     </span>
                   )}

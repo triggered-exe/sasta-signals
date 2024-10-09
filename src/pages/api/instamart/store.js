@@ -6,7 +6,6 @@ export default async function handler(req, res) {
     try {
       const response = await axios.get('https://www.swiggy.com/api/instamart/home?clientId=INSTAMART-APP', {
         headers: {
-          'if-none-match': 'W/"1e540-D7Vl3o3v8XFLuxrWAxPG+cX24nI"',
           'sec-ch-ua': '"Brave";v="129", "Not=A?Brand";v="8", "Chromium";v="129"',
           'sec-ch-ua-platform': '"Windows"',
           'accept': '*/*',
