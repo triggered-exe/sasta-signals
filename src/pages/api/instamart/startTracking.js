@@ -1,4 +1,3 @@
-import { NextApiRequest, NextApiResponse } from "next";
 import { MongoClient } from "mongodb";
 import axios from "axios";
 
