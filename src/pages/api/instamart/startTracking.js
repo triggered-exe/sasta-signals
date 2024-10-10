@@ -141,7 +141,6 @@ async function trackProductPrices() {
     console.log("Tracking product prices... process.env.NEXT_PUBLIC_BASE_URL", process.env.NEXT_PUBLIC_BASE_URL);
     const categories = await fetchProductCategories();
     if (!categories) {
-      console.log("No product data available.");
       return;
     }
 
