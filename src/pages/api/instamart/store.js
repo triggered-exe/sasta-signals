@@ -26,6 +26,7 @@ export default async function handler(req, res) {
           'sec-fetch-site': 'same-origin',
           'sec-gpc': '1',
           'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36',
+          'Cache-Control': 'no-cache' // Added to avoid cache control
         },
       });
       // const response = await axios.get('https://www.swiggy.com/api/instamart/home?clientId=INSTAMART-APP', {

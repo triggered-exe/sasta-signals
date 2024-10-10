@@ -16,10 +16,10 @@ async function getMongoClient() {
 // Helper function to fetch product categories and subcategories from Instamart API
 async function fetchProductPrices() {
   try {
-    const url = `https://deals-checker.vercel.app/api/instamart/store`;
+    const url = `${process.env.NEXT_PUBLIC_BASE_URL}/api/instamart/store`;
     console.log("Request URL:", url);
 
-    const response = await axios.get(url); 
+    const response = await axios.get(url, { timeout: 5000 }); 
     
     console.log("API response received: ", response.status);
 
