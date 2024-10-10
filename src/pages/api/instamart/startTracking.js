@@ -6,7 +6,6 @@ const ONE_HOUR = 60 * 60 * 1000; // 1-hour interval
 
 // Function to establish a MongoDB connection
 async function getMongoClient() {
-  console.log("Connecting to MongoDB...");
   const client = new MongoClient(process.env.MONGO_URI);
   await client.connect();
   console.log("Connected to MongoDB.");
@@ -237,7 +236,6 @@ export default async function handler(req, res) {
       console.log("Stopping price tracking...");
       clearInterval(trackingInterval); // Stop the interval
       trackingInterval = null;
-      console.log("Price tracking stopped.");
       res.status(200).json({ message: "Price tracking stopped" });
     } else {
       console.log("Price tracking is not running.");
