@@ -16,28 +16,35 @@ async function getMongoClient() {
 // Helper function to fetch product categories and subcategories from Instamart API
 async function fetchProductPrices() {
   try {
-    console.log("Fetching product categories and subcategories from Instamart API...");
-    console.log("NEXT_PUBLIC_BASE_URL:", process.env.NEXT_PUBLIC_BASE_URL);
-    
     const url = `${process.env.NEXT_PUBLIC_BASE_URL}/api/instamart/store`;
     console.log("Request URL:", url);
 
-    const response = await axios.get(url, { timeout: 10000 }); // Add a 10-second timeout
-    
-    console.log("API response received: ", response.status);
+    const response = await fetch(url, {
+      method: 'GET',
+      // Add a 10-second timeout using AbortController
+      signal: new AbortController().signal,
+    });
 
-    if (!response.data?.data?.widgets || !Array.isArray(response.data.data.widgets)) {
-      console.error("Unexpected response structure:", response.data);
+    if (!response.ok) {
+      console.error("API response error: ", response.status);
       return null;
     }
 
-    const widget = response.data?.data?.widgets[1];
+    const data = await response.json();
+    console.log("API response received: ", response.status);
+
+    if (!data?.data?.widgets || !Array.isArray(data.data.widgets)) {
+      console.error("Unexpected response structure:", data);
+      return null;
+    }
+
+    const widget = data.data.widgets[1];
     if (!widget) {
       console.error("Could not find widget with data array");
       return null;
     }
 
-    const data = widget.data.map((item) => ({
+    const result = widget.data.map((item) => ({
       nodeId: item.nodeId,
       name: item.displayName,
       image: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,w_294/${item.imageId}`,
@@ -49,17 +56,10 @@ async function fetchProductPrices() {
       })),
     }));
 
-    console.log("Categories and subcategories fetched successfully.", JSON.stringify(data, null, 2));
-    return data;
+    console.log("Categories and subcategories fetched successfully.", JSON.stringify(result, null, 2));
+    return result;
   } catch (error) {
     console.error("Error fetching product prices:", error.message);
-    if (axios.isAxiosError(error)) {
-      console.error("Axios error details:", {
-        response: error.response?.data,
-        request: error.request,
-        config: error.config,
-      });
-    }
     return null;
   }
 }
