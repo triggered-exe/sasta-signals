@@ -17,7 +17,7 @@ async function getMongoClient() {
 async function fetchProductPrices() {
   try {
     const url = `${process.env.NEXT_PUBLIC_BASE_URL}/api/instamart/store`;
-    console.log("Request URL:", url);
+    console.log("Request URL is", url);
     const dummyResponse = await axios.get(url, { timeout: 5000 }); 
     console.log("Dummy call executed after axios.get", dummyResponse); // Dummy call
     const response = await axios.get(url, { timeout: 5000 }); 
