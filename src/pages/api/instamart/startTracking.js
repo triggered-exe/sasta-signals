@@ -16,35 +16,25 @@ async function getMongoClient() {
 // Helper function to fetch product categories and subcategories from Instamart API
 async function fetchProductPrices() {
   try {
-    const url = `${process.env.NEXT_PUBLIC_BASE_URL}/api/instamart/store`;
+    const url = `https://deals-checker.vercel.app/api/instamart/store`;
     console.log("Request URL:", url);
 
-    const response = await fetch(url, {
-      method: 'GET',
-      // Add a 10-second timeout using AbortController
-      signal: new AbortController().signal,
-    });
-
-    if (!response.ok) {
-      console.error("API response error: ", response.status);
-      return null;
-    }
-
-    const data = await response.json();
+    const response = await axios.get(url); 
+    
     console.log("API response received: ", response.status);
 
-    if (!data?.data?.widgets || !Array.isArray(data.data.widgets)) {
-      console.error("Unexpected response structure:", data);
+    if (!response.data?.data?.widgets || !Array.isArray(response.data.data.widgets)) {
+      console.error("Unexpected response structure:", response.data);
       return null;
     }
 
-    const widget = data.data.widgets[1];
+    const widget = response.data?.data?.widgets[1];
     if (!widget) {
       console.error("Could not find widget with data array");
       return null;
     }
 
-    const result = widget.data.map((item) => ({
+    const data = widget.data.map((item) => ({
       nodeId: item.nodeId,
       name: item.displayName,
       image: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,w_294/${item.imageId}`,
@@ -56,10 +46,17 @@ async function fetchProductPrices() {
       })),
     }));
 
-    console.log("Categories and subcategories fetched successfully.", JSON.stringify(result, null, 2));
-    return result;
+    console.log("Categories and subcategories fetched successfully.", JSON.stringify(data, null, 2));
+    return data;
   } catch (error) {
     console.error("Error fetching product prices:", error.message);
+    if (axios.isAxiosError(error)) {
+      console.error("Axios error details:", {
+        response: error.response?.data,
+        request: error.request,
+        config: error.config,
+      });
+    }
     return null;
   }
 }
@@ -224,10 +221,8 @@ export default async function handler(req, res) {
       console.log("Starting price tracking...");
       trackProductPrices(); // Initial fetch before setting the interval
       trackingInterval = setInterval(() => {
-        console.log("Running price tracking at 1-hour interval...");
         trackProductPrices(); // Execute price tracking every 1 hour
       }, ONE_HOUR);
-      console.log("Price tracking started, running every hour.");
       res.status(200).json({ message: "Price tracking started" });
     } else {
       console.log("Price tracking is already running.");
