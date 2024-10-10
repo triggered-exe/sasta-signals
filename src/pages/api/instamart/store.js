@@ -4,6 +4,7 @@ import axios from 'axios';
 export default async function handler(req, res) {
   if (req.method === 'GET') {
     try {
+      console.log("Fetching store data from Instamart API...");
       const response = await axios.post('https://www.swiggy.com/api/instamart/home/select-location', {
         data: {
           lat: 17.357671666296465,
@@ -43,6 +44,7 @@ export default async function handler(req, res) {
       // });
 
       res.status(200).json(response.data); // Return the response data as JSON
+      console.log('response.data', response.data);
     } catch (error) {
       console.log(error);
       res.status(500).json({ error: 'Error fetching Instamart data' });
