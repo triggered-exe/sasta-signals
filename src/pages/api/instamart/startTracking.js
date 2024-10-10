@@ -224,6 +224,7 @@ export default async function handler(req, res) {
       trackingInterval = setInterval(() => {
         trackProductPrices(); // Execute price tracking every 1 hour
       }, ONE_HOUR);
+      console.log("response ending");
       res.status(200).json({ message: "Price tracking started" });
     } else {
       console.log("Price tracking is already running.");
