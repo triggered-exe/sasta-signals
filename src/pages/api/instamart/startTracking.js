@@ -13,15 +13,11 @@ async function getMongoClient() {
 }
 
 // Helper function to fetch product categories and subcategories from Instamart API
-async function fetchProductPrices() {
+async function fetchProductCategories() {
   try {
     const url = `${process.env.NEXT_PUBLIC_BASE_URL}/api/instamart/store`;
-    console.log("Request URL is", url);
-    const dummyResponse = await axios.get(url, { timeout: 5000 }); 
-    console.log("Dummy call executed after axios.get", dummyResponse); // Dummy call
+
     const response = await axios.get(url, { timeout: 5000 }); 
-    
-    console.log("API response received: ", response.status);
 
     if (!response.data?.data?.widgets || !Array.isArray(response.data.data.widgets)) {
       console.error("Unexpected response structure:", response.data);
@@ -143,12 +139,10 @@ async function trackProductPrices() {
   let client;
   try {
     console.log("Tracking product prices... process.env.NEXT_PUBLIC_BASE_URL", process.env.NEXT_PUBLIC_BASE_URL);
-    const categories = await fetchProductPrices();
+    const categories = await fetchProductCategories();
     if (!categories) {
       console.log("No product data available.");
       return;
-    } else {
-      console.log("Categories fetched successfully.");
     }
 
     client = await getMongoClient();
