@@ -190,7 +190,7 @@ export default function PriceTracker() {
             <div key={product.productId} className="bg-white rounded-lg shadow-md overflow-hidden">
               <div className="relative aspect-square">
                 <a
-                  href={`https://www.swiggy.com/instamart/item/${product.productId}`}
+                  href={`https://www.swiggy.com/stores/instamart/item/${product.productId}`}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
@@ -234,56 +234,40 @@ export default function PriceTracker() {
       </div>
 
       {/* Pagination Controls */}
-      <div className="flex justify-center items-center mt-6 space-x-2">
-        <button
-          onClick={() => setCurrentPage(1)}
-          disabled={currentPage === 1}
-          className={`px-3 py-1 bg-blue-500 text-white rounded-md transition-colors ${
-            currentPage === 1 ? "opacity-50 cursor-not-allowed" : "hover:bg-blue-600"
-          }`}
-        >
-          First
-        </button>
-        <button
-          onClick={handlePreviousPage}
-          disabled={currentPage === 1}
-          className={`px-3 py-1 bg-blue-500 text-white rounded-md transition-colors ${
-            currentPage === 1 ? "opacity-50 cursor-not-allowed" : "hover:bg-blue-600"
-          }`}
-        >
-          Previous
-        </button>
-        {getPageNumbers().map((pageNum) => (
+      <div className="fixed bottom-0 left-0 right-0 shadow-md p-4">
+        <div className="flex justify-center items-center space-x-2">
           <button
-            key={pageNum}
-            onClick={() => setCurrentPage(pageNum)}
-            className={`px-3 py-1 rounded-md transition-colors ${
-              currentPage === pageNum
-                ? "bg-blue-600 text-white"
-                : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+            onClick={() => setCurrentPage(1)}
+            disabled={currentPage === 1}
+            className={`px-3 py-1 bg-blue-500 text-white rounded-md transition-colors ${
+              currentPage === 1 ? "opacity-50 cursor-not-allowed" : "hover:bg-blue-600"
             }`}
           >
-            {pageNum}
+            First
           </button>
-        ))}
-        <button
-          onClick={handleNextPage}
-          disabled={currentPage === totalPages}
-          className={`px-3 py-1 bg-blue-500 text-white rounded-md transition-colors ${
-            currentPage === totalPages ? "opacity-50 cursor-not-allowed" : "hover:bg-blue-600"
-          }`}
-        >
-          Next
-        </button>
-        <button
-          onClick={() => setCurrentPage(totalPages)}
-          disabled={currentPage === totalPages}
-          className={`px-3 py-1 bg-blue-500 text-white rounded-md transition-colors ${
-            currentPage === totalPages ? "opacity-50 cursor-not-allowed" : "hover:bg-blue-600"
-          }`}
-        >
-          Last
-        </button>
+          {getPageNumbers().map((pageNum) => (
+            <button
+              key={pageNum}
+              onClick={() => setCurrentPage(pageNum)}
+              className={`px-3 py-1 rounded-md transition-colors ${
+                currentPage === pageNum
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+              }`}
+            >
+              {pageNum}
+            </button>
+          ))} 
+          <button
+            onClick={() => setCurrentPage(totalPages)}
+            disabled={currentPage === totalPages}
+            className={`px-3 py-1 bg-blue-500 text-white rounded-md transition-colors ${
+              currentPage === totalPages ? "opacity-50 cursor-not-allowed" : "hover:bg-blue-600"
+            }`}
+          >
+            Last
+          </button>
+        </div>
       </div>
     </div>
   );

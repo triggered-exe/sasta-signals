@@ -1,6 +1,12 @@
 import { MongoClient } from "mongodb";
 import axios from "axios";
 
+import { MailerSend, EmailParams, Sender, Recipient } from "mailersend";
+
+const mailerSend = new MailerSend({
+  apiKey: process.env.MAILERSEND_API_KEY,
+});
+
 let trackingInterval = null; // Variable to store the interval reference
 const ONE_HOUR = 60 * 60 * 1000; // 1-hour interval
 
@@ -17,9 +23,12 @@ async function fetchProductCategories() {
   try {
     const url = `${process.env.NEXT_PUBLIC_BASE_URL}/api/instamart/store`;
 
-    const response = await axios.get(url, { timeout: 5000 }); 
+    const response = await axios.get(url, { timeout: 5000 });
 
-    if (!response.data?.data?.widgets || !Array.isArray(response.data.data.widgets)) {
+    if (
+      !response.data?.data?.widgets ||
+      !Array.isArray(response.data.data.widgets)
+    ) {
       console.error("Unexpected response structure:", response.data);
       return null;
     }
@@ -42,7 +51,10 @@ async function fetchProductCategories() {
       })),
     }));
 
-    console.log("Categories and subcategories fetched successfully.", JSON.stringify(data, null, 2));
+    console.log(
+      "Categories and subcategories fetched successfully.",
+      JSON.stringify(data, null, 2)
+    );
     return data;
   } catch (error) {
     console.error("Error fetching product prices:", error.message);
@@ -60,10 +72,13 @@ async function fetchProductCategories() {
 // Function to fetch product data for a specific subcategory with pagination
 async function fetchInstamartSubcategoryData(subcategoryId, offset = 0) {
   try {
-    const response = await axios.post(`${process.env.NEXT_PUBLIC_BASE_URL}/api/instamart/fetchSubcategory`, {
-      filterId: subcategoryId,
-      offset,
-    });
+    const response = await axios.post(
+      `${process.env.NEXT_PUBLIC_BASE_URL}/api/instamart/fetchSubcategory`,
+      {
+        filterId: subcategoryId,
+        offset,
+      }
+    );
 
     const { totalItems, widgets } = response.data?.data;
     const products =
@@ -81,7 +96,10 @@ async function fetchInstamartSubcategoryData(subcategoryId, offset = 0) {
 // Function to process each product
 async function processProduct(product, category, subcategory, collection) {
   const productId = product.product_id;
-  const currentPrice = product.variations?.[0]?.price?.offer_price || product.variations?.[0]?.price?.store_price || 0;
+  const currentPrice =
+    product.variations?.[0]?.price?.offer_price ||
+    product.variations?.[0]?.price?.store_price ||
+    0;
 
   // Fetch the current product details from the database
   const existingProduct = await collection.findOne({ productId });
@@ -105,22 +123,37 @@ async function processProduct(product, category, subcategory, collection) {
     subcategoryId: subcategory.nodeId,
     productId: productId,
     inStock: product.in_stock,
-    imageUrl: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,h_272,w_252/${product.variations?.[0]?.images?.[0] || 'default_image'}`,
+    imageUrl: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,h_272,w_252/${
+      product.variations?.[0]?.images?.[0] || "default_image"
+    }`,
     productName: product.display_name,
     price: currentPrice,
     previousPrice: previousPrice,
     priceDroppedAt: priceDroppedAt,
-    discount: parseInt(product.variations?.[0]?.price?.offer_applied?.listing_description?.match(/\d+/)?.[0]) || 0,
-    variations: product.variations?.map((variation) => ({
-      id: variation.id,
-      display_name: variation.display_name,
-      offer_price: variation.price.offer_price,
-      store_price: variation.price.store_price,
-      discount: parseInt(variation.price?.offer_applied?.listing_description?.match(/\d+/)?.[0]) || 0,
-      image: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,h_272,w_252/${variation.images?.[0] || 'default_image'}`,
-      quantity: variation.quantity,
-      unit_of_measure: variation.unit_of_measure,
-    })) || [],
+    discount:
+      parseInt(
+        product.variations?.[0]?.price?.offer_applied?.listing_description?.match(
+          /\d+/
+        )?.[0]
+      ) || 0,
+    variations:
+      product.variations?.map((variation) => ({
+        id: variation.id,
+        display_name: variation.display_name,
+        offer_price: variation.price.offer_price,
+        store_price: variation.price.store_price,
+        discount:
+          parseInt(
+            variation.price?.offer_applied?.listing_description?.match(
+              /\d+/
+            )?.[0]
+          ) || 0,
+        image: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,h_272,w_252/${
+          variation.images?.[0] || "default_image"
+        }`,
+        quantity: variation.quantity,
+        unit_of_measure: variation.unit_of_measure,
+      })) || [],
     trackedAt: new Date(),
   };
 
@@ -134,11 +167,102 @@ async function processProduct(product, category, subcategory, collection) {
   };
 }
 
+// Function to fetch recently dropped products
+async function fetchRecentlyDroppedProducts(collection) {
+  const threshold = 0.3; // 30% drop
+  const products = await collection
+    .find({
+      $expr: {
+        $or: [
+          {
+            $gte: [
+              {
+                $divide: [
+                  { $subtract: ["$previousPrice", "$price"] },
+                  "$previousPrice",
+                ],
+              },
+              threshold,
+            ],
+          },
+          {
+            $gte: [
+              {
+                $divide: [
+                  { $subtract: ["$previousPrice", "$price"] },
+                  "$previousPrice",
+                ],
+              },
+              0.8, // More than 80% discount
+            ],
+          },
+        ],
+      },
+    })
+    .toArray();
+
+  return products;
+}
+
+// Function to send email with the list of dropped products
+async function sendEmailWithDroppedProducts(droppedProducts) {
+  // Sort products by discount from high to low
+  droppedProducts.sort((a, b) => {
+    const discountA = ((a.previousPrice - a.price) / a.previousPrice) * 100;
+    const discountB = ((b.previousPrice - b.price) / b.previousPrice) * 100;
+    return discountB - discountA; // Sort in descending order
+  });
+
+  // Create a formatted HTML content for the email
+  const emailContent = `
+    <h2>Recently Dropped Products</h2>
+    <table style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr>
+          <th style="border: 1px solid #ddd; padding: 8px;">Product Name</th>
+          <th style="border: 1px solid #ddd; padding: 8px;">Current Price</th>
+          <th style="border: 1px solid #ddd; padding: 8px;">Previous Price</th>
+          <th style="border: 1px solid #ddd; padding: 8px;">Discount</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${droppedProducts.map(product => `
+          <tr>
+            <td style="border: 1px solid #ddd; padding: 8px;">
+              <a href="https://www.swiggy.com/stores/instamart/item/${product.productId}" target="_blank">${product.productName}</a>
+            </td>
+            <td style="border: 1px solid #ddd; padding: 8px;">${product.price}</td>
+            <td style="border: 1px solid #ddd; padding: 8px;">${product.previousPrice}</td>
+            <td style="border: 1px solid #ddd; padding: 8px;">${(
+              ((product.previousPrice - product.price) / product.previousPrice) * 100
+            ).toFixed(2)}%</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+
+  const sentFrom = new Sender("MS_Dle5Er@trial-jy7zpl96zzol5vx6.mlsender.net", "Instamart Price dropped");
+  const recipients = [new Recipient("harishankersharma648@gmail.com", "Your Client")];
+
+  const emailParams = new EmailParams()
+    .setFrom(sentFrom)
+    .setTo(recipients)
+    .setReplyTo(sentFrom)
+    .setSubject("Recently Dropped Products")
+    .setHtml(emailContent) // Use the formatted HTML content
+
+  await mailerSend.email.send(emailParams);
+}
+
 // Function to track product prices and store them in the database
 async function trackProductPrices() {
   let client;
   try {
-    console.log("Tracking product prices... process.env.NEXT_PUBLIC_BASE_URL", process.env.NEXT_PUBLIC_BASE_URL);
+    console.log(
+      "Tracking product prices... process.env.NEXT_PUBLIC_BASE_URL",
+      process.env.NEXT_PUBLIC_BASE_URL
+    );
     const categories = await fetchProductCategories();
     if (!categories) {
       return;
@@ -164,7 +288,8 @@ async function trackProductPrices() {
             let allProducts = [];
 
             while (hasMore) {
-              const { products: subcategoryProducts, totalItems } = await fetchInstamartSubcategoryData(subcategory.nodeId, offset);
+              const { products: subcategoryProducts, totalItems } =
+                await fetchInstamartSubcategoryData(subcategory.nodeId, offset);
               allProducts = [...allProducts, ...subcategoryProducts];
 
               if (allProducts.length >= totalItems) {
@@ -176,18 +301,29 @@ async function trackProductPrices() {
 
             // Process products concurrently and perform bulk write in parallel
             const bulkOperations = await Promise.all(
-              allProducts.map((product) => processProduct(product, category, subcategory, collection))
+              allProducts.map((product) =>
+                processProduct(product, category, subcategory, collection)
+              )
             );
 
             if (bulkOperations.length > 0) {
               // Perform bulk write
               await collection.bulkWrite(bulkOperations);
-              console.log(`Processed ${bulkOperations.length} products for subcategory: ${subcategory.name}`);
+              console.log(
+                `Processed ${bulkOperations.length} products for subcategory: ${subcategory.name}`
+              );
             }
           })
         );
       })
     );
+
+    // Fetch recently dropped products and send email
+    const droppedProducts = await fetchRecentlyDroppedProducts(collection);
+    if (droppedProducts.length > 0) {
+      await sendEmailWithDroppedProducts(droppedProducts);
+      console.log("Email sent with recently dropped products.", droppedProducts.length);
+    }
 
     console.log("Product prices updated in the database.");
   } catch (error) {
@@ -196,7 +332,6 @@ async function trackProductPrices() {
     if (client) {
       await client.close();
       console.log("MongoDB connection closed.");
-      res.status(200).json({ message: "Price tracking ended" });
     }
   }
 }
@@ -208,34 +343,21 @@ export default async function handler(req, res) {
   }
 
   const { action } = req.body;
-
-  if (action === "start") {
-    // Start the price tracking process if not already running
-    if (!trackingInterval) {
-      console.log("Starting price tracking...");
-      trackProductPrices(); // Initial fetch before setting the interval
-      trackingInterval = setInterval(() => {
-        trackProductPrices(); // Execute price tracking every 1 hour
-      }, ONE_HOUR);
-      console.log("response ending");
-     // res.status(200).json({ message: "Price tracking started" });
-    } else {
-      console.log("Price tracking is already running.");
-      res.status(400).json({ message: "Price tracking is already running" });
-    }
-  } else if (action === "stop") {
-    // Stop the price tracking process
-    if (trackingInterval) {
-      console.log("Stopping price tracking...");
-      clearInterval(trackingInterval); // Stop the interval
-      trackingInterval = null;
-      res.status(200).json({ message: "Price tracking stopped" });
-    } else {
-      console.log("Price tracking is not running.");
-      res.status(400).json({ message: "Price tracking is not running" });
-    }
+  if (trackingInterval) {
+    clearInterval(trackingInterval);
+  }
+  // Start the price tracking process if not already running
+  if (!trackingInterval) {
+    console.log("Starting price tracking...");
+    trackProductPrices(); // Initial fetch before setting the interval
+    trackingInterval = setInterval(() => {
+      trackProductPrices(); // Execute price tracking every 1 hour
+    }, ONE_HOUR);
+    console.log("response ending");
+    res.status(200).json({ message: "Price tracking started" });
   } else {
-    console.log("Invalid action received:", action);
-    res.status(400).json({ error: "Invalid action" });
+    console.log("Price tracking is already running. restarting");
+
+    res.status(400).json({ message: "Price tracking is already running" });
   }
 }
