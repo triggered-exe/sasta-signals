@@ -437,7 +437,8 @@ export default function Home() {
 
                   // Get the base price and discount for the first variation
                   const baseVariation = product.variations[0];
-                  const basePrice = baseVariation?.price?.offer_price || baseVariation?.price?.store_price || "N/A";
+                  const basePrice =  baseVariation?.price?.store_price || baseVariation?.price?.mrp || "N/A";
+
                   const baseDiscount = baseVariation?.price?.offer_applied?.listing_description || 
                                      baseVariation?.price?.offer_applied?.product_description || "";
 

@@ -97,8 +97,7 @@ async function fetchInstamartSubcategoryData(subcategoryId, offset = 0) {
 async function processProduct(product, category, subcategory, collection) {
   const productId = product.product_id;
   const currentPrice =
-    product.variations?.[0]?.price?.offer_price ||
-    product.variations?.[0]?.price?.store_price ||
+    product.variations?.[0]?.price?.store_price || product.variations?.[0]?.price?.mrp ||
     0;
 
   // Fetch the current product details from the database
@@ -130,24 +129,15 @@ async function processProduct(product, category, subcategory, collection) {
     price: currentPrice,
     previousPrice: previousPrice,
     priceDroppedAt: priceDroppedAt,
-    discount:
-      parseInt(
-        product.variations?.[0]?.price?.offer_applied?.listing_description?.match(
-          /\d+/
-        )?.[0]
-      ) || 0,
+    discount: Math.floor((product.variations?.[0]?.price.store_price - product.variations?.[0]?.price.offer_price) / product.variations?.[0]?.price.store_price * 100), // Calculate discount without decimals
+
     variations:
       product.variations?.map((variation) => ({
         id: variation.id,
         display_name: variation.display_name,
         offer_price: variation.price.offer_price,
         store_price: variation.price.store_price,
-        discount:
-          parseInt(
-            variation.price?.offer_applied?.listing_description?.match(
-              /\d+/
-            )?.[0]
-          ) || 0,
+        discount: Math.floor(((variation.price.store_price - variation.price.offer_price) / variation.price.store_price * 100)), // Calculate discount and format to two decimal places
         image: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,h_272,w_252/${
           variation.images?.[0] || "default_image"
         }`,
