@@ -97,7 +97,7 @@ async function fetchInstamartSubcategoryData(subcategoryId, offset = 0) {
 async function processProduct(product, category, subcategory, collection) {
   const productId = product.product_id;
   const currentPrice =
-    product.variations?.[0]?.price?.store_price || product.variations?.[0]?.price?.mrp ||
+    product.variations?.[0]?.price?.offer_price || product.variations?.[0]?.price?.mrp ||
     0;
 
   // Fetch the current product details from the database
