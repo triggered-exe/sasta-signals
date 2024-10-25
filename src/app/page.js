@@ -55,21 +55,21 @@ export default function Home() {
         return;
       }
 
-      const response = await axios.get("/api/instamart/store");
-      const data = response.data?.data?.widgets[1]?.data.map(
-        (item) => {
-          return {
-            nodeId: item.nodeId,
-            name: item.displayName,
-            image: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,w_294/${item.imageId}`,
-            subCategories: item.nodes.map((node) => ({
-              nodeId: node.nodeId,
-              name: node.displayName,
-              image: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,w_294/${node.imageId}`,
-              productCount: node.productCount,
-            })),
-          };
-        }
+      const response = await axios.get(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/instamart/store-data`);
+      const taxonomyWidgets = response.data?.data?.widgets.filter(widget => widget.type === "TAXONOMY");
+      
+      const data = taxonomyWidgets.flatMap(widget => 
+        widget.data.map(item => ({
+          nodeId: item.nodeId,
+          name: item.displayName,
+          image: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,w_294/${item.imageId}`,
+          subCategories: item.nodes.map((node) => ({
+            nodeId: node.nodeId,
+            name: node.displayName,
+            image: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,w_294/${node.imageId}`,
+            productCount: node.productCount,
+          })),
+        }))
       );
 
       dataCache.current["Instamart"] = data;
@@ -101,6 +101,7 @@ export default function Home() {
         categoryName: selectedWebsite,
         offset,
       });
+      console.log("response", response.data);
       return response.data;
     } catch (error) {
       console.error("Error fetching Instamart subcategory data", error);
@@ -205,6 +206,8 @@ export default function Home() {
             query: searchQuery.trim(),
             Offset: Offset, // Pass the current offset for pagination
           });
+
+          console.log("response", response.data);
 
           // Check if response is valid
           if (!response || !response.data) {
@@ -437,7 +440,7 @@ export default function Home() {
 
                   // Get the base price and discount for the first variation
                   const baseVariation = product.variations[0];
-                  const basePrice =  baseVariation?.price?.store_price || baseVariation?.price?.mrp || "N/A";
+                  const basePrice =  baseVariation?.price?.offer_price || baseVariation?.price?.mrp || "N/A";
 
                   const baseDiscount = baseVariation?.price?.offer_applied?.listing_description || 
                                      baseVariation?.price?.offer_applied?.product_description || "";

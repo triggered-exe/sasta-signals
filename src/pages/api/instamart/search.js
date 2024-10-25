@@ -23,33 +23,20 @@ export default async function handler(req, res) {
 
     // Make a POST request to the Swiggy API with the provided search query and offset
     const swiggyResponse = await axios.post(
-      `https://www.swiggy.com/api/instamart/search?pageNumber=0&searchResultsOffset=${offset}&limit=40&query=${query}&ageConsent=false&layoutId=3990&pageType=INSTAMART_SEARCH_PAGE&isPreSearchTag=false&highConfidencePageNo=0&lowConfidencePageNo=0&storeId=${storeId}`,
+      `https://www.swiggy.com/api/instamart/search?searchResultsOffset=${offset}&limit=40&query=${query}&storeId=${storeId}`,
       { facets: {}, sortAttribute: "" }, // Data sent in the request body
       {
         headers: {
           accept: "*/*",
-          "accept-language": "en-US,en;q=0.6",
           "content-type": "application/json",
-          matcher: "889g98e9ec77987bb9eabe7",
-          origin: "https://www.swiggy.com",
-          priority: "u=1, i",
-          "sec-ch-ua":
-            '"Brave";v="129", "Not=A?Brand";v="8", "Chromium";v="129"',
-          "sec-ch-ua-mobile": "?0",
-          "sec-ch-ua-platform": '"Windows"',
-          "sec-fetch-dest": "empty",
-          "sec-fetch-mode": "cors",
-          "sec-fetch-site": "same-origin",
-          "sec-gpc": "1",
-          "user-agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
-          cookie: "YOUR_COOKIE_HERE", // Replace with the exact cookies used in Postman
-        },
-      }
-    );
+          "user-agent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36"},
+          "Cookie": "deviceId=s%253A32b79aff-414d-4fb0-a759-df85f541312e.H1m4Tr18pypEEkkBIa%252BCo87Ft4iraHpp4mKmAKYhaKE; tid=s%253A04235f7c-720b-4708-81ed-fb8e66252512.UUMQhremwF41QpB9G7ytmOA%252Bodh2kypFE1p%252BwMRQi4M; versionCode=1200; platform=web; subplatform=mweb; statusBarHeight=0; bottomOffset=0; genieTrackOn=false; ally-on=false; isNative=false; strId=; openIMHP=false; userLocation=%257B%2522lat%2522%253A17.3585585%252C%2522lng%2522%253A78.4553883%252C%2522address%2522%253A%2522%2522%252C%2522id%2522%253A%2522%2522%252C%2522annotation%2522%253A%2522%2522%252C%2522name%2522%253A%2522%2522%257D"
 
-    // Log the response for debugging
-    console.log("Swiggy Response Data:", swiggyResponse.data);
+        }
+      );
+      
+      // Log the response for debugging
+    console.log("Swiggy Response Data:");
 
     // Send the response back to the client
     res.status(200).json(swiggyResponse.data);
@@ -59,10 +46,6 @@ export default async function handler(req, res) {
 
     // Check if error has a response (meaning the server responded with an error status code)
     if (error.response) {
-      console.error("Response status:", error.response.status);
-      console.error("Response data:", error.response.data);
-      console.error("Response headers:", error.response.headers);
-
       // Send the error status and message back to the client
       return res
         .status(error.response.status)

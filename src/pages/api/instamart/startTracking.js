@@ -8,7 +8,7 @@ const mailerSend = new MailerSend({
 });
 
 let trackingInterval = null; // Variable to store the interval reference
-const ONE_HOUR = 60 * 60 * 1000; // 1-hour interval
+const ONE_HOUR = 30 * 60 * 1000; // 30 min
 
 // Function to establish a MongoDB connection
 async function getMongoClient() {
@@ -97,8 +97,7 @@ async function fetchInstamartSubcategoryData(subcategoryId, offset = 0) {
 async function processProduct(product, category, subcategory, collection) {
   const productId = product.product_id;
   const currentPrice =
-    product.variations?.[0]?.price?.offer_price || product.variations?.[0]?.price?.mrp ||
-    0;
+    product.variations?.[0]?.price?.offer_price || 0;
 
   // Fetch the current product details from the database
   const existingProduct = await collection.findOne({ productId });
@@ -159,34 +158,11 @@ async function processProduct(product, category, subcategory, collection) {
 
 // Function to fetch recently dropped products
 async function fetchRecentlyDroppedProducts(collection) {
-  const threshold = 0.3; // 30% drop
+  // Fetch all products where the current price is less than the previous price
   const products = await collection
     .find({
       $expr: {
-        $or: [
-          {
-            $gte: [
-              {
-                $divide: [
-                  { $subtract: ["$previousPrice", "$price"] },
-                  "$previousPrice",
-                ],
-              },
-              threshold,
-            ],
-          },
-          {
-            $gte: [
-              {
-                $divide: [
-                  { $subtract: ["$previousPrice", "$price"] },
-                  "$previousPrice",
-                ],
-              },
-              0.8, // More than 80% discount
-            ],
-          },
-        ],
+        $lt: ["$price", "$previousPrice"], // Price must be less than previous price
       },
     })
     .toArray();
@@ -249,10 +225,6 @@ async function sendEmailWithDroppedProducts(droppedProducts) {
 async function trackProductPrices() {
   let client;
   try {
-    console.log(
-      "Tracking product prices... process.env.NEXT_PUBLIC_BASE_URL",
-      process.env.NEXT_PUBLIC_BASE_URL
-    );
     const categories = await fetchProductCategories();
     if (!categories) {
       return;
