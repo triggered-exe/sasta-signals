@@ -87,7 +87,7 @@ export default function Home() {
   };
 
   const toggleCategory = (categoryId) => {
-    setExpandedCategory((prev) => (prev === categoryId ? null : categoryId));
+    setExpandedCategory((prev) => (prev === categoryId ? null  : categoryId));
   };
 
   const fetchInstamartSubcategoryData = async (
