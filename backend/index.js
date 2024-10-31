@@ -15,7 +15,7 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // Middleware
-app.use(cors()); // Enable Cross-Origin Resource Sharing (CORS)
+app.use(cors()); // Enable Cross-Origin  Resource Sharing (CORS)
 app.use(express.json()); // Parse JSON request bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded request bodies
 
