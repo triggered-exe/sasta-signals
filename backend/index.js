@@ -12,7 +12,7 @@ dotenv.config();
 // Create an Express application
 const app = express();
 // Set the port number, use the PORT environment variable if available, otherwise use 3000
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 8000;
 
 // Middleware
 app.use(cors()); // Enable Cross-Origin  Resource Sharing (CORS)

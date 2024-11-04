@@ -48,6 +48,9 @@ const MeeshoProducts = ({ products }) => {
                 <span>{product.catalog_reviews_summary?.average_rating}</span>
                 <span className="text-gray-500 text-sm ml-1">({product?.catalog_reviews_summary?.rating_count} ratings)</span>
               </div>
+              <div className="text-sm text-gray-600">
+                Shipping: ₹{product.shipping?.charges || 'Free'}
+              </div>
             </a>
           </div>
         );

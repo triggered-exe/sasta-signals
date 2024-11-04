@@ -4,6 +4,7 @@ import { InstamartProduct } from "../models/InstamartProduct.js";
 import { HALF_HOUR, ONE_HOUR, PAGE_SIZE } from "../utils/constants.js";
 import { MailerSend, EmailParams, Sender, Recipient } from "mailersend";
 
+// Constants and configuration for Instamart API requests
 const INSTAMART_HEADERS = {
   accept: "*/*",
   "accept-language": "en-US,en;q=0.7",
@@ -22,22 +23,26 @@ const INSTAMART_HEADERS = {
     "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36",
 };
 
+// Interval reference for price tracking
 let trackingInterval = null;
 
+// Initialize mailerSend for price drop notifications
 const mailerSend = new MailerSend({
   apiKey: process.env.MAILERSEND_API_KEY,
 });
 
+// Controller to fetch and return all product categories
 export const getStoreData = async (req, res, next) => {
   try {
-    const categories = await fetchProductCategories()
-    console.log('sending categories', categories?.length)
+    const categories = await fetchProductCategories();
+    console.log("sending categories", categories?.length);
     res.status(200).json(categories);
   } catch (error) {
     next(error);
   }
 };
 
+// Controller to fetch products within a specific subcategory
 export const getSubcategoryProducts = async (req, res, next) => {
   try {
     const { filterId, filterName, categoryName, offset = 0 } = req.body;
@@ -64,29 +69,30 @@ export const getSubcategoryProducts = async (req, res, next) => {
         },
         headers: INSTAMART_HEADERS,
       }
-    )
-    if(!response.data || !response.data.data) {
-      console.error('Swiggy API Response:', response?.data);
+    );
+    if (!response.data || !response.data.data) {
+      console.error("Swiggy API Response:", response?.data);
       throw AppError.serviceUnavailable("Failed to fetch products from Swiggy");
     }
 
     res.status(200).json(response.data);
   } catch (error) {
     if (!(error instanceof AppError)) {
-      console.error('Unexpected Error:', error);
+      console.error("Unexpected Error:", error);
       error = new AppError("An unexpected error occurred", 500);
     }
     next(error);
   }
 };
 
+// Controller to start periodic price tracking
 export const trackPrices = async (req, res, next) => {
   try {
     if (trackingInterval) {
       clearInterval(trackingInterval);
       trackingInterval = null;
     }
-     trackProductPrices();
+    trackProductPrices();
     trackingInterval = setInterval(() => trackProductPrices(), HALF_HOUR);
     res.status(200).json({ message: "Price tracking started" });
   } catch (error) {
@@ -94,6 +100,7 @@ export const trackPrices = async (req, res, next) => {
   }
 };
 
+// Controller to fetch products with pagination and filtering
 export const getProducts = async (req, res, next) => {
   try {
     const {
@@ -101,12 +108,12 @@ export const getProducts = async (req, res, next) => {
       pageSize = PAGE_SIZE.toString(),
       sortOrder = "price",
       priceDropped = "false",
+      notUpdated = "false",
     } = req.query;
 
     const skip = (parseInt(page) - 1) * parseInt(pageSize);
     const sortCriteria = buildSortCriteria(sortOrder);
-    const matchCriteria = buildMatchCriteria(priceDropped);
-
+    const matchCriteria = buildMatchCriteria(priceDropped, notUpdated);
     const totalProducts = await InstamartProduct.countDocuments(matchCriteria);
     const products = await InstamartProduct.aggregate([
       { $match: matchCriteria },
@@ -136,6 +143,7 @@ export const getProducts = async (req, res, next) => {
   }
 };
 
+// Helper function to build MongoDB sort criteria based on user preference
 const buildSortCriteria = (sortOrder) => {
   const criteria = {};
   if (sortOrder === "price") criteria.price = 1;
@@ -144,7 +152,8 @@ const buildSortCriteria = (sortOrder) => {
   return criteria;
 };
 
-const buildMatchCriteria = (priceDropped) => {
+// Helper function to build MongoDB match criteria for filtering products
+const buildMatchCriteria = (priceDropped, notUpdated) => {
   const criteria = { inStock: true };
   if (priceDropped === "true") {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
@@ -154,12 +163,20 @@ const buildMatchCriteria = (priceDropped) => {
       $gte: oneHourAgo,
     };
   }
+  console.log(new Date(Date.now() - 1 * 24 * 60 * 60 * 1000), "notUpdated");
+  if (notUpdated === "true") {
+    return {
+      ...criteria,
+      updatedAt: { $gt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000) },
+    };
+  }
   return criteria;
 };
 
+// Fetches all product categories from Instamart API
 const fetchProductCategories = async () => {
   let allCategories = [];
-  
+
   // Fetch data for pages 1-3
   for (let pageNo = 1; pageNo <= 2; pageNo++) {
     const response = await axios.get(
@@ -181,24 +198,25 @@ const fetchProductCategories = async () => {
       ?.filter((widget) => widget.type === "TAXONOMY")
       ?.flatMap((widget) => {
         const taxonomyType = widget.widgetInfo?.taxonomyType || "";
-        return (widget.data || []).map(item => ({
+        return (widget.data || []).map((item) => ({
           ...item,
-          taxonomyType
+          taxonomyType,
         }));
       });
 
-    const pageCategories = widgets?.map((item) => ({
-      nodeId: item.nodeId,
-      name: item.displayName,
-      taxonomyType: item.taxonomyType,
-      image: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,w_294/${item.imageId}`,
-      subCategories: item.nodes.map((node) => ({
-        nodeId: node.nodeId,
-        name: node.displayName,
-        image: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,w_294/${node.imageId}`,
-        productCount: node.productCount
-      })),
-    })) || [];
+    const pageCategories =
+      widgets?.map((item) => ({
+        nodeId: item.nodeId,
+        name: item.displayName,
+        taxonomyType: item.taxonomyType,
+        image: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,w_294/${item.imageId}`,
+        subCategories: item.nodes.map((node) => ({
+          nodeId: node.nodeId,
+          name: node.displayName,
+          image: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,w_294/${node.imageId}`,
+          productCount: node.productCount,
+        })),
+      })) || [];
 
     allCategories = [...allCategories, ...pageCategories];
   }
@@ -206,7 +224,14 @@ const fetchProductCategories = async () => {
   return allCategories;
 };
 
-const fetchInstamartSubcategoryData = async (filterId, subcategoryName, categoryName, taxonomyType, offset = 0) => {
+// Fetches products for a specific subcategory with pagination
+const fetchInstamartSubcategoryData = async (
+  filterId,
+  subcategoryName,
+  categoryName,
+  taxonomyType,
+  offset = 0
+) => {
   try {
     const response = await axios.post(
       `https://www.swiggy.com/api/instamart/category-listing/filter`,
@@ -232,30 +257,33 @@ const fetchInstamartSubcategoryData = async (filterId, subcategoryName, category
     // console.log('API Response:', JSON.stringify(response.data?.data, null, 2));
 
     const { totalItems = 0, widgets = [] } = response.data?.data || {};
-    
+
     // Extract products from PRODUCT_LIST widgets
     const products = widgets
-      .filter(widget => widget.type === "PRODUCT_LIST")
-      .flatMap(widget => widget.data || [])
-      .filter(product => product); // Filter out any null/undefined products
+      .filter((widget) => widget.type === "PRODUCT_LIST")
+      .flatMap((widget) => widget.data || [])
+      .filter((product) => product); // Filter out any null/undefined products
 
     // console.log(`Found ${products.length} products in subcategory ${subcategoryName}`);
 
-    return { 
-      products: Array.isArray(products) ? products : [], 
-      totalItems 
+    return {
+      products: Array.isArray(products) ? products : [],
+      totalItems,
     };
   } catch (error) {
-    console.error('Error fetching subcategory data:', error);
+    console.error("Error fetching subcategory data:", error);
     return { products: [], totalItems: 0 };
   }
 };
 
+// Processes a single product for database storage and tracks price changes
 const processProduct = async (product, category, subcategory) => {
   const currentPrice = product.variations?.[0]?.price?.offer_price || 0;
-  
-  const existingProduct = await InstamartProduct.findOne({ productId: product.product_id });
-  
+
+  const existingProduct = await InstamartProduct.findOne({
+    productId: product.product_id,
+  });
+
   // If product exists and price hasn't changed, skip the update
   if (existingProduct && existingProduct.price === currentPrice) {
     return null;
@@ -288,24 +316,27 @@ const processProduct = async (product, category, subcategory) => {
     previousPrice,
     priceDroppedAt,
     discount: Math.floor(
-      ((product.variations?.[0]?.price.store_price - currentPrice) / 
-      product.variations?.[0]?.price.store_price) * 100
+      ((product.variations?.[0]?.price.store_price - currentPrice) /
+        product.variations?.[0]?.price.store_price) *
+        100
     ),
-    variations: product.variations?.map((variation) => ({
-      id: variation.id,
-      display_name: variation.display_name,
-      offer_price: variation.price.offer_price,
-      store_price: variation.price.store_price,
-      discount: Math.floor(
-        ((variation.price.store_price - variation.price.offer_price) / 
-        variation.price.store_price) * 100
-      ),
-      image: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,h_272,w_252/${
-        variation.images?.[0] || "default_image"
-      }`,
-      quantity: variation.quantity,
-      unit_of_measure: variation.unit_of_measure,
-    })) || [],
+    variations:
+      product.variations?.map((variation) => ({
+        id: variation.id,
+        display_name: variation.display_name,
+        offer_price: variation.price.offer_price,
+        store_price: variation.price.store_price,
+        discount: Math.floor(
+          ((variation.price.store_price - variation.price.offer_price) /
+            variation.price.store_price) *
+            100
+        ),
+        image: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,h_272,w_252/${
+          variation.images?.[0] || "default_image"
+        }`,
+        quantity: variation.quantity,
+        unit_of_measure: variation.unit_of_measure,
+      })) || [],
     trackedAt: new Date(),
   };
 
@@ -318,6 +349,7 @@ const processProduct = async (product, category, subcategory) => {
   };
 };
 
+// Sends email notification for products with price drops
 const sendEmailWithDroppedProducts = async (droppedProducts) => {
   const emailContent = `
     <h2>Recently Dropped Products</h2>
@@ -331,20 +363,29 @@ const sendEmailWithDroppedProducts = async (droppedProducts) => {
         </tr>
       </thead>
       <tbody>
-        ${droppedProducts.map(product => `
+        ${droppedProducts
+          .map(
+            (product) => `
           <tr>
             <td>${product.productName}</td>
             <td>${product.price}</td>
             <td>${product.previousPrice}</td>
             <td>${product.discount}%</td>
           </tr>
-        `).join('')}
+        `
+          )
+          .join("")}
       </tbody>
     </table>
   `;
 
-  const sentFrom = new Sender("MS_Dle5Er@trial-jy7zpl96zzol5vx6.mlsender.net", "Instamart Price dropped");
-  const recipients = [new Recipient("harishankersharma648@gmail.com", "Your Client")];
+  const sentFrom = new Sender(
+    "MS_Dle5Er@trial-jy7zpl96zzol5vx6.mlsender.net",
+    "Instamart Price dropped"
+  );
+  const recipients = [
+    new Recipient("harishankersharma648@gmail.com", "Your Client"),
+  ];
 
   const emailParams = new EmailParams()
     .setFrom(sentFrom)
@@ -355,85 +396,96 @@ const sendEmailWithDroppedProducts = async (droppedProducts) => {
   await mailerSend.email.send(emailParams);
 };
 
+// Main function to track product prices across all categories
 const trackProductPrices = async () => {
   try {
     console.log("Fetching categories...");
     const categories = await fetchProductCategories();
-    
-    if (!categories || !Array.isArray(categories)) {
+
+    if (!categories?.length) {
       console.error("No categories found or invalid categories data");
       return;
     }
-    
+
     console.log("Categories fetched:", categories.length);
 
-    for (const category of categories) {
-      console.log('processing category', category.name)
-      if (!category.subCategories || !Array.isArray(category.subCategories)) {
-        console.log(`Skipping category ${category.name} - no subcategories found`);
-        continue;
-      }
-
-      for (const subCategory of category.subCategories) {
-        try {
-          let offset = 0;
-          let hasMore = true;
-          let allProducts = [];
-
-          while (hasMore) {
-            const { products, totalItems } = await fetchInstamartSubcategoryData(
-              subCategory.nodeId,
-              subCategory.name,
-              category.name,
-              category.taxonomyType,
-              offset
-            );
-
-            // Ensure products is an array
-            const validProducts = Array.isArray(products) ? products : [];
-
-            if (validProducts.length === 0) {
-              hasMore = false;
-              continue;
-            }
-
-            allProducts = [...allProducts, ...validProducts];
-            
-            if (allProducts.length >= totalItems || totalItems === 0) {
-              hasMore = false;
-            } else {
-              offset += 20;
-            }
-          }
-
-          console.log(`Found ${allProducts.length} products in subcategory ${subCategory.name}`);
-
-          if (allProducts.length > 0) {
-            const bulkOperations = (await Promise.all(
-              allProducts.map(product => processProduct(product, category, subCategory))
-            )).filter(operation => operation !== null);
-
-            if (bulkOperations.length > 0) {
-              await InstamartProduct.bulkWrite(bulkOperations);
-            //   console.log(`Processed ${bulkOperations.length} products for ${subCategory.name}`);
-            }
-          } else {
-            console.log(`No products found for subcategory: ${subCategory.name}`);
-          }
-        } catch (error) {
-          console.error(`Error processing subcategory ${subCategory.name}:`, error);
-          // Continue with next subcategory
-          continue;
+    // Process categories in parallel
+    await Promise.all(
+      categories.map(async (category) => {
+        console.log("processing category", category.name);
+        if (!category.subCategories?.length) {
+          console.log(
+            `Skipping category ${category.name} - no subcategories found`
+          );
+          return;
         }
-      }
-    }
 
-    // Send email for dropped prices
+        // Process subcategories in parallel (in groups of 3 to avoid rate limiting)
+        const subCategoryGroups = chunk(category.subCategories, 5);
+        for (const subCategoryGroup of subCategoryGroups) {
+          await Promise.all(
+            subCategoryGroup.map(async (subCategory) => {
+              try {
+                let offset = 0;
+                let allProducts = [];
+                const BATCH_SIZE = 40; // Increased batch size
+
+                while (true) {
+                  const { products, totalItems } =
+                    await fetchInstamartSubcategoryData(
+                      subCategory.nodeId,
+                      subCategory.name,
+                      category.name,
+                      category.taxonomyType,
+                      offset
+                    );
+
+                  const validProducts = Array.isArray(products) ? products : [];
+                  if (!validProducts.length) break;
+
+                  allProducts = [...allProducts, ...validProducts];
+
+                  if (allProducts.length >= totalItems || totalItems === 0)
+                    break;
+                  offset += BATCH_SIZE;
+                }
+
+                console.log(
+                  `Found ${allProducts.length} products in subcategory ${subCategory.name}`
+                );
+
+                if (allProducts.length > 0) {
+                  const bulkOperations = (
+                    await Promise.all(
+                      allProducts.map((product) =>
+                        processProduct(product, category, subCategory)
+                      )
+                    )
+                  ).filter(Boolean);
+
+                  if (bulkOperations.length > 0) {
+                    await InstamartProduct.bulkWrite(bulkOperations, {
+                      ordered: false,
+                    });
+                  }
+                }
+              } catch (error) {
+                console.error(
+                  `Error processing subcategory ${subCategory.name}:`,
+                  error
+                );
+              }
+            })
+          );
+        }
+      })
+    );
+
     const droppedProducts = await InstamartProduct.find({
-      priceDroppedAt: { $gte: new Date(Date.now() - ONE_HOUR) }
+      priceDroppedAt: { $gte: new Date(Date.now() - ONE_HOUR) },
     });
 
-    console.log('droppedProducts', droppedProducts.length, "at", new Date().toISOString())
+    console.log("droppedProducts", droppedProducts.length, "at", new Date());
     console.log("Price tracking completed");
   } catch (error) {
     console.error("Error tracking prices:", error);
@@ -441,6 +493,16 @@ const trackProductPrices = async () => {
   }
 };
 
+// Utility function to split arrays into smaller chunks for batch processing
+const chunk = (array, size) => {
+  const chunks = [];
+  for (let i = 0; i < array.length; i += size) {
+    chunks.push(array.slice(i, i + size));
+  }
+  return chunks;
+};
+
+// Controller to search products using Instamart's search API
 export const search = async (req, res, next) => {
   try {
     const { query, offset = 0 } = req.body;

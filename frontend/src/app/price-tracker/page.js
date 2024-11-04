@@ -12,11 +12,12 @@ export default function PriceTracker() {
   const [pageSize] = useState(20); // Page size
   const [sortOrder, setSortOrder] = useState("discount"); // Default sorting by discount
   const [priceDropped, setPriceDropped] = useState(false); // Toggle for recently updated products
+  const [notUpdated, setNotUpdated] = useState(false); // Add this line
   const [totalPages, setTotalPages] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
 
   // Fetch products from the backend
-  const fetchProducts = async (page, orderBy, priceDropped) => {
+  const fetchProducts = async (page, orderBy, priceDropped, notUpdated) => {
     setIsLoading(true);
     setError(null);
     try {
@@ -26,6 +27,7 @@ export default function PriceTracker() {
           pageSize,
           sortOrder: orderBy,
           priceDropped, // Pass the priceDropped flag to the backend
+          notUpdated, // Add this parameter
         },
       });
 
@@ -42,8 +44,8 @@ export default function PriceTracker() {
   };
 
   useEffect(() => {
-    fetchProducts(currentPage, sortOrder, priceDropped);
-  }, [currentPage, sortOrder, priceDropped]);
+    fetchProducts(currentPage, sortOrder, priceDropped, notUpdated);
+  }, [currentPage, sortOrder, priceDropped, notUpdated]);
 
   const handleStartTracking = async () => {
     try {
@@ -116,6 +118,12 @@ export default function PriceTracker() {
     setCurrentPage(1); // Reset to first page when changing the filter
   };
 
+  // Add handler for notUpdated checkbox
+  const handleNotUpdatedChange = (e) => {
+    setNotUpdated(e.target.checked);
+    setCurrentPage(1);
+  };
+
   return (
     <div className="container mx-auto p-6 bg-gray-100 min-h-screen">
       {/* Header Section */}
@@ -173,6 +181,17 @@ export default function PriceTracker() {
             />
             <label htmlFor="priceDropped" className="font-semibold text-gray-700 cursor-pointer select-none">
               Recently Dropped
+            </label>
+            
+            <input
+              type="checkbox"
+              id="notUpdated"
+              checked={notUpdated}
+              onChange={handleNotUpdatedChange}
+              className="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer ml-4"
+            />
+            <label htmlFor="notUpdated" className="font-semibold text-gray-700 cursor-pointer select-none">
+              Not Updated (2+ Days)
             </label>
           </div>
         </div>
