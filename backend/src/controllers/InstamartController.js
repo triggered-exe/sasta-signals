@@ -2,7 +2,7 @@ import axios from "axios";
 import { AppError } from "../utils/errorHandling.js";
 import { InstamartProduct } from "../models/InstamartProduct.js";
 import { HALF_HOUR, ONE_HOUR, PAGE_SIZE } from "../utils/constants.js";
-import { MailerSend, EmailParams, Sender, Recipient } from "mailersend";
+import { Resend } from 'resend';
 
 // Constants and configuration for Instamart API requests
 const INSTAMART_HEADERS = {
@@ -26,10 +26,8 @@ const INSTAMART_HEADERS = {
 // Interval reference for price tracking
 let trackingInterval = null;
 
-// Initialize mailerSend for price drop notifications
-const mailerSend = new MailerSend({
-  apiKey: process.env.MAILERSEND_API_KEY,
-});
+// Initialize Resend client (replace MailerSend initialization)
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Controller to fetch and return all product categories
 export const getStoreData = async (req, res, next) => {
@@ -308,9 +306,8 @@ const processProduct = async (product, category, subcategory) => {
     subcategoryId: subcategory.nodeId,
     productId: product.product_id,
     inStock: product.in_stock,
-    imageUrl: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,h_272,w_252/${
-      product.variations?.[0]?.images?.[0] || "default_image"
-    }`,
+    imageUrl: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,h_272,w_252/${product.variations?.[0]?.images?.[0] || "default_image"
+      }`,
     productName: product.display_name,
     price: currentPrice,
     previousPrice,
@@ -318,7 +315,7 @@ const processProduct = async (product, category, subcategory) => {
     discount: Math.floor(
       ((product.variations?.[0]?.price.store_price - currentPrice) /
         product.variations?.[0]?.price.store_price) *
-        100
+      100
     ),
     variations:
       product.variations?.map((variation) => ({
@@ -329,11 +326,10 @@ const processProduct = async (product, category, subcategory) => {
         discount: Math.floor(
           ((variation.price.store_price - variation.price.offer_price) /
             variation.price.store_price) *
-            100
+          100
         ),
-        image: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,h_272,w_252/${
-          variation.images?.[0] || "default_image"
-        }`,
+        image: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,h_272,w_252/${variation.images?.[0] || "default_image"
+          }`,
         quantity: variation.quantity,
         unit_of_measure: variation.unit_of_measure,
       })) || [],
@@ -351,49 +347,59 @@ const processProduct = async (product, category, subcategory) => {
 
 // Sends email notification for products with price drops
 const sendEmailWithDroppedProducts = async (droppedProducts) => {
-  const emailContent = `
-    <h2>Recently Dropped Products</h2>
-    <table style="width: 100%; border-collapse: collapse;">
-      <thead>
-        <tr>
-          <th>Product Name</th>
-          <th>Current Price</th>
-          <th>Previous Price</th>
-          <th>Discount</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${droppedProducts
-          .map(
-            (product) => `
-          <tr>
-            <td>${product.productName}</td>
-            <td>${product.price}</td>
-            <td>${product.previousPrice}</td>
-            <td>${product.discount}%</td>
-          </tr>
-        `
-          )
-          .join("")}
-      </tbody>
-    </table>
-  `;
+  try {
+    // Skip sending email if no dropped products
+    if (!droppedProducts || droppedProducts.length === 0) {
+      console.log("No dropped products to send email for");
+      return;
+    }
 
-  const sentFrom = new Sender(
-    "MS_Dle5Er@trial-jy7zpl96zzol5vx6.mlsender.net",
-    "Instamart Price dropped"
-  );
-  const recipients = [
-    new Recipient("harishankersharma648@gmail.com", "Your Client"),
-  ];
+    console.log(`Attempting to send email for ${droppedProducts.length} dropped products`);
 
-  const emailParams = new EmailParams()
-    .setFrom(sentFrom)
-    .setTo(recipients)
-    .setSubject("Recently Dropped Products")
-    .setHtml(emailContent);
+    const emailContent = `
+      <h2>Recently Dropped Products</h2>
+      <div style="font-family: Arial, sans-serif;">
+        ${droppedProducts.map(product => `
+          <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #eee; border-radius: 8px;">
+            <div style="display: flex; align-items: center;">
+              <img src="${product.imageUrl}" 
+                   alt="${product.productName}" 
+                   style="width: 100px; height: 100px; object-fit: cover; border-radius: 4px; margin-right: 15px;">
+              <div>
+                <h3 style="margin: 0 0 8px 0;">${product.productName}</h3>
+                <p style="margin: 4px 0; color: #2f80ed;">
+                  Current Price: ₹${product.price}
+                  <span style="text-decoration: line-through; color: #666; margin-left: 8px;">
+                    ₹${product.previousPrice}
+                  </span>
+                </p>
+                <p style="margin: 4px 0; color: #219653;">
+                  Price Drop: ₹${(product.previousPrice - product.price).toFixed(2)} (${product.discount}% off)
+                </p>
+              </div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
 
-  await mailerSend.email.send(emailParams);
+    // Verify Resend API key is set
+    if (!process.env.RESEND_API_KEY) {
+      throw new Error('RESEND_API_KEY is not configured');
+    }
+
+    const response = await resend.emails.send({
+      from: 'onboarding@resend.dev',
+      to: 'harishanker.500apps@gmail.com',
+      subject: '🔥 Price Drops Alert - Instamart Products',
+      html: emailContent,
+    });
+
+    console.log("Email sent successfully", response);
+  } catch (error) {
+    console.error("Error sending email:", error?.response?.data || error);
+    throw error;
+  }
 };
 
 // Main function to track product prices across all categories
@@ -483,10 +489,12 @@ const trackProductPrices = async () => {
 
     const droppedProducts = await InstamartProduct.find({
       priceDroppedAt: { $gte: new Date(Date.now() - ONE_HOUR) },
-    });
+    }).sort({ discount: -1 });
 
-    console.log("droppedProducts", droppedProducts.length, "at", new Date());
-    console.log("Price tracking completed");
+    await sendEmailWithDroppedProducts(droppedProducts);
+
+    console.log("droppedProducts", droppedProducts.length);
+    console.log("at", new Date());
   } catch (error) {
     console.error("Error tracking prices:", error);
     throw error;
