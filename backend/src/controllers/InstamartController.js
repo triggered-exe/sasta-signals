@@ -361,23 +361,26 @@ const sendEmailWithDroppedProducts = async (droppedProducts) => {
       <div style="font-family: Arial, sans-serif;">
         ${droppedProducts.map(product => `
           <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #eee; border-radius: 8px;">
-            <div style="display: flex; align-items: center;">
-              <img src="${product.imageUrl}" 
-                   alt="${product.productName}" 
-                   style="width: 100px; height: 100px; object-fit: cover; border-radius: 4px; margin-right: 15px;">
-              <div>
-                <h3 style="margin: 0 0 8px 0;">${product.productName}</h3>
-                <p style="margin: 4px 0; color: #2f80ed;">
-                  Current Price: ₹${product.price}
-                  <span style="text-decoration: line-through; color: #666; margin-left: 8px;">
-                    ₹${product.previousPrice}
-                  </span>
-                </p>
-                <p style="margin: 4px 0; color: #219653;">
-                  Price Drop: ₹${(product.previousPrice - product.price).toFixed(2)} (${product.discount}% off)
-                </p>
+            <a href="https://www.swiggy.com/stores/instamart/item/${product.productId}" 
+               style="text-decoration: none; color: inherit; display: block;">
+              <div style="display: flex; align-items: center;">
+                <img src="${product.imageUrl}" 
+                     alt="${product.productName}" 
+                     style="width: 100px; height: 100px; object-fit: cover; border-radius: 4px; margin-right: 15px;">
+                <div>
+                  <h3 style="margin: 0 0 8px 0;">${product.productName}</h3>
+                  <p style="margin: 4px 0; color: #2f80ed;">
+                    Current Price: ₹${product.price}
+                    <span style="text-decoration: line-through; color: #666; margin-left: 8px;">
+                      ₹${product.previousPrice}
+                    </span>
+                  </p>
+                  <p style="margin: 4px 0; color: #219653;">
+                    Price Drop: ₹${(product.previousPrice - product.price).toFixed(2)} (${product.discount}% off)
+                  </p>
+                </div>
               </div>
-            </div>
+            </a>
           </div>
         `).join('')}
       </div>
