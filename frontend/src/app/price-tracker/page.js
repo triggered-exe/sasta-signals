@@ -5,7 +5,6 @@ import axios from "axios";
 import { FaSpinner } from 'react-icons/fa';
 
 export default function PriceTracker() {
-  const [isTracking, setIsTracking] = useState(false);
   const [products, setProducts] = useState([]);
   const [error, setError] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -46,34 +45,6 @@ export default function PriceTracker() {
   useEffect(() => {
     fetchProducts(currentPage, sortOrder, priceDropped, notUpdated);
   }, [currentPage, sortOrder, priceDropped, notUpdated]);
-
-  const handleStartTracking = async () => {
-    try {
-      const response = await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/instamart/track-prices`, {
-        action: "start",
-      });
-      if (response.status === 200) {
-        setIsTracking(true);
-      }
-    } catch (err) {
-      console.log(err);
-      setError("Error starting tracking");
-    }
-  };
-
-  const handleStopTracking = async () => {
-    try {
-      const response = await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/instamart/track-prices`, {
-        action: "stop",
-      });
-      if (response.status === 200) {
-        setIsTracking(false);
-      }
-    } catch (err) {
-      console.log(err);
-      setError("Error stopping tracking");
-    }
-  };
 
   // Pagination handlers
   const handleNextPage = () => {
@@ -129,20 +100,6 @@ export default function PriceTracker() {
       {/* Header Section */}
       <div className="flex flex-col sm:flex-row justify-between items-center mb-8 bg-white p-6 rounded-lg shadow-md">
         <h2 className="text-3xl font-bold text-gray-800 mb-4 sm:mb-0">Price Tracker</h2>
-
-        <div className="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-4">
-          <button
-            onClick={isTracking ? handleStopTracking : handleStartTracking}
-            className={`px-6 py-2 rounded-full text-white font-semibold transition-colors ${
-              isTracking ? "bg-red-500 hover:bg-red-600" : "bg-green-500 hover:bg-green-600"
-            }`}
-          >
-            {isTracking ? "Stop Tracking" : "Start Tracking"}
-          </button>
-          <p className={`font-medium ${isTracking ? "text-green-600" : "text-red-600"}`}>
-            Status: {isTracking ? "Tracking is active" : "Tracking is inactive"}
-          </p>
-        </div>
       </div>
 
       {/* Error Display */}

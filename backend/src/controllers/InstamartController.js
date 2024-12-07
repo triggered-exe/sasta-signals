@@ -3,6 +3,8 @@ import { AppError } from "../utils/errorHandling.js";
 import { InstamartProduct } from "../models/InstamartProduct.js";
 import { HALF_HOUR, ONE_HOUR, PAGE_SIZE } from "../utils/constants.js";
 import { Resend } from 'resend';
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID;
 
 // Constants and configuration for Instamart API requests
 const INSTAMART_HEADERS = {
@@ -361,7 +363,7 @@ const sendEmailWithDroppedProducts = async (droppedProducts) => {
       <div style="font-family: Arial, sans-serif;">
         ${droppedProducts.map(product => `
           <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #eee; border-radius: 8px;">
-            <a href="https://www.swiggy.com/stores/instamart/item/${product.productId}" 
+            <a href="https://www.swiggy.com/stores/instamart/item/${product.productId}"  
                style="text-decoration: none; color: inherit; display: block;">
               <div style="display: flex; align-items: center;">
                 <img src="${product.imageUrl}" 
@@ -402,6 +404,65 @@ const sendEmailWithDroppedProducts = async (droppedProducts) => {
   } catch (error) {
     console.error("Error sending email:", error?.response?.data || error);
     throw error;
+  }
+};
+
+// Sends Telegram message for products with price drops
+const sendTelegramMessage = async (droppedProducts) => {
+  try {
+    if (!droppedProducts || droppedProducts.length === 0) {
+      console.log("No dropped products to send Telegram message for");
+      return;
+    }
+
+    // Verify Telegram configuration
+    if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHANNEL_ID) {
+      console.error("Missing Telegram configuration. Please check your .env file");
+      return;
+    }
+
+    // Filter products with discount > 49% and sort by highest discount
+    const filteredProducts = droppedProducts
+      .filter(product => product.discount > 49)
+      .sort((a, b) => b.discount - a.discount);
+
+    if (filteredProducts.length === 0) {
+      console.log("No products with discount > 49%");
+      return;
+    }
+
+    // Send each product as a separate message with image
+    for (const product of filteredProducts) {
+      try {
+        // Format price drop calculation
+        const priceDrop = product.previousPrice - product.price;
+        
+        const messageText = 
+          `🔥 <b>${product.productName}</b>\n\n` +
+          `💰 Price: ₹${product.price} (was ₹${product.previousPrice})\n` +
+          `📉 Price Drop: ₹${priceDrop.toFixed(2)}\n` +
+          `🏷️ Discount: ${product.discount}%\n\n` +
+          `<a href="https://www.swiggy.com/stores/instamart/item/${product.productId}">View on Instamart</a>`;
+
+        // Send photo with caption
+        await axios.post(
+          `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`,
+          {
+            chat_id: TELEGRAM_CHANNEL_ID,
+            photo: product.imageUrl,
+            caption: messageText,
+            parse_mode: 'HTML',
+          }
+        );
+
+        // Add delay between messages to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } catch (error) {
+        console.error('Error sending Telegram message:', error.response?.data || error);
+      }
+    }
+  } catch (error) {
+    console.error("Error in Telegram message preparation:", error);
   }
 };
 
@@ -493,8 +554,12 @@ const trackProductPrices = async () => {
     const droppedProducts = await InstamartProduct.find({
       priceDroppedAt: { $gte: new Date(Date.now() - ONE_HOUR) },
     }).sort({ discount: -1 });
-
-    await sendEmailWithDroppedProducts(droppedProducts);
+    
+    // Send both email and Telegram notifications
+    await Promise.all([
+      sendEmailWithDroppedProducts(droppedProducts),
+      sendTelegramMessage(droppedProducts)
+    ]);
 
     console.log("droppedProducts", droppedProducts.length);
     console.log("at", new Date());

@@ -9,10 +9,10 @@ import {
 
 const router = express.Router();
 
-router.get("/store-data", getStoreData);
-router.post("/subcategory-products", getSubcategoryProducts);
-router.post("/track-prices", trackPrices);
-router.get("/products", getProducts);
-router.post("/search", search);
+router.get("/store-data", getStoreData); // For fetching store data
+router.post("/subcategory-products", getSubcategoryProducts); // For fetching products by subcategory
+router.get("/track-prices", trackPrices); // For starting the price tracking
+router.get("/products", getProducts); // For fetching products with pagination and filtering
+router.post("/search", search); // For searching products
 
 export default router;
