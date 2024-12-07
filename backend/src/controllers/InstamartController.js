@@ -552,7 +552,7 @@ const trackProductPrices = async () => {
     );
 
     const droppedProducts = await InstamartProduct.find({
-      priceDroppedAt: { $gte: new Date(Date.now() - ONE_HOUR) },
+      priceDroppedAt: { $gte: new Date(Date.now() - HALF_HOUR) },
     }).sort({ discount: -1 });
     
     // Send both email and Telegram notifications
