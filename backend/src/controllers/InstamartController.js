@@ -431,36 +431,28 @@ const sendTelegramMessage = async (droppedProducts) => {
       return;
     }
 
-    // Send each product as a separate message with image
-    for (const product of filteredProducts) {
-      try {
-        // Format price drop calculation
+    // Create a single message with all products
+    const messageText = 
+      `🔥 <b>Latest Price Drops (${filteredProducts.length} items)</b>\n\n` +
+      filteredProducts.map(product => {
         const priceDrop = product.previousPrice - product.price;
-        
-        const messageText = 
-          `🔥 <b>${product.productName}</b>\n\n` +
-          `💰 Price: ₹${product.price} (was ₹${product.previousPrice})\n` +
-          `📉 Price Drop: ₹${priceDrop.toFixed(2)}\n` +
-          `🏷️ Discount: ${product.discount}%\n\n` +
-          `<a href="https://www.swiggy.com/stores/instamart/item/${product.productId}">View on Instamart</a>`;
+        return `<b>${product.productName}</b>\n` +
+               `💰 ₹${product.price} (was ₹${product.previousPrice})\n` +
+               `📉 Drop: ₹${priceDrop.toFixed(2)} (${product.discount}%)\n` +
+               `<a href="https://www.swiggy.com/stores/instamart/item/${product.productId}">View on Instamart</a>\n`;
+      }).join('\n');
 
-        // Send photo with caption
-        await axios.post(
-          `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`,
-          {
-            chat_id: TELEGRAM_CHANNEL_ID,
-            photo: product.imageUrl,
-            caption: messageText,
-            parse_mode: 'HTML',
-          }
-        );
-
-        // Add delay between messages to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      } catch (error) {
-        console.error('Error sending Telegram message:', error.response?.data || error);
+    // Send as a text message
+    await axios.post(
+      `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
+      {
+        chat_id: TELEGRAM_CHANNEL_ID,
+        text: messageText,
+        parse_mode: 'HTML',
+        disable_web_page_preview: true
       }
-    }
+    );
+
   } catch (error) {
     console.error("Error in Telegram message preparation:", error);
   }
