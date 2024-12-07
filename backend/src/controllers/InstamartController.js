@@ -423,11 +423,11 @@ const sendTelegramMessage = async (droppedProducts) => {
 
     // Filter products with discount > 49% and sort by highest discount
     const filteredProducts = droppedProducts
-      .filter(product => product.discount > 49)
+      .filter(product => product.discount > 59)
       .sort((a, b) => b.discount - a.discount);
 
     if (filteredProducts.length === 0) {
-      console.log("No products with discount > 49%");
+      console.log("No products with discount > 59%");
       return;
     }
 
