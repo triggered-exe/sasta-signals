@@ -2,7 +2,7 @@ import axios from "axios";
 import { AppError } from "../utils/errorHandling.js";
 import { InstamartProduct } from "../models/InstamartProduct.js";
 import { HALF_HOUR, ONE_HOUR, PAGE_SIZE } from "../utils/constants.js";
-import { Resend } from 'resend';
+import { Resend } from "resend";
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID;
 
@@ -88,12 +88,7 @@ export const getSubcategoryProducts = async (req, res, next) => {
 // Controller to start periodic price tracking
 export const trackPrices = async (req, res, next) => {
   try {
-    if (trackingInterval) {
-      clearInterval(trackingInterval);
-      trackingInterval = null;
-    }
     trackProductPrices();
-    trackingInterval = setInterval(() => trackProductPrices(), HALF_HOUR);
     res.status(200).json({ message: "Price tracking started" });
   } catch (error) {
     next(error);
@@ -308,8 +303,9 @@ const processProduct = async (product, category, subcategory) => {
     subcategoryId: subcategory.nodeId,
     productId: product.product_id,
     inStock: product.in_stock,
-    imageUrl: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,h_272,w_252/${product.variations?.[0]?.images?.[0] || "default_image"
-      }`,
+    imageUrl: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,h_272,w_252/${
+      product.variations?.[0]?.images?.[0] || "default_image"
+    }`,
     productName: product.display_name,
     price: currentPrice,
     previousPrice,
@@ -317,7 +313,7 @@ const processProduct = async (product, category, subcategory) => {
     discount: Math.floor(
       ((product.variations?.[0]?.price.store_price - currentPrice) /
         product.variations?.[0]?.price.store_price) *
-      100
+        100
     ),
     variations:
       product.variations?.map((variation) => ({
@@ -328,10 +324,11 @@ const processProduct = async (product, category, subcategory) => {
         discount: Math.floor(
           ((variation.price.store_price - variation.price.offer_price) /
             variation.price.store_price) *
-          100
+            100
         ),
-        image: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,h_272,w_252/${variation.images?.[0] || "default_image"
-          }`,
+        image: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,h_272,w_252/${
+          variation.images?.[0] || "default_image"
+        }`,
         quantity: variation.quantity,
         unit_of_measure: variation.unit_of_measure,
       })) || [],
@@ -356,14 +353,20 @@ const sendEmailWithDroppedProducts = async (droppedProducts) => {
       return;
     }
 
-    console.log(`Attempting to send email for ${droppedProducts.length} dropped products`);
+    console.log(
+      `Attempting to send email for ${droppedProducts.length} dropped products`
+    );
 
     const emailContent = `
       <h2>Recently Dropped Products</h2>
       <div style="font-family: Arial, sans-serif;">
-        ${droppedProducts.map(product => `
+        ${droppedProducts
+          .map(
+            (product) => `
           <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #eee; border-radius: 8px;">
-            <a href="https://www.swiggy.com/stores/instamart/item/${product.productId}"  
+            <a href="https://www.swiggy.com/stores/instamart/item/${
+              product.productId
+            }"  
                style="text-decoration: none; color: inherit; display: block;">
               <div style="display: flex; align-items: center;">
                 <img src="${product.imageUrl}" 
@@ -378,25 +381,29 @@ const sendEmailWithDroppedProducts = async (droppedProducts) => {
                     </span>
                   </p>
                   <p style="margin: 4px 0; color: #219653;">
-                    Price Drop: ₹${(product.previousPrice - product.price).toFixed(2)} (${product.discount}% off)
+                    Price Drop: ₹${(
+                      product.previousPrice - product.price
+                    ).toFixed(2)} (${product.discount}% off)
                   </p>
                 </div>
               </div>
             </a>
           </div>
-        `).join('')}
+        `
+          )
+          .join("")}
       </div>
     `;
 
     // Verify Resend API key is set
     if (!process.env.RESEND_API_KEY) {
-      throw new Error('RESEND_API_KEY is not configured');
+      throw new Error("RESEND_API_KEY is not configured");
     }
 
     const response = await resend.emails.send({
-      from: 'onboarding@resend.dev',
-      to: 'harishanker.500apps@gmail.com',
-      subject: '🔥 Price Drops Alert - Instamart Products',
+      from: "onboarding@resend.dev",
+      to: "harishanker.500apps@gmail.com",
+      subject: "🔥 Price Drops Alert - Instamart Products",
       html: emailContent,
     });
 
@@ -417,13 +424,15 @@ const sendTelegramMessage = async (droppedProducts) => {
 
     // Verify Telegram configuration
     if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHANNEL_ID) {
-      console.error("Missing Telegram configuration. Please check your .env file");
+      console.error(
+        "Missing Telegram configuration. Please check your .env file"
+      );
       return;
     }
 
-    // Filter products with discount > 49% and sort by highest discount
+    // Filter products with discount > 59% and sort by highest discount
     const filteredProducts = droppedProducts
-      .filter(product => product.discount > 59)
+      .filter((product) => product.discount > 59)
       .sort((a, b) => b.discount - a.discount);
 
     if (filteredProducts.length === 0) {
@@ -431,36 +440,78 @@ const sendTelegramMessage = async (droppedProducts) => {
       return;
     }
 
-    // Create a single message with all products
-    const messageText = 
-      `🔥 <b>Latest Price Drops (${filteredProducts.length} items)</b>\n\n` +
-      filteredProducts.map(product => {
-        const priceDrop = product.previousPrice - product.price;
-        return `<b>${product.productName}</b>\n` +
-               `💰 ₹${product.price} (was ₹${product.previousPrice})\n` +
-               `📉 Drop: ₹${priceDrop.toFixed(2)} (${product.discount}%)\n` +
-               `<a href="https://www.swiggy.com/stores/instamart/item/${product.productId}">View on Instamart</a>\n`;
-      }).join('\n');
+    // Create product entries
+    const productEntries = filteredProducts.map((product) => {
+      const priceDrop = product.previousPrice - product.price;
+      return (
+        `<b>${product.productName}</b>\n` +
+        `💰 ₹${product.price} (was ₹${product.previousPrice})\n` +
+        `📉 Drop: ₹${priceDrop.toFixed(2)} (${product.discount}%)\n` +
+        `<a href="https://www.swiggy.com/stores/instamart/item/${product.productId}">View on Instamart</a>\n`
+      );
+    });
 
-    // Send as a text message
-    await axios.post(
-      `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
-      {
-        chat_id: TELEGRAM_CHANNEL_ID,
-        text: messageText,
-        parse_mode: 'HTML',
-        disable_web_page_preview: true
+    // Split into chunks of 10 products each
+    const chunks = [];
+    for (let i = 0; i < productEntries.length; i += 10) {
+      chunks.push(productEntries.slice(i, i + 10));
+    }
+
+    // Send each chunk as a separate message
+    for (let i = 0; i < chunks.length; i++) {
+      const messageText =
+        `🔥 <b>Latest Price Drops (Part ${i + 1}/${chunks.length})</b>\n\n` +
+        chunks[i].join("\n");
+
+      await axios.post(
+        `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
+        {
+          chat_id: TELEGRAM_CHANNEL_ID,
+          text: messageText,
+          parse_mode: "HTML",
+          disable_web_page_preview: true,
+        }
+      );
+
+      // Add a small delay between messages to avoid rate limiting
+      if (i < chunks.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       }
-    );
-
+    }
   } catch (error) {
-    console.error("Error in Telegram message preparation:", error);
+    console.error(
+      "Error in Telegram message preparation:",
+      error?.response?.data || error
+    );
   }
 };
 
+// Function to check if current time is between 12 AM and 6 AM IST
+const isNightTimeIST = () => {
+  const now = new Date();
+  const istOffset = 5.5 * 60 * 60 * 1000; // IST is UTC+5:30
+  const istTime = new Date(now.getTime() + istOffset);
+  const hours = istTime.getUTCHours();
+  return hours >= 0 && hours < 6;
+};
+
+
 // Main function to track product prices across all categories
-const trackProductPrices = async () => {
+export const trackProductPrices = async () => {
   try {
+    if (trackingInterval) {
+      clearInterval(trackingInterval);
+      trackingInterval = null;
+    }
+
+    trackingInterval = setInterval(() => trackProductPrices(), HALF_HOUR);
+
+    // Run if not in night time
+    if (isNightTimeIST()) {
+      console.log("Skipping price tracking during night hours");
+      return;
+    }
+
     console.log("Fetching categories...");
     const categories = await fetchProductCategories();
 
@@ -546,11 +597,11 @@ const trackProductPrices = async () => {
     const droppedProducts = await InstamartProduct.find({
       priceDroppedAt: { $gte: new Date(Date.now() - HALF_HOUR) },
     }).sort({ discount: -1 });
-    
+
     // Send both email and Telegram notifications
     await Promise.all([
       sendEmailWithDroppedProducts(droppedProducts),
-      sendTelegramMessage(droppedProducts)
+      sendTelegramMessage(droppedProducts),
     ]);
 
     console.log("droppedProducts", droppedProducts.length);

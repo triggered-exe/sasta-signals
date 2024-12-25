@@ -6,6 +6,7 @@ import './src/database.js'; // Import the database connection
 import instamartRouter from './src/utils/routes/api/instamart/instamart.js'; // Import the instamart route
 import meeshoRouter from './src/utils/routes/api/meesho/meesho.js';
 import axios from 'axios';
+import { trackProductPrices } from './src/controllers/InstamartController.js'; // Import the function
 
 // Load environment variables from .env file
 dotenv.config();
@@ -83,7 +84,8 @@ app.get('/api/test-telegram', async (req, res) => {
 // Global error handler
 app.use(errorHandler);
 
-// Start the server
+// Start the server and initialize price tracking
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
+  trackProductPrices(); // Start the price tracking when server starts
 });
