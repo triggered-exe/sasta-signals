@@ -1,27 +1,10 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
 import { FaBars } from 'react-icons/fa';
-import axios from 'axios';
 import InstamartComponent from '../components/instamart/InstamartComponent';
 import InstamartProducts from '../components/instamart/InstamartProducts';
 import MeeshoComponent from '../components/meesho/MeeshoComponent';
 import MeeshoProducts from '../components/meesho/MeeshoProducts';
-
-// Create axios instance with SSL certificate bypass
-const axiosInstance = axios.create({
-  httpsAgent: typeof window !== 'undefined' ? new (require('https').Agent)({
-    rejectUnauthorized: false
-  }) : null
-});
-
-// Set the default config for all axios requests
-useEffect(() => {
-  if (typeof window !== 'undefined') {
-    axios.defaults.httpsAgent = new (require('https').Agent)({
-      rejectUnauthorized: false
-    });
-  }
-}, []);
 
 const websites = [
   {
@@ -185,7 +168,6 @@ export default function Home() {
             <>
               {selectedWebsite === "Instamart" ? (
                 <InstamartComponent
-                  axiosInstance={axiosInstance}
                   setIsModalOpen={setIsModalOpen}
                   setModalTitle={setModalTitle}
                   setModalProducts={setModalProducts}
@@ -196,7 +178,6 @@ export default function Home() {
                 />
               ) : selectedWebsite === "Meesho" ? (
                 <MeeshoComponent
-                  axiosInstance={axiosInstance}
                   setIsModalOpen={setIsModalOpen}
                   setModalTitle={setModalTitle}
                   setModalProducts={setModalProducts}
