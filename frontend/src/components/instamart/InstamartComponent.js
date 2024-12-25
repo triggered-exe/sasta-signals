@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import axios from "axios";
 
 const InstamartComponent = ({
+  axiosInstance,
   setIsModalOpen,
   setModalTitle,
   setModalProducts,
@@ -17,7 +18,7 @@ const InstamartComponent = ({
   const fetchInstamartData = async () => {
     try {
       setIsLoading(true);
-      const response = await axios.get(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/instamart/store-data`);
+      const response = await axiosInstance.get(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/instamart/store-data`);
       console.log("data", response.data);
       setWebsiteData(response.data);
       setIsLoading(false);
@@ -38,7 +39,7 @@ const InstamartComponent = ({
   ) => {
     try {
       console.log("fetching subcategory data", subcategory, offset);
-      let response = await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/instamart/subcategory-products`, {
+      let response = await axiosInstance.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/instamart/subcategory-products`, {
         filterId: subcategory.nodeId,
         filterName: subcategory.name,
         categoryName: categoryName,
@@ -143,7 +144,7 @@ const InstamartComponent = ({
       setIsLoading(true);
 
       while (hasMore) {
-        const response = await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/instamart/search`, {
+        const response = await axiosInstance.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/instamart/search`, {
           query: searchQuery.trim(),
           Offset: Offset,
         });

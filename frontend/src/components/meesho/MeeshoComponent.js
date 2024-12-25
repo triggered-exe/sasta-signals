@@ -3,6 +3,7 @@ import MeeshoProducts from './MeeshoProducts';
 import axios from 'axios';
 
 const MeeshoComponent = ({
+  axiosInstance,
   setIsLoading,
   setError,
   searchQuery,
@@ -22,7 +23,7 @@ const MeeshoComponent = ({
     setError(null);
 
     try {
-      const response = await axios.get(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/meesho/search`, {
+      const response = await axiosInstance.get(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/meesho/search`, {
         params: { 
           query: searchQuery.trim(),
           page: 1,
