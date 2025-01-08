@@ -1,5 +1,5 @@
 import express from "express";
-import { InstamartController } from '../../../controllers/InstamartController.js';
+import * as InstamartController from '../../../controllers/InstamartController.js';
 
 const router = express.Router();
 

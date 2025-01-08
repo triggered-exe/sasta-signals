@@ -1,6 +1,6 @@
 import express from 'express';
 import axios from 'axios';
-import { AppError } from '../../../errorHandling.js';
+import { AppError } from '../../../utils/errorHandling.js';
 
 const router = express.Router();
 

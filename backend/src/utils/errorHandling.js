@@ -45,5 +45,5 @@ const errorHandler = (err, req, res, next) => {
   });
 };
 
-
+// Use ES modules export syntax
 export { AppError, errorHandler };

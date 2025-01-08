@@ -3,10 +3,11 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { errorHandler } from './src/utils/errorHandling.js';
 import './src/database.js'; // Import the database connection
-import instamartRouter from './src/utils/routes/api/instamart/instamart.js'; // Import the instamart route
-import meeshoRouter from './src/utils/routes/api/meesho/meesho.js';
+import instamartRouter from './src/routes/api/instamart/instamart.js'; // Import the instamart route
+import meeshoRouter from './src/routes/api/meesho/meesho.js';
 import axios from 'axios';
 import { trackProductPrices } from './src/controllers/InstamartController.js'; // Import the function
+import bigbasketRoutes from './src/routes/api/bigbasket/bigbasket.js';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -81,11 +82,14 @@ app.get('/api/test-telegram', async (req, res) => {
   }
 });
 
+// Add the BigBasket routes
+app.use('/api/bigbasket', bigbasketRoutes);
+
 // Global error handler
 app.use(errorHandler);
 
 // Start the server and initialize price tracking
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
-  trackProductPrices(); // Start the price tracking when server starts
+  // trackProductPrices(); // Start the price tracking when server starts
 });

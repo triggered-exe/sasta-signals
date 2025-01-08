@@ -1,0 +1,6 @@
+{
+	"dependencies": {
+		"crawlee": "^3.12.1",
+		"playwright": "^1.49.1"
+	}
+}
