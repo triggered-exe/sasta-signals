@@ -49,11 +49,14 @@ const setCookiesAganstPincode = async (pincode) => {
                 cookieStringWithLatLang: null // Will be updated after setting delivery address
             };
 
-            // Step 2: Use browser to make the autocomplete request with error handling
-            const autocompleteResponse = await page.evaluate(async (pincode) => {
+            // Step 2: Navigate to autocomplete URL and get response
+            await page.goto(`https://www.bigbasket.com/places/v1/places/autocomplete/?inputText=${pincode}`, { waitUntil: 'networkidle' });
+            
+            // Get the response JSON
+            const autocompleteResponse = await page.evaluate(() => {
                 try {
-                    const response = await fetch(`https://www.bigbasket.com/places/v1/places/autocomplete/?inputText=${pincode}`);
-                    const data = await response.json();
+                    const jsonText = document.querySelector('pre').innerText;
+                    const data = JSON.parse(jsonText);
                     return { success: true, data };
                 } catch (error) {
                     return { 
@@ -63,7 +66,7 @@ const setCookiesAganstPincode = async (pincode) => {
                         statusText: error.statusText
                     };
                 }
-            }, pincode);
+            });
 
             console.log('Autocomplete Response:', autocompleteResponse);
 
