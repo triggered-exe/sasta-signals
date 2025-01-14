@@ -50,36 +50,32 @@ const setCookiesAganstPincode = async (pincode) => {
             };
 
             // Step 2: Navigate to autocomplete URL and get response
-            await page.goto(`https://www.bigbasket.com/places/v1/places/autocomplete/?inputText=${pincode}`, { waitUntil: 'networkidle' });
-            
-            // Get the response JSON
-            const autocompleteResponse = await page.evaluate(() => {
-                try {
-                    const jsonText = document.querySelector('pre').innerText;
-                    const data = JSON.parse(jsonText);
-                    return { success: true, data };
-                } catch (error) {
-                    return { 
-                        success: false, 
-                        error: error.message,
-                        status: error.status,
-                        statusText: error.statusText
-                    };
-                }
-            });
-
-            console.log('Autocomplete Response:', autocompleteResponse);
-
-            if (!autocompleteResponse.success) {
-                throw AppError.badRequest(`Error in autocomplete request: ${JSON.stringify(autocompleteResponse.error)}`);
+            const autocompleteUrl = `https://www.bigbasket.com/places/v1/places/autocomplete/?inputText=${pincode}`;
+            const autocompleteResponse = await page.goto(autocompleteUrl, { waitUntil: 'networkidle' });
+            const autocompleteText = await autocompleteResponse.text();
+            let autocompleteData;
+            try {
+                autocompleteData = { success: true, data: JSON.parse(autocompleteText) };
+            } catch (error) {
+                autocompleteData = { 
+                    success: false, 
+                    error: error.message,
+                    response: autocompleteText
+                };
             }
 
-            if (!autocompleteResponse.data?.predictions) {
+            console.log('Autocomplete Response:', autocompleteData);
+
+            if (!autocompleteData.success) {
+                throw AppError.badRequest(`Error in autocomplete request: ${JSON.stringify(autocompleteData.error)}`);
+            }
+
+            if (!autocompleteData.data?.predictions) {
                 throw AppError.badRequest(`Error fetching autocomplete options for pincode: ${pincode}`);
             }
 
             // Extract the placeId from the autocomplete response
-            const placeId = autocompleteResponse.data?.predictions?.[0]?.placeId;
+            const placeId = autocompleteData.data?.predictions?.[0]?.placeId;
 
             if (!placeId) {
                 throw AppError.badRequest(`No placeId found for pincode: ${pincode}`);
@@ -88,31 +84,30 @@ const setCookiesAganstPincode = async (pincode) => {
             pincodeData[pincode].placeId = placeId;
             console.log('got the placeId', placeId);
 
-            // Step 3: Use browser to fetch address details with error handling
-            const addressResponse = await page.evaluate(async (placeId) => {
-                try {
-                    const response = await fetch(`https://www.bigbasket.com/places/v1/places/details?placeId=${placeId}`);
-                    const data = await response.json();
-                    return { success: true, data };
-                } catch (error) {
-                    return { 
-                        success: false, 
-                        error: error.message,
-                        status: error.status,
-                        statusText: error.statusText
-                    };
-                }
-            }, placeId);
+            // Step 3: Navigate to address details URL and get response
+            const addressUrl = `https://www.bigbasket.com/places/v1/places/details?placeId=${placeId}`;
+            const addressResponse = await page.goto(addressUrl, { waitUntil: 'networkidle' });
+            const addressText = await addressResponse.text();
+            let addressData;
+            try {
+                addressData = { success: true, data: JSON.parse(addressText) };
+            } catch (error) {
+                addressData = { 
+                    success: false, 
+                    error: error.message,
+                    response: addressText
+                };
+            }
 
-            console.log('Address Response:', addressResponse);
+            console.log('Address Response:', addressData);
 
-            if (!addressResponse.success) {
-                throw AppError.badRequest(`Error in address details request: ${JSON.stringify(addressResponse.error)}`);
+            if (!addressData.success) {
+                throw AppError.badRequest(`Error in address details request: ${JSON.stringify(addressData.error)}`);
             }
 
             // Step 4: check serviceability with cookies
-            pincodeData[pincode].lat = addressResponse.data?.geometry?.location?.lat;
-            pincodeData[pincode].lng = addressResponse.data?.geometry?.location?.lng;
+            pincodeData[pincode].lat = addressData.data?.geometry?.location?.lat;
+            pincodeData[pincode].lng = addressData.data?.geometry?.location?.lng;
 
             if (!pincodeData[pincode].lat || !pincodeData[pincode].lng) {
                 throw AppError.badRequest(`No location data found for placeId: ${placeId}`);
