@@ -5,20 +5,14 @@ import axios from 'axios';
 
 // Global variables
 let bigBasketCategories = [];
-const cookieStrings = {}; // { pincode: { cookieString, cookieStringWithLatLang, csurfTokenValue } }
+const pincodeData = {};
 
-export const searchProducts = async (req, res, next) => {
+const setCookiesAganstPincode = async (pincode) => {
     let page = null;
     let context = null;
-    const { query, pincode } = req.body;
+
     try {
-
-        if (!query || !pincode) {
-            throw AppError.badRequest("Query and pincode are required");
-        }
-
-        // Check if we already have cookies for this pincode
-        if (!cookieStrings[pincode]) {
+        if (!pincodeData[pincode]) {
             // Step 1: Get cookies from browser session
             page = await createPage(pincode, true);
             context = page.context();
@@ -41,7 +35,7 @@ export const searchProducts = async (req, res, next) => {
             await context.close();
 
             // Initialize cookie data for this pincode
-            cookieStrings[pincode] = {
+            pincodeData[pincode] = {
                 cookieString,
                 csurfTokenValue,
                 cookieStringWithLatLang: null // Will be updated after setting delivery address
@@ -64,7 +58,7 @@ export const searchProducts = async (req, res, next) => {
             // Extract the placeId from the autocomplete response
             const placeId = autocompleteResponse.data?.predictions?.[0]?.placeId;
 
-            cookieStrings[pincode].placeId = placeId;
+            pincodeData[pincode].placeId = placeId;
             console.log('got the placeId', placeId);
 
             // Step 3: Fetch address details for the placeId with cookies
@@ -78,14 +72,13 @@ export const searchProducts = async (req, res, next) => {
             );
 
             // Step 4: check serviceability with cookies
-
-            cookieStrings[pincode].lat = addressResponse.data?.geometry?.location?.lat;;
-            cookieStrings[pincode].lng = addressResponse.data?.geometry?.location?.lng;
-            console.log('lat', cookieStrings[pincode].lat, 'lng', cookieStrings[pincode].lng);
+            pincodeData[pincode].lat = addressResponse.data?.geometry?.location?.lat;
+            pincodeData[pincode].lng = addressResponse.data?.geometry?.location?.lng;
+            console.log('lat', pincodeData[pincode].lat, 'lng', pincodeData[pincode].lng);
 
             // Step 5: check serviceability with cookies
             const serviceabilityResponse = await axios.get(
-                `https://www.bigbasket.com/ui-svc/v1/serviceable/?lat=${cookieStrings[pincode].lat}&lng=${cookieStrings[pincode].lng}&send_all_serviceability=true`,
+                `https://www.bigbasket.com/ui-svc/v1/serviceable/?lat=${pincodeData[pincode].lat}&lng=${pincodeData[pincode].lng}&send_all_serviceability=true`,
                 {
                     headers: {
                         'accept': '*/*',
@@ -97,21 +90,19 @@ export const searchProducts = async (req, res, next) => {
             const area = serviceabilityResponse.data?.places_info?.area || '';
             const contact_zipcode = serviceabilityResponse.data?.places_info?.pincode || '';
 
-            cookieStrings[pincode].area = area;
-            cookieStrings[pincode].contact_zipcode = contact_zipcode;
+            pincodeData[pincode].area = area;
+            pincodeData[pincode].contact_zipcode = contact_zipcode;
         }
-
-
 
         // Step 6: Set delivery address with updated cookies
         const deliveryAddressResponse = await axios.put(
             'https://www.bigbasket.com/member-svc/v2/member/current-delivery-address',
             {
-                lat: cookieStrings[pincode].lat,
-                long: cookieStrings[pincode].lng,
+                lat: pincodeData[pincode].lat,
+                long: pincodeData[pincode].lng,
                 return_hub_cookies: false,
-                area: cookieStrings[pincode].area,
-                contact_zipcode: cookieStrings[pincode].contact_zipcode
+                area: pincodeData[pincode].area,
+                contact_zipcode: pincodeData[pincode].contact_zipcode
             },
             {
                 headers: {
@@ -122,8 +113,8 @@ export const searchProducts = async (req, res, next) => {
                     'x-entry-context': 'bb-b2c',
                     'x-entry-context-id': '100',
                     'x-requested-with': 'XMLHttpRequest',
-                    'cookie': cookieStrings[pincode].cookieString,
-                    'x-csurftoken': cookieStrings[pincode].csurfTokenValue
+                    'cookie': pincodeData[pincode].cookieString,
+                    'x-csurftoken': pincodeData[pincode].csurfTokenValue
                 }
             }
         );
@@ -131,7 +122,27 @@ export const searchProducts = async (req, res, next) => {
         // Update cookie string with new cookies from delivery address response
         const newCookies = deliveryAddressResponse.headers['set-cookie'] || [];
         const newCookieString = newCookies.map(cookie => cookie.split(';')[0]).join('; ');
-        cookieStrings[pincode].cookieStringWithLatLang = cookieStrings[pincode].cookieString + '; ' + newCookieString;
+        pincodeData[pincode].cookieStringWithLatLang = pincodeData[pincode].cookieString + '; ' + newCookieString;
+
+        return pincodeData[pincode];
+    } catch (error) {
+        console.error('Error setting cookies for pincode:', error);
+        pincodeData[pincode] = null;
+        throw error;
+    }
+};
+
+export const searchProducts = async (req, res, next) => {
+    const { query, pincode } = req.body;
+    try {
+        if (!query || !pincode) {
+            throw AppError.badRequest("Query and pincode are required");
+        }
+
+        // Get or set up cookies for the pincode
+        if (!pincodeData[pincode]) {
+            await setCookiesAganstPincode(pincode);
+        }
 
         // Make the search call with updated cookies
         let allProducts = [];
@@ -145,7 +156,7 @@ export const searchProducts = async (req, res, next) => {
                     headers: {
                         'accept': '*/*',
                         'content-type': 'application/json',
-                        'cookie': cookieStrings[pincode].cookieStringWithLatLang,
+                        'cookie': pincodeData[pincode].cookieStringWithLatLang,
                     }
                 }
             );
@@ -192,13 +203,12 @@ export const searchProducts = async (req, res, next) => {
         res.status(200).json({
             products: allProducts,
             total: allProducts.length,
-            cookieString: cookieStrings[pincode].cookieStringWithLatLang
+            cookieString: pincodeData[pincode].cookieStringWithLatLang
         });
 
     } catch (error) {
-        cookieStrings[pincode] = null;
         console.error('BigBasket API error details:', {
-            cookieStrings: cookieStrings,
+            pincodeData: pincodeData[pincode],
             message: error.message,
             response: error.response?.data,
             status: error.response?.status,
@@ -209,11 +219,16 @@ export const searchProducts = async (req, res, next) => {
                 headers: error.config?.headers
             }
         });
-        // If there's an error, remove the stored cookies for this pincode to force a refresh next time
-        // if (pincode) {
-        //     delete cookieStrings[pincode];
-        // }
         next(error instanceof AppError ? error : AppError.internalError(`Failed to fetch BigBasket products, error: ${error}`));
+    }
+};
+
+export const crawlCategories = async (req, res, next) => {
+    try {
+        const categories = await fetchCategories();
+        res.status(200).json(categories);
+    } catch (error) {
+        next(error);
     }
 };
 
@@ -401,8 +416,12 @@ export const cleanupBrowser = async (req, res, next) => {
     }
 };
 
-export const fetchCategories = async (req, res, next) => {
+export const fetchCategories = async () => {
     try {
+        if (bigBasketCategories.length > 0) {
+            return bigBasketCategories;
+        }
+
         const response = await axios.get('https://www.bigbasket.com/ui-svc/v1/category-tree?x-channel=BB-PWA', {
             headers: {
                 'accept': '*/*',
@@ -418,7 +437,6 @@ export const fetchCategories = async (req, res, next) => {
 
             categories.map(category => {
                 if (category?.level === 2) {
-                    console.log('level 2 category', category);
                     processedCategories.push(category);
                 }
 
@@ -432,11 +450,10 @@ export const fetchCategories = async (req, res, next) => {
         processCategories(response.data?.categories);
         bigBasketCategories = processedCategories;
 
-        a
-        res.status(200).json(bigBasketCategories);
+        return processedCategories;
 
     } catch (error) {
         console.error('Error fetching categories:', error.response?.data || error.message);
-        next(error instanceof AppError ? error : AppError.internalError('Failed to fetch categories'));
+        throw AppError.internalError('Failed to fetch categories');
     }
 };
