@@ -50,12 +50,22 @@ const setCookiesAganstPincode = async (pincode) => {
                 cookieStringWithLatLang: null // Will be updated after setting delivery address
             };
 
-            // Step 2: Fetch autocomplete options for pincode with the browser cookies
+            // Step 2: Fetch autocomplete options for pincode with browser-like headers
             const autocompleteResponse = await axios.get(
-                `https://www.bigbasket.com/places/v1/places/autocomplete?inputText=${pincode}&token=90b09f8c6-01ab-475b-b820-df9661d504e4c`,
+                `https://www.bigbasket.com/places/v1/places/autocomplete/?inputText=${pincode}`,
                 {
                     headers: {
-                        'accept': '*/*'
+                        'accept': '*/*',
+                        'accept-language': 'en-US,en;q=0.9',
+                        'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120"',
+                        'sec-ch-ua-mobile': '?0',
+                        'sec-ch-ua-platform': '"Windows"',
+                        'sec-fetch-dest': 'empty',
+                        'sec-fetch-mode': 'cors',
+                        'sec-fetch-site': 'same-origin',
+                        'cookie': cookieString,
+                        'referer': 'https://www.bigbasket.com/',
+                        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                     }
                 }
             );
@@ -75,7 +85,17 @@ const setCookiesAganstPincode = async (pincode) => {
                 `https://www.bigbasket.com/places/v1/places/details?placeId=${placeId}`,
                 {
                     headers: {
-                        'accept': '*/*'
+                        'accept': '*/*',
+                        'accept-language': 'en-US,en;q=0.9',
+                        'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120"',
+                        'sec-ch-ua-mobile': '?0',
+                        'sec-ch-ua-platform': '"Windows"',
+                        'sec-fetch-dest': 'empty',
+                        'sec-fetch-mode': 'cors',
+                        'sec-fetch-site': 'same-origin',
+                        'cookie': cookieString,
+                        'referer': 'https://www.bigbasket.com/',
+                        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                     }
                 }
             );
