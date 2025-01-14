@@ -504,7 +504,7 @@ export const trackProductPrices = async () => {
       trackingInterval = null;
     }
 
-    trackingInterval = setInterval(() => trackProductPrices(), HALF_HOUR);
+   
 
     // Run if not in night time
     if (isNightTimeIST()) {
@@ -522,30 +522,29 @@ export const trackProductPrices = async () => {
 
     console.log("Categories fetched:", categories.length);
 
-    // Process categories in parallel
-    await Promise.all(
-      categories.map(async (category) => {
-        console.log("processing category", category.name);
-        if (!category.subCategories?.length) {
-          console.log(
-            `Skipping category ${category.name} - no subcategories found`
-          );
-          return;
-        }
+    // Process categories in parallel (in groups of 3 to avoid rate limiting)
+    const categoryChunks = chunk(categories, 1);
+    for (const categoryChunk of categoryChunks) {
+      await Promise.all(
+        categoryChunk.map(async (category) => {
+          console.log("processing category", category.name);
+          if (!category.subCategories?.length) {
+            console.log(`Skipping category ${category.name} - no subcategories found`);
+            return;
+          }
 
-        // Process subcategories in parallel (in groups of 3 to avoid rate limiting)
-        const subCategoryGroups = chunk(category.subCategories, 5);
-        for (const subCategoryGroup of subCategoryGroups) {
-          await Promise.all(
-            subCategoryGroup.map(async (subCategory) => {
-              try {
-                let offset = 0;
-                let allProducts = [];
-                const BATCH_SIZE = 40; // Increased batch size
+          // Process subcategories in parallel (in groups of 5 to avoid rate limiting)
+          const subCategoryGroups = chunk(category.subCategories, 2);
+          for (const subCategoryGroup of subCategoryGroups) {
+            await Promise.all(
+              subCategoryGroup.map(async (subCategory) => {
+                try {
+                  let offset = 0;
+                  let allProducts = [];
+                  const BATCH_SIZE = 40;
 
-                while (true) {
-                  const { products, totalItems } =
-                    await fetchInstamartSubcategoryData(
+                  while (true) {
+                    const { products, totalItems } = await fetchInstamartSubcategoryData(
                       subCategory.nodeId,
                       subCategory.name,
                       category.name,
@@ -553,55 +552,59 @@ export const trackProductPrices = async () => {
                       offset
                     );
 
-                  const validProducts = Array.isArray(products) ? products : [];
-                  if (!validProducts.length) break;
+                    const validProducts = Array.isArray(products) ? products : [];
+                    if (!validProducts.length) break;
 
-                  allProducts = [...allProducts, ...validProducts];
+                    allProducts = [...allProducts, ...validProducts];
 
-                  if (allProducts.length >= totalItems || totalItems === 0)
-                    break;
-                  offset += BATCH_SIZE;
-                }
+                    if (allProducts.length >= totalItems || totalItems === 0) break;
+                    offset += BATCH_SIZE;
 
-                console.log(
-                  `Found ${allProducts.length} products in subcategory ${subCategory.name}`
-                );
-
-                if (allProducts.length > 0) {
-                  const bulkOperations = (
-                    await Promise.all(
-                      allProducts.map((product) =>
-                        processProduct(product, category, subCategory)
-                      )
-                    )
-                  ).filter(Boolean);
-
-                  if (bulkOperations.length > 0) {
-                    await InstamartProduct.bulkWrite(bulkOperations, {
-                      ordered: false,
-                    });
+                    // Add delay between batch requests
+                    await new Promise(resolve => setTimeout(resolve, 5000));
                   }
+
+                  console.log(`Found ${allProducts.length} products in subcategory ${subCategory.name}`);
+
+                  if (allProducts.length > 0) {
+                    const bulkOperations = (
+                      await Promise.all(
+                        allProducts.map((product) =>
+                          processProduct(product, category, subCategory)
+                        )
+                      )
+                    ).filter(Boolean);
+
+                    if (bulkOperations.length > 0) {
+                      await InstamartProduct.bulkWrite(bulkOperations, {
+                        ordered: false,
+                      });
+                    }
+                  }
+                } catch (error) {
+                  console.error(`Error processing subcategory ${subCategory.name}:`, error);
                 }
-              } catch (error) {
-                console.error(
-                  `Error processing subcategory ${subCategory.name}:`,
-                  error
-                );
-              }
-            })
-          );
-        }
-      })
-    );
+              })
+            );
+
+            // Add delay between subcategory groups
+            await new Promise(resolve => setTimeout(resolve, 10000));
+          }
+        })
+      );
+
+      // Add delay between category chunks
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    }
 
     const droppedProducts = await InstamartProduct.find({
-      priceDroppedAt: { $gte: new Date(Date.now() - HALF_HOUR) },
+      priceDroppedAt: { $gte: new Date(Date.now() - HALF_HOUR) }
     }).sort({ discount: -1 });
 
     // Send both email and Telegram notifications
     await Promise.all([
       sendEmailWithDroppedProducts(droppedProducts),
-      sendTelegramMessage(droppedProducts),
+      sendTelegramMessage(droppedProducts)
     ]);
 
     console.log("droppedProducts", droppedProducts.length);
@@ -609,6 +612,8 @@ export const trackProductPrices = async () => {
   } catch (error) {
     console.error("Error tracking prices:", error);
     throw error;
+  } finally {
+    trackingInterval = setInterval(() => trackProductPrices(), HALF_HOUR);
   }
 };
 

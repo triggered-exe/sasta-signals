@@ -533,6 +533,7 @@ const trackPrices = async () => {
 };
 
 export const startTrackingHandler = async () => {
+    console.log("starting tracking");
     let message = "BigBasket price tracking started";
     if (trackingInterval) {
         clearInterval(trackingInterval);
