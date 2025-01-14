@@ -1,5 +1,4 @@
 "use client";
-import Image from "next/image";
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { FaSpinner } from 'react-icons/fa';
@@ -127,7 +126,6 @@ export default function PriceTracker() {
               <option value="discount">Discount (High to Low)</option>
             </select>
           </div>
-          {/* Recently Updated Checkbox */}
           <div className="flex items-center space-x-3">
             <input
               type="checkbox"
@@ -170,11 +168,9 @@ export default function PriceTracker() {
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  <Image
+                  <img
                     src={product.imageUrl || `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,h_272,w_252/${product.variations?.[0]?.images?.[0]}`}
                     alt={product.productName}
-                    width={252}
-                    height={272}
                     className="w-full h-full object-cover"
                   />
                   <span className="absolute top-0 left-0 bg-white bg-opacity-100 text-black-700 px-2 py-1 text-sm font-bold rounded-br-md">

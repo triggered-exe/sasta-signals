@@ -8,6 +8,7 @@ import meeshoRouter from './src/routes/api/meesho/meesho.js';
 import axios from 'axios';
 import { trackProductPrices } from './src/controllers/InstamartController.js'; // Import the function
 import bigbasketRoutes from './src/routes/api/bigbasket/bigbasket.js';
+import { startTrackingHandler } from './src/controllers/BigBasketController.js';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -91,5 +92,6 @@ app.use(errorHandler);
 // Start the server and initialize price tracking
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
-  // trackProductPrices(); // Start the price tracking when server starts
+  trackProductPrices(); // Start the price tracking when server starts
+  startTrackingHandler(); // For BigBasket
 });

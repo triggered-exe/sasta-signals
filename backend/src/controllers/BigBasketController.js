@@ -1,11 +1,20 @@
 import { AppError } from '../utils/errorHandling.js';
 import { createPage, cleanup, hasStoredLocation, getContextStats, storeContext } from '../utils/crawlerSetup.js';
 import axios from 'axios';
+import { BigBasketProduct } from '../models/BigBasketProduct.js';
+import { PAGE_SIZE, HALF_HOUR } from "../utils/constants.js";
+import { bigBasketCategories } from '../utils/bigBasketCategories.js';
+import { Resend } from 'resend';
 
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID;
+
+// Initialize Resend client
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Global variables
-let bigBasketCategories = [];
 const pincodeData = {};
+let trackingInterval = null;
 
 const setCookiesAganstPincode = async (pincode) => {
     let page = null;
@@ -43,7 +52,7 @@ const setCookiesAganstPincode = async (pincode) => {
 
             // Step 2: Fetch autocomplete options for pincode with the browser cookies
             const autocompleteResponse = await axios.get(
-                `https://www.bigbasket.com/places/v1/places/autocomplete?inputText=${pincode}&token=90b09f8c6-01ab-475b-b820-df9661d504e4a`,
+                `https://www.bigbasket.com/places/v1/places/autocomplete?inputText=${pincode}&token=90b09f8c6-01ab-475b-b820-df9661d504e4c`,
                 {
                     headers: {
                         'accept': '*/*'
@@ -223,12 +232,410 @@ export const searchProducts = async (req, res, next) => {
     }
 };
 
-export const crawlCategories = async (req, res, next) => {
+const processProduct = async (product, category) => {
+    const mrp = product.pricing?.discount?.mrp || 0;
+    const currentPrice = product.pricing?.discount?.prim_price?.sp || 0;
+
+    const existingProduct = await BigBasketProduct.findOne({
+        productId: product.id
+    });
+
+    // If product exists and price hasn't changed, skip the update
+    if (existingProduct && existingProduct.price === currentPrice) {
+        return null;
+    }
+
+    // Initialize previous price and priceDroppedAt
+    let previousPrice = currentPrice;
+    let priceDroppedAt = null;
+
+    // Check if product exists and price has dropped
+    if (existingProduct) {
+        previousPrice = existingProduct.price;
+        if (currentPrice < previousPrice) {
+            priceDroppedAt = new Date();
+        }
+    }
+
+    const productData = {
+        categoryName: category.name,
+        categoryId: category.id,
+        subcategoryName: product.category?.mlc_name,
+        subcategoryId: product.category?.mlc_id,
+        productId: product.id,
+        inStock: product.availability?.avail_status === '001',
+        imageUrl: product.images?.[0]?.s,
+        productName: product.desc,
+        mrp: mrp,
+        price: currentPrice,
+        previousPrice,
+        priceDroppedAt,
+        discount: Math.floor((mrp - currentPrice) / mrp * 100),
+        weight: product.w,
+        brand: product.brand?.name,
+        url: `https://www.bigbasket.com${product.absolute_url}`,
+        eta: product.availability?.medium_eta,
+        trackedAt: new Date()
+    };
+
+    return {
+        updateOne: {
+            filter: { productId: product.id },
+            update: { $set: productData },
+            upsert: true
+        }
+    };
+};
+
+const fetchProductsForCategoryInChunks = async (category, pincode) => {
+    let allProducts = [];
+    let currentPage = 1;
+    let hasMorePages = true;
+
+    while (hasMorePages) {
+        try {
+            const searchResponse = await axios.get(
+                `https://www.bigbasket.com/listing-svc/v2/products?type=pc&slug=${category.slug}&page=${currentPage}`,
+                {
+                    headers: {
+                        'accept': '*/*',
+                        'content-type': 'application/json',
+                        'cookie': pincodeData[pincode].cookieStringWithLatLang,
+                        'x-channel': 'BB-WEB'
+                    }
+                }
+            );
+
+            const products = searchResponse.data?.tabs?.[0]?.product_info?.products || [];
+            
+            if (products.length === 0) {
+                hasMorePages = false;
+                break;
+            }
+
+            // Process all products from this page
+            const bulkOperations = (await Promise.all(
+                products.map(product => processProduct(product, category))
+            )).filter(Boolean);
+
+            if (bulkOperations.length > 0) {
+                await BigBasketProduct.bulkWrite(bulkOperations, { ordered: false });
+            }
+
+            allProducts = [...allProducts, ...products];
+            
+            const totalCount = searchResponse.data?.tabs?.[0]?.product_info?.total_count || 0;
+            const productsPerPage = 48; // BigBasket's default page size
+            hasMorePages = currentPage * productsPerPage < totalCount;
+            
+            currentPage++;
+            
+            // Add delay between pages to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 500));
+        } catch (error) {
+            console.error(`Error processing page ${currentPage} for category ${category.name}:`, error);
+            break;
+        }
+    }
+    console.log('for category', category.name, 'total products', allProducts.length);
+    return allProducts;
+};
+
+// Sends Telegram message for products with price drops
+const sendTelegramMessage = async (droppedProducts) => {
     try {
-        const categories = await fetchCategories();
-        res.status(200).json(categories);
+        if (!droppedProducts || droppedProducts.length === 0) {
+            console.log("No dropped products to send Telegram message for");
+            return;
+        }
+
+        // Verify Telegram configuration
+        if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHANNEL_ID) {
+            console.error("Missing Telegram configuration. Please check your .env file");
+            return;
+        }
+
+        // Filter products with discount > 59% and sort by highest discount
+        const filteredProducts = droppedProducts
+            .filter((product) => product.discount > 59)
+            .sort((a, b) => b.discount - a.discount);
+
+        if (filteredProducts.length === 0) {
+            console.log("No products with discount > 59%");
+            return;
+        }
+
+        // Create product entries
+        const productEntries = filteredProducts.map((product) => {
+            const priceDrop = product.previousPrice - product.price;
+            return (
+                `<b>${product.productName}</b>\n` +
+                `💰 ₹${product.price} (was ₹${product.previousPrice})\n` +
+                `📉 Drop: ₹${priceDrop.toFixed(2)} (${product.discount}%)\n` +
+                `<a href="${product.url}">View on BigBasket</a>\n`
+            );
+        });
+
+        // Split into chunks of 10 products each
+        const chunks = [];
+        for (let i = 0; i < productEntries.length; i += 10) {
+            chunks.push(productEntries.slice(i, i + 10));
+        }
+
+        // Send each chunk as a separate message
+        for (let i = 0; i < chunks.length; i++) {
+            const messageText =
+                `🔥 <b>BigBasket Latest Price Drops (Part ${i + 1}/${chunks.length})</b>\n\n` +
+                chunks[i].join("\n");
+
+            await axios.post(
+                `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
+                {
+                    chat_id: TELEGRAM_CHANNEL_ID,
+                    text: messageText,
+                    parse_mode: "HTML",
+                    disable_web_page_preview: true,
+                }
+            );
+
+            // Add a small delay between messages to avoid rate limiting
+            if (i < chunks.length - 1) {
+                await new Promise((resolve) => setTimeout(resolve, 1000));
+            }
+        }
     } catch (error) {
-        next(error);
+        console.error("Error in Telegram message preparation:", error?.response?.data || error);
+    }
+};
+
+// Sends email notification for products with price drops
+const sendEmailWithDroppedProducts = async (droppedProducts) => {
+    try {
+        // Skip sending email if no dropped products
+        if (!droppedProducts || droppedProducts.length === 0) {
+            console.log("No dropped products to send email for");
+            return;
+        }
+
+        console.log(`Attempting to send email for ${droppedProducts.length} dropped products`);
+
+        const emailContent = `
+            <h2>Recently Dropped Products on BigBasket</h2>
+            <div style="font-family: Arial, sans-serif;">
+                ${droppedProducts
+                    .map(
+                        (product) => `
+                    <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #eee; border-radius: 8px;">
+                        <a href="${product.url}"  
+                           style="text-decoration: none; color: inherit; display: block;">
+                            <div style="display: flex; align-items: center;">
+                                <img src="${product.imageUrl}" 
+                                     alt="${product.productName}" 
+                                     style="width: 100px; height: 100px; object-fit: cover; border-radius: 4px; margin-right: 15px;">
+                                <div>
+                                    <h3 style="margin: 0 0 8px 0;">${product.productName}</h3>
+                                    <p style="margin: 4px 0; color: #2f80ed;">
+                                        Current Price: ₹${product.price}
+                                        <span style="text-decoration: line-through; color: #666; margin-left: 8px;">
+                                            ₹${product.previousPrice}
+                                        </span>
+                                    </p>
+                                    <p style="margin: 4px 0; color: #219653;">
+                                        Price Drop: ₹${(product.previousPrice - product.price).toFixed(2)} (${product.discount}% off)
+                                    </p>
+                                </div>
+                            </div>
+                        </a>
+                    </div>
+                `
+                    )
+                    .join("")}
+            </div>
+        `;
+
+        // Verify Resend API key is set
+        if (!process.env.RESEND_API_KEY) {
+            throw new Error("RESEND_API_KEY is not configured");
+        }
+
+        const response = await resend.emails.send({
+            from: "onboarding@resend.dev",
+            to: "harishanker.500apps@gmail.com",
+            subject: "🔥 Price Drops Alert - BigBasket Products",
+            html: emailContent,
+        });
+
+        console.log("Email sent successfully", response);
+    } catch (error) {
+        console.error("Error sending email:", error?.response?.data || error);
+        throw error;
+    }
+};
+
+// Main tracking function (not a route handler)
+const trackPrices = async () => {
+    try {
+        // Skip if it's night time (12 AM to 6 AM IST)
+        if (isNightTimeIST()) {
+            console.log("Skipping price tracking during night hours");
+            return;
+        }
+
+        const pincode = '500064'; // Default pincode
+        
+        if (!pincodeData[pincode]) {
+            await setCookiesAganstPincode(pincode);
+        }
+
+        const categories = await fetchCategories();
+        const categoryProducts = {};
+
+        // Process categories in parallel chunks
+        const CATEGORY_CHUNK_SIZE = 3;
+        const categoryChunks = [];
+        for (let i = 0; i < categories.length; i += CATEGORY_CHUNK_SIZE) {
+            categoryChunks.push(categories.slice(i, i + CATEGORY_CHUNK_SIZE));
+        }
+
+        for (const chunk of categoryChunks) {
+            await Promise.all(chunk.map(async (category) => {
+                try {
+                    const products = await fetchProductsForCategoryInChunks(category, pincode);
+                    categoryProducts[category.slug] = {
+                        category: category,
+                        total: products.length
+                    };
+                } catch (error) {
+                    console.error(`Error processing category ${category.name}:`, error);
+                }
+            }));
+
+            // Add delay between chunks to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+
+        // Find products with price drops in the last 30 minutes
+        const droppedProducts = await BigBasketProduct.find({
+            priceDroppedAt: { $gte: new Date(Date.now() - HALF_HOUR) }
+        }).sort({ discount: -1 });
+
+        // Send both email and Telegram notifications
+        await Promise.all([
+            sendEmailWithDroppedProducts(droppedProducts),
+            sendTelegramMessage(droppedProducts)
+        ]);
+
+        console.log('droppedProducts', droppedProducts.length);
+        console.log('Crawl completed at:', new Date().toISOString());
+    } catch (error) {
+        console.error('Failed to crawl categories:', error);
+    }
+};
+
+export const startTrackingHandler = async () => {
+    let message = "BigBasket price tracking started";
+    if (trackingInterval) {
+        clearInterval(trackingInterval);
+        trackingInterval = null;
+        message = "Restarted BigBasket price tracking";
+    }
+
+    trackingInterval = setInterval(() => trackPrices(), HALF_HOUR);
+    await trackPrices(); // Run immediately for the first time
+    return message;
+}
+
+// Route handler for starting the tracking
+export const startTracking = async (req, res, next) => {
+    try {   
+        const message = await startTrackingHandler();
+        res.status(200).json({ message });
+    } catch (error) {
+        console.error('Error starting price tracking:', error);
+        next(error instanceof AppError ? error : AppError.internalError('Failed to start price tracking'));
+    }
+};
+
+// Helper function to build MongoDB sort criteria based on user preference
+const buildSortCriteria = (sortOrder) => {
+    const criteria = {};
+    if (sortOrder === "price") criteria.price = 1;
+    else if (sortOrder === "price_desc") criteria.price = -1;
+    else if (sortOrder === "discount") criteria.discount = -1;
+    return criteria;
+};
+
+// Helper function to build MongoDB match criteria for filtering products
+const buildMatchCriteria = (priceDropped, notUpdated) => {
+    const criteria = { inStock: true };
+    if (priceDropped === "true") {
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+        criteria.priceDroppedAt = {
+            $exists: true,
+            $type: "date",
+            $gte: oneHourAgo
+        };
+    }
+    if (notUpdated === "true") {
+        return {
+            ...criteria,
+            updatedAt: { $gt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000) }
+        };
+    }
+    return criteria;
+};
+
+export const getProducts = async (req, res, next) => {
+    try {
+        const {
+            page = "1",
+            pageSize = PAGE_SIZE.toString(),
+            sortOrder = "price",  // price if increasing order, price_desc if decreasing order, discount if discount is descending order order
+            priceDropped = "false", // true if price dropped in last hour, false if not
+            notUpdated = "false" // if true, then only products that are not updated in last 24 hours will not be fetched
+        } = req.query;
+
+        const skip = (parseInt(page) - 1) * parseInt(pageSize);
+        const sortCriteria = buildSortCriteria(sortOrder);
+        const matchCriteria = buildMatchCriteria(priceDropped, notUpdated);
+
+        const totalProducts = await BigBasketProduct.countDocuments(matchCriteria);
+        const products = await BigBasketProduct.aggregate([
+            { $match: matchCriteria },
+            { $sort: sortCriteria },
+            { $skip: skip },
+            { $limit: parseInt(pageSize) },
+            {
+                $project: {
+                    productId: 1,
+                    productName: 1,
+                    price: 1,
+                    mrp: 1,
+                    discount: 1,
+                    weight: 1,
+                    brand: 1,
+                    imageUrl: 1,
+                    url: 1,
+                    priceDroppedAt: 1,
+                    categoryName: 1,
+                    subcategoryName: 1,
+                    eta: 1,
+                    inStock: 1
+                }
+            }
+        ]);
+
+        res.status(200).json({
+            data: products,
+            totalPages: Math.ceil(totalProducts / parseInt(pageSize)),
+            currentPage: parseInt(page),
+            pageSize: parseInt(pageSize),
+            total: totalProducts
+        });
+
+    } catch (error) {
+        console.error('Error fetching BigBasket products:', error);
+        next(error instanceof AppError ? error : AppError.internalError('Failed to fetch BigBasket products'));
     }
 };
 
@@ -456,4 +863,15 @@ export const fetchCategories = async () => {
         console.error('Error fetching categories:', error.response?.data || error.message);
         throw AppError.internalError('Failed to fetch categories');
     }
+};
+
+
+
+// Function to check if current time is between 12 AM and 6 AM IST
+const isNightTimeIST = () => {
+    const now = new Date();
+    const istOffset = 5.5 * 60 * 60 * 1000; // IST is UTC+5:30
+    const istTime = new Date(now.getTime() + istOffset);
+    const hours = istTime.getUTCHours();
+    return hours >= 0 && hours < 6;
 };
