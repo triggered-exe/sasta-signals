@@ -39,10 +39,6 @@ const setCookiesAganstPincode = async (pincode) => {
             const csurfTokenValue = csurfCookie ? csurfCookie.value : '';
             console.log('CSRF Token:', csurfTokenValue);
 
-            // Close browser session as we have the cookies now
-            await page.close();
-            await context.close();
-
             // Initialize cookie data for this pincode
             pincodeData[pincode] = {
                 cookieString,
@@ -50,60 +46,36 @@ const setCookiesAganstPincode = async (pincode) => {
                 cookieStringWithLatLang: null // Will be updated after setting delivery address
             };
 
-            // Step 2: Fetch autocomplete options for pincode with browser-like headers
-            const autocompleteResponse = await axios.get(
-                `https://www.bigbasket.com/places/v1/places/autocomplete/?inputText=${pincode}`,
-                {
-                    headers: {
-                        'accept': '*/*',
-                        'accept-language': 'en-US,en;q=0.9',
-                        'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120"',
-                        'sec-ch-ua-mobile': '?0',
-                        'sec-ch-ua-platform': '"Windows"',
-                        'sec-fetch-dest': 'empty',
-                        'sec-fetch-mode': 'cors',
-                        'sec-fetch-site': 'same-origin',
-                        'cookie': cookieString,
-                        'referer': 'https://www.bigbasket.com/',
-                        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                    }
-                }
-            );
+            // Step 2: Use browser to make the autocomplete request
+            const autocompleteResponse = await page.evaluate(async (pincode) => {
+                const response = await fetch(`https://www.bigbasket.com/places/v1/places/autocomplete/?inputText=${pincode}`);
+                return response.json();
+            }, pincode);
 
-            if (!autocompleteResponse.data?.predictions) {
+            if (!autocompleteResponse?.predictions) {
                 throw AppError.badRequest(`Error fetching autocomplete options for pincode: ${pincode}`);
             }
 
             // Extract the placeId from the autocomplete response
-            const placeId = autocompleteResponse.data?.predictions?.[0]?.placeId;
+            const placeId = autocompleteResponse?.predictions?.[0]?.placeId;
 
             pincodeData[pincode].placeId = placeId;
             console.log('got the placeId', placeId);
 
-            // Step 3: Fetch address details for the placeId with cookies
-            const addressResponse = await axios.get(
-                `https://www.bigbasket.com/places/v1/places/details?placeId=${placeId}`,
-                {
-                    headers: {
-                        'accept': '*/*',
-                        'accept-language': 'en-US,en;q=0.9',
-                        'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120"',
-                        'sec-ch-ua-mobile': '?0',
-                        'sec-ch-ua-platform': '"Windows"',
-                        'sec-fetch-dest': 'empty',
-                        'sec-fetch-mode': 'cors',
-                        'sec-fetch-site': 'same-origin',
-                        'cookie': cookieString,
-                        'referer': 'https://www.bigbasket.com/',
-                        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                    }
-                }
-            );
+            // Step 3: Use browser to fetch address details
+            const addressResponse = await page.evaluate(async (placeId) => {
+                const response = await fetch(`https://www.bigbasket.com/places/v1/places/details?placeId=${placeId}`);
+                return response.json();
+            }, placeId);
 
             // Step 4: check serviceability with cookies
-            pincodeData[pincode].lat = addressResponse.data?.geometry?.location?.lat;
-            pincodeData[pincode].lng = addressResponse.data?.geometry?.location?.lng;
+            pincodeData[pincode].lat = addressResponse?.geometry?.location?.lat;
+            pincodeData[pincode].lng = addressResponse?.geometry?.location?.lng;
             console.log('lat', pincodeData[pincode].lat, 'lng', pincodeData[pincode].lng);
+
+            // Close browser session now that we have all the data
+            await page.close();
+            await context.close();
 
             // Step 5: check serviceability with cookies
             const serviceabilityResponse = await axios.get(

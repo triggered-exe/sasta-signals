@@ -92,6 +92,6 @@ app.use(errorHandler);
 // Start the server and initialize price tracking
 app.listen(port, () => {
   console.log(`Server is running on port - ${port}`);
-  trackProductPrices(); // Start the price tracking when server starts
-  startTrackingHandler(); // For BigBasket
+  // trackProductPrices(); // Start the price tracking when server starts
+  // startTrackingHandler(); // For BigBasket
 });
