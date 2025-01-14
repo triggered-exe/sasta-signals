@@ -2,10 +2,225 @@ import { AppError } from '../utils/errorHandling.js';
 import { createPage, cleanup, hasStoredLocation, getContextStats, storeContext } from '../utils/crawlerSetup.js';
 import axios from 'axios';
 
+
+// Global variables
+let bigBasketCategories = [];
+const cookieStrings = {}; // { pincode: { cookieString, cookieStringWithLatLang, csurfTokenValue } }
+
 export const searchProducts = async (req, res, next) => {
     let page = null;
     let context = null;
-    
+    const { query, pincode } = req.body;
+    try {
+
+        if (!query || !pincode) {
+            throw AppError.badRequest("Query and pincode are required");
+        }
+
+        // Check if we already have cookies for this pincode
+        if (!cookieStrings[pincode]) {
+            // Step 1: Get cookies from browser session
+            page = await createPage(pincode, true);
+            context = page.context();
+
+            // Navigate to BigBasket
+            await page.goto('https://www.bigbasket.com/', { waitUntil: 'networkidle' });
+
+            // Get all cookies from the browser session
+            const cookies = await context.cookies();
+            const cookieString = cookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ');
+            console.log('Browser Cookies:', cookies);
+
+            // Extract csurftoken from cookies
+            const csurfCookie = cookies.find(cookie => cookie.name === 'csurftoken');
+            const csurfTokenValue = csurfCookie ? csurfCookie.value : '';
+            console.log('CSRF Token:', csurfTokenValue);
+
+            // Close browser session as we have the cookies now
+            await page.close();
+            await context.close();
+
+            // Initialize cookie data for this pincode
+            cookieStrings[pincode] = {
+                cookieString,
+                csurfTokenValue,
+                cookieStringWithLatLang: null // Will be updated after setting delivery address
+            };
+
+            // Step 2: Fetch autocomplete options for pincode with the browser cookies
+            const autocompleteResponse = await axios.get(
+                `https://www.bigbasket.com/places/v1/places/autocomplete?inputText=${pincode}&token=90b09f8c6-01ab-475b-b820-df9661d504e4a`,
+                {
+                    headers: {
+                        'accept': '*/*'
+                    }
+                }
+            );
+
+            if (!autocompleteResponse.data?.predictions) {
+                throw AppError.badRequest(`Error fetching autocomplete options for pincode: ${pincode}`);
+            }
+
+            // Extract the placeId from the autocomplete response
+            const placeId = autocompleteResponse.data?.predictions?.[0]?.placeId;
+
+            cookieStrings[pincode].placeId = placeId;
+            console.log('got the placeId', placeId);
+
+            // Step 3: Fetch address details for the placeId with cookies
+            const addressResponse = await axios.get(
+                `https://www.bigbasket.com/places/v1/places/details?placeId=${placeId}`,
+                {
+                    headers: {
+                        'accept': '*/*'
+                    }
+                }
+            );
+
+            // Step 4: check serviceability with cookies
+
+            cookieStrings[pincode].lat = addressResponse.data?.geometry?.location?.lat;;
+            cookieStrings[pincode].lng = addressResponse.data?.geometry?.location?.lng;
+            console.log('lat', cookieStrings[pincode].lat, 'lng', cookieStrings[pincode].lng);
+
+            // Step 5: check serviceability with cookies
+            const serviceabilityResponse = await axios.get(
+                `https://www.bigbasket.com/ui-svc/v1/serviceable/?lat=${cookieStrings[pincode].lat}&lng=${cookieStrings[pincode].lng}&send_all_serviceability=true`,
+                {
+                    headers: {
+                        'accept': '*/*',
+                        'cookie': cookieString
+                    }
+                }
+            );
+
+            const area = serviceabilityResponse.data?.places_info?.area || '';
+            const contact_zipcode = serviceabilityResponse.data?.places_info?.pincode || '';
+
+            cookieStrings[pincode].area = area;
+            cookieStrings[pincode].contact_zipcode = contact_zipcode;
+        }
+
+
+
+        // Step 6: Set delivery address with updated cookies
+        const deliveryAddressResponse = await axios.put(
+            'https://www.bigbasket.com/member-svc/v2/member/current-delivery-address',
+            {
+                lat: cookieStrings[pincode].lat,
+                long: cookieStrings[pincode].lng,
+                return_hub_cookies: false,
+                area: cookieStrings[pincode].area,
+                contact_zipcode: cookieStrings[pincode].contact_zipcode
+            },
+            {
+                headers: {
+                    'accept': '*/*',
+                    'content-type': 'application/json',
+                    'x-caller': 'bigbasket-pwa',
+                    'x-channel': 'BB-PWA',
+                    'x-entry-context': 'bb-b2c',
+                    'x-entry-context-id': '100',
+                    'x-requested-with': 'XMLHttpRequest',
+                    'cookie': cookieStrings[pincode].cookieString,
+                    'x-csurftoken': cookieStrings[pincode].csurfTokenValue
+                }
+            }
+        );
+
+        // Update cookie string with new cookies from delivery address response
+        const newCookies = deliveryAddressResponse.headers['set-cookie'] || [];
+        const newCookieString = newCookies.map(cookie => cookie.split(';')[0]).join('; ');
+        cookieStrings[pincode].cookieStringWithLatLang = cookieStrings[pincode].cookieString + '; ' + newCookieString;
+
+        // Make the search call with updated cookies
+        let allProducts = [];
+        let currentPage = 1;
+        let hasMorePages = true;
+
+        while (hasMorePages) {
+            const searchResponse = await axios.get(
+                `https://www.bigbasket.com/listing-svc/v2/products?type=ps&slug=${encodeURIComponent(query)}&page=${currentPage}`,
+                {
+                    headers: {
+                        'accept': '*/*',
+                        'content-type': 'application/json',
+                        'cookie': cookieStrings[pincode].cookieStringWithLatLang,
+                    }
+                }
+            );
+
+            const products = searchResponse.data?.tabs?.[0]?.product_info?.products || [];
+            
+            if (products.length === 0) {
+                hasMorePages = false;
+                break;
+            }
+
+            const processedProducts = products.map(product => ({
+                id: product.id,
+                name: product.desc,
+                brand: product.brand?.name,
+                weight: product.w,
+                price: product.pricing?.discount?.prim_price?.sp,
+                mrp: product.pricing?.discount?.mrp,
+                discount: product.pricing?.discount?.d_text,
+                image: product.images?.[0]?.s,
+                url: `https://www.bigbasket.com${product.absolute_url}`,
+                availability: product.availability?.avail_status === '001',
+                eta: product.availability?.medium_eta,
+                category: {
+                    main: product.category?.tlc_name,
+                    sub: product.category?.mlc_name,
+                    leaf: product.category?.llc_name
+                }
+            }));
+
+            allProducts = [...allProducts, ...processedProducts];
+            
+            // Check if we have more pages based on the total count
+            const totalCount = searchResponse.data?.tabs?.[0]?.product_info?.total_count || 0;
+            const productsPerPage = 48; // BigBasket's default page size
+            hasMorePages = currentPage * productsPerPage < totalCount;
+            
+            currentPage++;
+            
+            // Add a small delay between requests to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+
+        res.status(200).json({
+            products: allProducts,
+            total: allProducts.length,
+            cookieString: cookieStrings[pincode].cookieStringWithLatLang
+        });
+
+    } catch (error) {
+        cookieStrings[pincode] = null;
+        console.error('BigBasket API error details:', {
+            cookieStrings: cookieStrings,
+            message: error.message,
+            response: error.response?.data,
+            status: error.response?.status,
+            headers: error.response?.headers,
+            config: {
+                url: error.config?.url,
+                method: error.config?.method,
+                headers: error.config?.headers
+            }
+        });
+        // If there's an error, remove the stored cookies for this pincode to force a refresh next time
+        // if (pincode) {
+        //     delete cookieStrings[pincode];
+        // }
+        next(error instanceof AppError ? error : AppError.internalError(`Failed to fetch BigBasket products, error: ${error}`));
+    }
+};
+
+export const searchProductsUsingCrawler = async (req, res, next) => {
+    let page = null;
+    let context = null;
+
     try {
         const { query, pincode } = req.body;
 
@@ -14,7 +229,7 @@ export const searchProducts = async (req, res, next) => {
         }
 
         const isNewLocation = !hasStoredLocation(pincode);
-        
+
         // Create new page with pincode
         page = await createPage(pincode, isNewLocation);
         context = page.context();
@@ -26,10 +241,10 @@ export const searchProducts = async (req, res, next) => {
 
             // Set location
             console.log('Setting location...');
-            
+
             // Click the location selector
             const clickResult = await page.evaluate(() => {
-                const spans = Array.from(document.querySelectorAll('span')).filter(span => 
+                const spans = Array.from(document.querySelectorAll('span')).filter(span =>
                     span.textContent.trim() === 'Select Location'
                 );
                 if (spans.length > 0) {
@@ -54,7 +269,7 @@ export const searchProducts = async (req, res, next) => {
             // Handle location dropdown
             try {
                 await page.waitForSelector('.overscroll-contain', { timeout: 2000 });
-                
+
                 const locationResult = await page.evaluate(() => {
                     const firstLocation = document.querySelector('.overscroll-contain li');
                     if (firstLocation) {
@@ -100,10 +315,10 @@ export const searchProducts = async (req, res, next) => {
 
                 let lastItem = items[items.length - 1];
                 const previousCount = items.length;
-                
+
                 lastItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 await new Promise(resolve => setTimeout(resolve, 1000)); // wait for 1 second before checking again
-                
+
                 const newCount = parentContainer.children.length;
                 if (newCount >= 100) {
                     parentContainer.children[parentContainer.children.length - 1].scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -135,7 +350,7 @@ export const searchProducts = async (req, res, next) => {
                 const price = priceElement ? parseFloat(priceElement.textContent.replace(/[^\d.]/g, '')) : null;
                 const mrp = mrpElement ? parseFloat(mrpElement.textContent.replace(/[^\d.]/g, '')) : price;
                 const discount = discountElement ? parseInt(discountElement.textContent) : 0;
-                
+
                 return {
                     name: nameElement ? nameElement.textContent.trim() : '',
                     brand: brandElement ? brandElement.textContent.trim() : '',
@@ -195,40 +410,30 @@ export const fetchCategories = async (req, res, next) => {
             }
         });
 
+        let processedCategories = [];
+
         // Process the categories recursively
         const processCategories = (categories) => {
             if (!Array.isArray(categories)) return [];
-            
-            return categories.map(category => {
-                const processedCategory = {
-                    id: category.id,
-                    name: category.name,
-                    slug: category.slug,
-                    url: category.url,
-                    level: category.level,
-                    type: category.type,
-                    dest_type: category.dest_type,
-                    dest_slug: category.dest_slug
-                };
 
-                // Process child categories if they exist
-                if (category.children && Array.isArray(category.children)) {
-                    processedCategory.children = processCategories(category.children);
-                } else if (category.child && Array.isArray(category.child)) {
-                    processedCategory.children = processCategories(category.child);
-                } else {
-                    processedCategory.children = [];
+            categories.map(category => {
+                if (category?.level === 2) {
+                    console.log('level 2 category', category);
+                    processedCategories.push(category);
                 }
 
-                return processedCategory;
+                if (category?.children && Array.isArray(category?.children)) {
+                    processCategories(category?.children);
+                }
             });
         };
 
-        const result = {
-            categories: processCategories(response.data?.categories)
-        };
 
-        res.status(200).json(result);
+        processCategories(response.data?.categories);
+        bigBasketCategories = processedCategories;
+
+        a
+        res.status(200).json(bigBasketCategories);
 
     } catch (error) {
         console.error('Error fetching categories:', error.response?.data || error.message);

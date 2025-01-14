@@ -7,7 +7,7 @@ const MAX_CONTEXTS = 5; // Maximum number of stored contexts
 export const createBrowser = async () => {
     if (!browser) {
         browser = await firefox.launch({
-            headless: process.env.ENVIRONMENT === 'development' ? true : false,
+            headless: process.env.ENVIRONMENT === 'development' ? false : true,
             args: [
                 '--disable-web-security',
                 '--disable-features=IsolateOrigins,site-per-process',
