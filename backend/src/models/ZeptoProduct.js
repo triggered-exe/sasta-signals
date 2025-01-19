@@ -1,0 +1,28 @@
+import mongoose from "../database.js";
+
+const zeptoProductSchema = new mongoose.Schema({
+    productId: { type: String, required: true, unique: true },
+    categoryName: String,
+    categoryId: String,
+    subcategoryName: String,
+    subcategoryId: String,
+    inStock: Boolean,
+    imageUrl: String,
+    productName: String,
+    price: Number,
+    previousPrice: Number,
+    priceDroppedAt: Date,
+    discount: Number,
+    weight: String,
+    brand: String,
+    url: String,
+    mrp: Number,
+    eta: String,
+    trackedAt: Date
+}, { 
+    collection: 'zepto_products',
+    strict: true,
+    timestamps: true
+});
+
+export const ZeptoProduct = mongoose.model('zepto_products', zeptoProductSchema); 

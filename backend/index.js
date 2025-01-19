@@ -9,6 +9,7 @@ import axios from 'axios';
 import { trackProductPrices } from './src/controllers/InstamartController.js'; // Import the function
 import bigbasketRoutes from './src/routes/api/bigbasket/bigbasket.js';
 import { startTrackingHandler } from './src/controllers/BigBasketController.js';
+import zeptoRouter from './src/routes/api/zepto/zepto.js';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -31,60 +32,10 @@ app.get('/', (req, res) => {
 app.use('/api/instamart', instamartRouter); // Use the instamart route
 app.use('/api/meesho', meeshoRouter);
 
-app.get('/api/test-telegram', async (req, res) => {
-  try {
-    const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-    const TELEGRAM_CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID;
-
-    // Log configuration (remove in production)
-    console.log('Bot Token:', TELEGRAM_BOT_TOKEN?.slice(0, 5) + '...');
-    console.log('Channel ID:', TELEGRAM_CHANNEL_ID);
-
-    // Verify Telegram configuration
-    if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHANNEL_ID) {
-      return res.status(500).json({ 
-        error: "Missing Telegram configuration. Please check your .env file" 
-      });
-    }
-
-    // First, try to get bot info
-    const botInfo = await axios.get(
-      `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getMe`
-    );
-    
-    console.log('Bot Info:', botInfo.data);
-
-    // Send test message
-    const response = await axios.post(
-      `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
-      {
-        chat_id: TELEGRAM_CHANNEL_ID,
-        text: "👋 Hello World! This is a test message from your Instamart Price Tracker bot.",
-        parse_mode: 'HTML'
-      }
-    );
-
-    res.json({ 
-      success: true, 
-      botInfo: botInfo.data,
-      message: "Telegram test message sent successfully",
-      response: response.data 
-    });
-
-  } catch (error) {
-    console.error("Full error:", error);
-    console.error("Error response:", error.response?.data);
-    
-    // Modified error response to use variables from within try block scope
-    res.status(500).json({ 
-      error: "Failed to send Telegram message", 
-      details: error.response?.data || error.message
-    });
-  }
-});
-
 // Add the BigBasket routes
 app.use('/api/bigbasket', bigbasketRoutes);
+
+app.use('/api/zepto', zeptoRouter);
 
 // Global error handler
 app.use(errorHandler);
