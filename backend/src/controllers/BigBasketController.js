@@ -51,7 +51,7 @@ const setCookiesAganstPincode = async (pincode) => {
             };
 
             // Step 2: Navigate to autocomplete URL and get response
-            const autocompleteUrl = `https://www.bigbasket.com/places/v1/places/autocomplete/?inputText=${pincode}`;
+            const autocompleteUrl = `https://www.bigbasket.com/places/v1/places/autocomplete/?inputText=${pincode}&token=729eb841-55f2-4cee-891e-ede96cfe1336`;
             const autocompleteResponse = await page.goto(autocompleteUrl, { waitUntil: 'networkidle' });
             const autocompleteText = await autocompleteResponse.text();
             let autocompleteData;
