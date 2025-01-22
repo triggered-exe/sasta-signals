@@ -9,6 +9,8 @@ import axios from 'axios';
 import { trackProductPrices } from './src/controllers/InstamartController.js'; // Import the function
 import bigbasketRoutes from './src/routes/api/bigbasket/bigbasket.js';
 import { startTrackingHandler } from './src/controllers/BigBasketController.js';
+import { startTrackingHandler as zeptoStartTrackingHandler } from './src/controllers/ZeptoController.js';
+
 import zeptoRouter from './src/routes/api/zepto/zepto.js';
 
 // Load environment variables from .env file
@@ -43,6 +45,7 @@ app.use(errorHandler);
 // Start the server and initialize price tracking
 app.listen(port, () => {
   console.log(`Server is running on port - ${port}`);
-  // trackProductPrices(); // Start the price tracking when server starts
-  // startTrackingHandler(); // For BigBasket
+  trackProductPrices(); // Start the price tracking when server starts
+  startTrackingHandler(); // For BigBasket
+  zeptoStartTrackingHandler(); // For Zepto
 });

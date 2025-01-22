@@ -1,5 +1,6 @@
 import { AppError } from '../utils/errorHandling.js';
 import { createPage, cleanup, hasStoredLocation, getContextStats, storeContext } from '../utils/crawlerSetup.js';
+import { isNightTimeIST } from '../utils/priceTracking.js';
 import axios from 'axios';
 import { BigBasketProduct } from '../models/BigBasketProduct.js';
 import { PAGE_SIZE, HALF_HOUR } from "../utils/constants.js";
@@ -401,19 +402,18 @@ const sendTelegramMessage = async (droppedProducts) => {
 
         // Create product entries
         const productEntries = filteredProducts.map((product) => {
-            const priceDrop = product.previousPrice - product.price;
             return (
                 `<b>${product.productName}</b>\n` +
                 `💰 ₹${product.price} (was ₹${product.previousPrice})\n` +
-                `📉 Drop: ₹${priceDrop.toFixed(2)} (${product.discount}%)\n` +
+                `📉 Drop: ${product.discount}%\n` +
                 `<a href="${product.url}">View on BigBasket</a>\n`
             );
         });
 
         // Split into chunks of 10 products each
         const chunks = [];
-        for (let i = 0; i < productEntries.length; i += 10) {
-            chunks.push(productEntries.slice(i, i + 10));
+        for (let i = 0; i < productEntries.length; i += 15) {
+            chunks.push(productEntries.slice(i, i + 15));
         }
 
         // Send each chunk as a separate message
@@ -902,11 +902,3 @@ export const fetchCategories = async () => {
 
 
 
-// Function to check if current time is between 12 AM and 6 AM IST
-const isNightTimeIST = () => {
-    const now = new Date();
-    const istOffset = 5.5 * 60 * 60 * 1000; // IST is UTC+5:30
-    const istTime = new Date(now.getTime() + istOffset);
-    const hours = istTime.getUTCHours();
-    return hours >= 0 && hours < 6;
-};
