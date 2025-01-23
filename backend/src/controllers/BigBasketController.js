@@ -36,12 +36,12 @@ const setCookiesAganstPincode = async (pincode) => {
             // Get all cookies from the browser session
             const cookies = await context.cookies();
             const cookieString = cookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ');
-            console.log('Browser Cookies:', cookies);
+            // console.log('BB: Browser Cookies:', cookies);
 
             // Extract csurftoken from cookies
             const csurfCookie = cookies.find(cookie => cookie.name === 'csurftoken');
             const csurfTokenValue = csurfCookie ? csurfCookie.value : '';
-            console.log('CSRF Token:', csurfTokenValue);
+            // console.log('BB: CSRF Token:', csurfTokenValue);
 
             // Initialize cookie data for this pincode
             pincodeData[pincode] = {
@@ -51,13 +51,14 @@ const setCookiesAganstPincode = async (pincode) => {
             };
 
             // Step 2: Navigate to autocomplete URL and get response
-            const autocompleteUrl = `https://www.bigbasket.com/places/v1/places/autocomplete/?inputText=${pincode}&token=729eb841-55f2-4cee-891e-ede96cfe1336`;
+            const autocompleteUrl = `https://www.bigbasket.com/places/v1/places/autocomplete/?inputText=${pincode}&token=096872a0-7aed-4c91-8cda-520a5e2f06ee`;
             const autocompleteResponse = await page.goto(autocompleteUrl, { waitUntil: 'networkidle' });
             const autocompleteText = await autocompleteResponse.text();
             let autocompleteData;
             try {
                 autocompleteData = { success: true, data: JSON.parse(autocompleteText) };
             } catch (error) {
+                console.log('BB: Error parsing autocomplete response:', error);
                 autocompleteData = { 
                     success: false, 
                     error: error.message,
@@ -65,7 +66,7 @@ const setCookiesAganstPincode = async (pincode) => {
                 };
             }
 
-            console.log('Autocomplete Response:', autocompleteData);
+            console.log('BB: Autocomplete Response:', autocompleteData);
 
             if (!autocompleteData.success) {
                 throw AppError.badRequest(`Error in autocomplete request: ${JSON.stringify(autocompleteData.error)}`);
@@ -83,10 +84,10 @@ const setCookiesAganstPincode = async (pincode) => {
             }
 
             pincodeData[pincode].placeId = placeId;
-            console.log('got the placeId', placeId);
+            console.log('BB: got the placeId', placeId);
 
             // Step 3: Navigate to address details URL and get response
-            const addressUrl = `https://www.bigbasket.com/places/v1/places/details?placeId=${placeId}`;
+            const addressUrl = `https://www.bigbasket.com/places/v1/places/details?placeId=${placeId}&token=096872a0-7aed-4c91-8cda-520a5e2f06ee`;
             const addressResponse = await page.goto(addressUrl, { waitUntil: 'networkidle' });
             const addressText = await addressResponse.text();
             let addressData;
@@ -100,10 +101,10 @@ const setCookiesAganstPincode = async (pincode) => {
                 };
             }
 
-            console.log('Address Response:', addressData);
+            console.log('BB: Address Response:', addressData);
 
             if (!addressData.success) {
-                throw AppError.badRequest(`Error in address details request: ${JSON.stringify(addressData.error)}`);
+                throw AppError.badRequest(`BB: Error in address details request: ${JSON.stringify(addressData.error)}`);
             }
 
             // Step 4: check serviceability with cookies
@@ -111,10 +112,10 @@ const setCookiesAganstPincode = async (pincode) => {
             pincodeData[pincode].lng = addressData.data?.geometry?.location?.lng;
 
             if (!pincodeData[pincode].lat || !pincodeData[pincode].lng) {
-                throw AppError.badRequest(`No location data found for placeId: ${placeId}`);
+                throw AppError.badRequest(`BB: No location data found for placeId: ${placeId}`);
             }
 
-            console.log('lat', pincodeData[pincode].lat, 'lng', pincodeData[pincode].lng);
+            console.log('BB: lat', pincodeData[pincode].lat, 'lng', pincodeData[pincode].lng);
 
             // Close browser session now that we have all the data
             await page.close();
@@ -267,59 +268,88 @@ export const searchProducts = async (req, res, next) => {
     }
 };
 
-const processProduct = async (product, category) => {
-    const mrp = product.pricing?.discount?.mrp || 0;
-    const currentPrice = product.pricing?.discount?.prim_price?.sp || 0;
+const processProducts = async (products, category) => {
+    try {
+        const bulkOps = [];
+        const now = new Date();
+        const productIds = products
+            .filter(p => p.availability?.avail_status === '001')
+            .map(p => p.id);
 
-    const existingProduct = await BigBasketProduct.findOne({
-        productId: product.id
-    });
+        // Get existing products from DB
+        const existingProducts = await BigBasketProduct.find({
+            productId: { $in: productIds }
+        }).lean();
 
-    // If product exists and price hasn't changed, skip the update
-    if (existingProduct && existingProduct.price === currentPrice) {
-        return null;
-    }
+        // Create a map for faster lookups
+        const existingProductsMap = new Map(
+            existingProducts.map(p => [p.productId, p])
+        );
 
-    // Initialize previous price and priceDroppedAt
-    let previousPrice = currentPrice;
-    let priceDroppedAt = null;
+        // Process each product
+        for (const product of products) {
+            if (product.availability?.avail_status !== '001') continue;
 
-    // Check if product exists and price has dropped
-    if (existingProduct) {
-        previousPrice = existingProduct.price;
-        if (currentPrice < previousPrice) {
-            priceDroppedAt = new Date();
+            const currentPrice = product.pricing?.discount?.prim_price?.sp || 0;
+            const existingProduct = existingProductsMap.get(product.id);
+
+            const productData = {
+                categoryName: category.name,
+                categoryId: category.id,
+                subcategoryName: product.category?.mlc_name,
+                subcategoryId: product.category?.mlc_id,
+                productId: product.id,
+                inStock: product.availability?.avail_status === '001',
+                imageUrl: product.images?.[0]?.s,
+                productName: product.desc,
+                mrp: product.pricing?.discount?.mrp || 0,
+                price: currentPrice,
+                discount: Math.floor(((product.pricing?.discount?.mrp || 0) - currentPrice) / (product.pricing?.discount?.mrp || 1) * 100),
+                weight: product.w,
+                brand: product.brand?.name,
+                url: `https://www.bigbasket.com${product.absolute_url}`,
+                eta: product.availability?.medium_eta,
+                updatedAt: now
+            };
+
+            if (existingProduct) {
+                // If price has dropped, update price history
+                if (currentPrice < existingProduct.price) {
+                    productData.previousPrice = existingProduct.price;
+                    productData.priceDroppedAt = now;
+                } else {
+                    // Preserve existing price history if no drop
+                    if (existingProduct.previousPrice) {
+                        productData.previousPrice = existingProduct.previousPrice;
+                    }
+                    if (existingProduct.priceDroppedAt) {
+                        productData.priceDroppedAt = existingProduct.priceDroppedAt;
+                    }
+                }
+            }
+
+            bulkOps.push({
+                updateOne: {
+                    filter: { productId: product.id },
+                    update: {
+                        $set: productData,
+                        $setOnInsert: { createdAt: now }
+                    },
+                    upsert: true
+                }
+            });
         }
-    }
 
-    const productData = {
-        categoryName: category.name,
-        categoryId: category.id,
-        subcategoryName: product.category?.mlc_name,
-        subcategoryId: product.category?.mlc_id,
-        productId: product.id,
-        inStock: product.availability?.avail_status === '001',
-        imageUrl: product.images?.[0]?.s,
-        productName: product.desc,
-        mrp: mrp,
-        price: currentPrice,
-        previousPrice,
-        priceDroppedAt,
-        discount: Math.floor((mrp - currentPrice) / mrp * 100),
-        weight: product.w,
-        brand: product.brand?.name,
-        url: `https://www.bigbasket.com${product.absolute_url}`,
-        eta: product.availability?.medium_eta,
-        trackedAt: new Date()
-    };
-
-    return {
-        updateOne: {
-            filter: { productId: product.id },
-            update: { $set: productData },
-            upsert: true
+        if (bulkOps.length > 0) {
+            const result = await BigBasketProduct.bulkWrite(bulkOps, { ordered: false });
+            console.log(`BB: Processed ${bulkOps.length} products for ${category.name} with ${result.upsertedCount} inserts and ${result.modifiedCount} updates`);
         }
-    };
+
+        return { processedCount: bulkOps.length };
+    } catch (error) {
+        console.error('BB: Error in processProducts:', error);
+        throw error;
+    }
 };
 
 const fetchProductsForCategoryInChunks = async (category, pincode) => {
@@ -327,6 +357,7 @@ const fetchProductsForCategoryInChunks = async (category, pincode) => {
     let currentPage = 1;
     let hasMorePages = true;
 
+    // First fetch all products
     while (hasMorePages) {
         try {
             const searchResponse = await axios.get(
@@ -348,31 +379,27 @@ const fetchProductsForCategoryInChunks = async (category, pincode) => {
                 break;
             }
 
-            // Process all products from this page
-            const bulkOperations = (await Promise.all(
-                products.map(product => processProduct(product, category))
-            )).filter(Boolean);
-
-            if (bulkOperations.length > 0) {
-                await BigBasketProduct.bulkWrite(bulkOperations, { ordered: false });
-            }
-
             allProducts = [...allProducts, ...products];
-            
-            const totalCount = searchResponse.data?.tabs?.[0]?.product_info?.total_count || 0;
-            const productsPerPage = 48; // BigBasket's default page size
-            hasMorePages = currentPage * productsPerPage < totalCount;
-            
             currentPage++;
             
             // Add delay between pages to avoid rate limiting
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise(resolve => setTimeout(resolve, 1000));
         } catch (error) {
-            console.error(`Error processing page ${currentPage} for category ${category.name}:`, error);
+            console.error(`BB: Error processing page ${currentPage} for category ${category.name}:`, error);
             break;
         }
     }
-    console.log('for category', category.name, 'total products', allProducts.length);
+
+    // Process all products at once
+    try {
+        if (allProducts.length > 0) {
+            console.log(`BB: Processing ${allProducts.length} total products for category ${category.name}`);
+            const { processedCount } = await processProducts(allProducts, category);
+            console.log(`BB: Completed processing category ${category.name}. Processed ${processedCount} products.`);
+        }
+    } catch (error) {
+        console.error(`BB: Error bulk processing products for category ${category.name}:`, error);
+    }
     return allProducts;
 };
 
@@ -380,13 +407,13 @@ const fetchProductsForCategoryInChunks = async (category, pincode) => {
 const sendTelegramMessage = async (droppedProducts) => {
     try {
         if (!droppedProducts || droppedProducts.length === 0) {
-            console.log("No dropped products to send Telegram message for");
+            console.log("BB: No dropped products to send Telegram message for");
             return;
         }
 
         // Verify Telegram configuration
         if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHANNEL_ID) {
-            console.error("Missing Telegram configuration. Please check your .env file");
+            console.error("BB: Missing Telegram configuration. Please check your .env file");
             return;
         }
 
@@ -396,18 +423,17 @@ const sendTelegramMessage = async (droppedProducts) => {
             .sort((a, b) => b.discount - a.discount);
 
         if (filteredProducts.length === 0) {
-            console.log("No products with discount > 59%");
+            console.log("BB: No products with discount > 59%");
             return;
         }
 
         // Create product entries
         const productEntries = filteredProducts.map((product) => {
-            return (
-                `<b>${product.productName}</b>\n` +
+            return `<a href="${product.url}">` +
+                `${product.productName}\n` +
                 `💰 ₹${product.price} (was ₹${product.previousPrice})\n` +
-                `📉 Drop: ${product.discount}%\n` +
-                `<a href="${product.url}">View on BigBasket</a>\n`
-            );
+                `📉 Drop: ${product.discount}%` +
+                `</a>\n`;
         });
 
         // Split into chunks of 10 products each
@@ -499,9 +525,9 @@ const sendEmailWithDroppedProducts = async (droppedProducts) => {
             html: emailContent,
         });
 
-        console.log("Email sent successfully", response);
+        console.log("BB: Email sent successfully", response);
     } catch (error) {
-        console.error("Error sending email:", error?.response?.data || error);
+        console.error("BB: Error sending email:", error?.response?.data || error);
         throw error;
     }
 };
@@ -511,7 +537,7 @@ const trackPrices = async () => {
     try {
         // Skip if it's night time (12 AM to 6 AM IST)
         if (isNightTimeIST()) {
-            console.log("Skipping price tracking during night hours");
+            console.log("BB: Skipping price tracking during night hours");
             return;
         }
 
@@ -522,7 +548,6 @@ const trackPrices = async () => {
         }
 
         const categories = await fetchCategories();
-        const categoryProducts = {};
 
         // Process categories in parallel chunks
         const CATEGORY_CHUNK_SIZE = 3;
@@ -535,17 +560,12 @@ const trackPrices = async () => {
             await Promise.all(chunk.map(async (category) => {
                 try {
                     const products = await fetchProductsForCategoryInChunks(category, pincode);
-                    categoryProducts[category.slug] = {
-                        category: category,
-                        total: products.length
-                    };
+                    await new Promise(resolve => setTimeout(resolve, 10 * 1000)); // 10 seconds delay
                 } catch (error) {
-                    console.error(`Error processing category ${category.name}:`, error);
+                    console.error(`BB: Error processing category ${category.name}:`, error);
                 }
             }));
 
-            // Add delay between chunks to avoid rate limiting
-            await new Promise(resolve => setTimeout(resolve, 2000));
         }
 
         // Find products with price drops in the last 30 minutes
@@ -559,20 +579,20 @@ const trackPrices = async () => {
             sendTelegramMessage(droppedProducts)
         ]);
 
-        console.log('droppedProducts', droppedProducts.length);
-        console.log('Crawl completed at:', new Date().toISOString());
+        console.log('BB: droppedProducts', droppedProducts.length);
+        console.log('BB: Crawl completed at:', new Date().toISOString());
     } catch (error) {
-        console.error('Failed to crawl categories:', error);
+        console.error('BB: Failed to crawl categories:', error);
     }
 };
 
 export const startTrackingHandler = async () => {
-    console.log("starting tracking");
+    console.log("BB: starting tracking");
     let message = "BigBasket price tracking started";
     if (trackingInterval) {
         clearInterval(trackingInterval);
         trackingInterval = null;
-        message = "Restarted BigBasket price tracking";
+        message = "BB: Restarted BigBasket price tracking";
     }
 
     trackingInterval = setInterval(() => trackPrices(), HALF_HOUR);
@@ -586,7 +606,7 @@ export const startTracking = async (req, res, next) => {
         const message = await startTrackingHandler();
         res.status(200).json({ message });
     } catch (error) {
-        console.error('Error starting price tracking:', error);
+        console.error('BB: Error starting price tracking:', error);
         next(error instanceof AppError ? error : AppError.internalError('Failed to start price tracking'));
     }
 };
@@ -669,7 +689,7 @@ export const getProducts = async (req, res, next) => {
         });
 
     } catch (error) {
-        console.error('Error fetching BigBasket products:', error);
+        console.error('BB: Error fetching BigBasket products:', error);
         next(error instanceof AppError ? error : AppError.internalError('Failed to fetch BigBasket products'));
     }
 };
@@ -697,7 +717,7 @@ export const searchProductsUsingCrawler = async (req, res, next) => {
             await page.goto('https://www.bigbasket.com/', { waitUntil: 'networkidle' });
 
             // Set location
-            console.log('Setting location...');
+            console.log('BB: Setting location...');
 
             // Click the location selector
             const clickResult = await page.evaluate(() => {
@@ -710,7 +730,7 @@ export const searchProductsUsingCrawler = async (req, res, next) => {
                 }
                 return { clicked: false, count: spans.length };
             });
-            console.log('Click result:', clickResult);
+            console.log('BB: Click result:', clickResult);
 
             await page.waitForTimeout(500);
 
@@ -718,9 +738,9 @@ export const searchProductsUsingCrawler = async (req, res, next) => {
             const inputs = await page.$$('input[placeholder="Search for area or street name"]');
             if (inputs.length >= 2) {
                 await inputs[1].type(pincode);
-                console.log('Entered pincode:', pincode);
+                console.log('BB: Entered pincode:', pincode);
             } else {
-                throw new Error('Input field for location not found');
+                throw new Error('BB: Input field for location not found');
             }
 
             // Handle location dropdown
@@ -735,16 +755,16 @@ export const searchProductsUsingCrawler = async (req, res, next) => {
                     }
                     return { clicked: false };
                 });
-                console.log('Location selection result:', locationResult);
+                console.log('BB: Location selection result:', locationResult);
 
                 if (!locationResult.clicked) {
-                    throw new Error('No locations found in dropdown');
+                    throw new Error('BB: No locations found in dropdown');
                 }
 
                 await page.waitForTimeout(1000);
 
             } catch (error) {
-                throw AppError.badRequest(`Delivery not available for pincode: ${pincode}`);
+                throw AppError.badRequest(`BB: Delivery not available for pincode: ${pincode}`);
             }
 
             // Store the context after location is set successfully
@@ -779,7 +799,7 @@ export const searchProductsUsingCrawler = async (req, res, next) => {
                 const newCount = parentContainer.children.length;
                 if (newCount >= 100) {
                     parentContainer.children[parentContainer.children.length - 1].scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    console.log('found 50 products');
+                    console.log('BB: found 50 products');
                     return false;
                 }
                 return newCount > previousCount;
@@ -822,7 +842,7 @@ export const searchProductsUsingCrawler = async (req, res, next) => {
                 };
             });
         });
-        console.log('Products:', products);
+        console.log('BB: Products:', products);
 
         // Filter products with missing values
         // const filteredProducts = products.filter(product => product.name && product.weight && product.price && product.mrp && product.image && product.url);
@@ -836,7 +856,7 @@ export const searchProductsUsingCrawler = async (req, res, next) => {
         res.status(200).json(products);
 
     } catch (error) {
-        console.error('BigBasket scraping error:', error);
+        console.error('BB: BigBasket scraping error:', error);
         if (page) {
             await page.close();
         }

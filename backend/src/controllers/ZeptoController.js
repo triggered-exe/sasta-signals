@@ -54,15 +54,15 @@ export const searchProducts = async (req, res, next) => {
             throw AppError.badRequest("Query and place are required");
         }
 
-        console.log("query", query);
-        console.log("place", place);
+        console.log("Zepto: query", query);
+        console.log("Zepto: place", place);
 
         // Step1: Get the storeId from the place
         const storeId = await getStoreId(place);
 
         // Step2: Search for products
         const searchResults = await searchProductsFromZeptoHelper(query, storeId);
-        console.log("Found products:", searchResults.total);
+        console.log("Zepto: Found products:", searchResults.total);
 
         res.status(200).json(searchResults);
 
@@ -77,7 +77,7 @@ const getStoreId = async (placeName = "500081") => {
     const { latitude, longitude } = await getLatitudeAndLongitudeFromPlaceId(placeId);
     console.log('got latitude and longitude', latitude, longitude);
     const { isServiceable, storeId } = await checkLocationAvailabilityAndGetStoreId(latitude, longitude);
-    console.log("isServiceable", isServiceable, 'storeId', storeId);
+    console.log("Zepto: isServiceable", isServiceable, 'storeId', storeId);
     if (!isServiceable) {
         throw AppError.badRequest("Location is not serviceable by Zepto");
     }
@@ -95,13 +95,13 @@ const getPlaceIdFromPlace = async (place) => {
         const response = await axios.get(`https://api.zeptonow.com/api/v1/maps/place/autocomplete?place_name=${place}`)
         const placeId = response.data?.predictions[0]?.place_id;
         if (!placeId) {
-            console.log("response", response.data);
+            console.log("Zepto: response", response.data);
             throw AppError.badRequest("Place not found");
         }
         placesData[place] = placeId;
         return placeId;
     } catch (error) {
-        console.log("error", error);
+        console.log("Zepto: error", error);
         throw AppError.badRequest("Place not found");
     }
 }
@@ -110,7 +110,7 @@ const getLatitudeAndLongitudeFromPlaceId = async (placeId) => {
     const response = await axios.get(`https://api.zeptonow.com/api/v1/maps/place/details?place_id=${placeId}`)
     const location = response.data?.result?.geometry?.location;
     if (!location) {
-        console.log("response", response.data);
+        console.log("Zepto: response", response.data);
         throw AppError.badRequest("Location not found");
     }
     return { latitude: location?.lat, longitude: location?.lng };
@@ -141,17 +141,17 @@ const checkLocationAvailabilityAndGetStoreId = async (latitude, longitude) => {
         const storeId = response.data?.storeServiceableResponse?.storeId;
 
         if (!isServiceable) {
-            console.log("response", response.data);
+            console.log("Zepto: response", response.data);
             throw AppError.badRequest("Location is not serviceable by Zepto");
         }
         if (!storeId) {
-            console.log("response", response.data);
+            console.log("Zepto: response", response.data);
             throw AppError.badRequest("servicable but storeid not found");
         }
 
         return { isServiceable, storeId };
     } catch (error) {
-        console.error("Error checking location availability:", error?.response?.data || error);
+        console.error("Zepto: Error checking location availability:", error?.response?.data || error);
         if (error instanceof AppError) {
             throw error;
         }
@@ -256,7 +256,7 @@ const searchProductsFromZeptoHelper = async (query, storeId) => {
             totalPages: Math.ceil(totalProducts.length / 28)
         };
     } catch (error) {
-        console.error("Error in searchProductsFromZeptoHelper:", error);
+        console.error("Zepto: Error in searchProductsFromZeptoHelper:", error);
         throw error;
     }
 };
@@ -432,7 +432,7 @@ export const startTracking = async (req, res, next) => {
 };
 
 export const startTrackingHandler = async () => {
-    console.log("starting tracking");
+    console.log("Zepto: starting tracking");
     let message = "Zepto price tracking started";
     if (trackingInterval) {
         clearInterval(trackingInterval);
@@ -449,7 +449,7 @@ const trackPrices = async (placeName = "500081") => {
     try {
         // Skip if it's night time (12 AM to 6 AM IST)
         if (isNightTimeIST()) {
-            console.log("Skipping price tracking during night hours");
+            console.log("Zepto: Skipping price tracking during night hours");
             return;
         }
 
@@ -457,7 +457,7 @@ const trackPrices = async (placeName = "500081") => {
         const categories = await fetchCategories(placeName);
         const storeId = placesData[placeName].storeId;
 
-        console.log("Starting to fetch products for all categories");
+        console.log("Zepto: Starting to fetch products for all categories");
 
         // Flatten categories from all groups into a single array
         const allCategories = categories.reduce((acc, group) => {
@@ -479,7 +479,7 @@ const trackPrices = async (placeName = "500081") => {
             }
         }
 
-        console.log("Finished tracking prices for all categories");
+        console.log("Zepto: Finished tracking prices for all categories");
 
         // Find products with price drops in the last hour
         const priceDrops = await ZeptoProduct.find({
@@ -535,7 +535,7 @@ const processChunk = async (chunk, storeId) => {
                     pageNumber++;
 
                     // Add a small delay to avoid rate limiting
-                    await new Promise(resolve => setTimeout(resolve, 100));
+                    await new Promise(resolve => setTimeout(resolve, 1000));
 
                 } catch (error) {
                     console.error(`Error fetching products for subcategory ${subcategory.name}:`, error?.response?.data || error);
@@ -545,10 +545,12 @@ const processChunk = async (chunk, storeId) => {
 
             // Process all products for this subcategory at once
             if (allSubcategoryProducts.length > 0) {
-                console.log(`Processing ${allSubcategoryProducts.length} total products for subcategory ${subcategory.name}`);
+                console.log(`Zepto: Processing ${allSubcategoryProducts.length} total products for subcategory ${subcategory.name}`);
                 const { processedCount } = await processProducts(allSubcategoryProducts, category, subcategory);
-                console.log(`Completed processing subcategory ${subcategory.name}. Processed ${processedCount} products.`);
+                console.log(`Zepto: Completed processing subcategory ${subcategory.name}. Processed ${processedCount} products.`);
             }
+            
+            await new Promise(resolve => setTimeout(resolve, 10 * 1000)); // 10 seconds delay
         }
     }
 };
@@ -596,7 +598,7 @@ const processProducts = async (products, category, subcategory) => {
                 eta: variant.shelfLifeInHours || '',
                 updatedAt: now
             };
-
+            
             if (existingProduct) {
                 // If price has dropped, update price history
                 if (currentPrice < existingProduct.price) {
@@ -627,12 +629,12 @@ const processProducts = async (products, category, subcategory) => {
 
         if (bulkOps.length > 0) {
             const result = await ZeptoProduct.bulkWrite(bulkOps, { ordered: false });
-            console.log(`Processed ${bulkOps.length} products for ${subcategory.name} with ${result.upsertedCount} inserts and ${result.modifiedCount} updates`);
+            // console.log(`Zepto: Processed ${bulkOps.length} products for ${subcategory.name} with ${result.upsertedCount} inserts and ${result.modifiedCount} updates`);
         }
 
         return { processedCount: bulkOps.length };
     } catch (error) {
-        console.error('Error in processProducts for Zepto :', error);
+        console.error('Zepto: Error in processProducts for Zepto :', error);
         throw error;
     }
 };
@@ -641,13 +643,13 @@ const processProducts = async (products, category, subcategory) => {
 const sendTelegramMessage = async (droppedProducts) => {
     try {
         if (!droppedProducts || droppedProducts.length === 0) {
-            console.log("No dropped products to send Telegram message for");
+            console.log("Zepto: No dropped products to send Telegram message for");
             return;
         }
 
         // Verify Telegram configuration
         if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHANNEL_ID) {
-            console.error("Missing Telegram configuration. Please check your .env file");
+            console.error("Zepto: Missing Telegram configuration. Please check your .env file");
             return;
         }
 
@@ -657,7 +659,7 @@ const sendTelegramMessage = async (droppedProducts) => {
             .sort((a, b) => b.discount - a.discount);
 
         if (filteredProducts.length === 0) {
-            console.log("No products with discount > 59%");
+            console.log("Zepto: No products with discount > 59%");
             return;
         }
 
@@ -699,7 +701,7 @@ const sendTelegramMessage = async (droppedProducts) => {
             }
         }
     } catch (error) {
-        console.error("Error in Telegram message preparation:", error?.response?.data || error);
+        console.error("Zepto: Error in Telegram message preparation:", error?.response?.data || error);
     }
 };
 
@@ -708,7 +710,7 @@ const sendEmailWithDroppedProducts = async (droppedProducts) => {
     try {
         // Skip sending email if no dropped products
         if (!droppedProducts || droppedProducts.length === 0) {
-            console.log("No dropped products to send email for");
+            console.log("Zepto: No dropped products to send email for");
             return;
         }
 
@@ -760,9 +762,9 @@ const sendEmailWithDroppedProducts = async (droppedProducts) => {
             html: emailContent,
         });
 
-        console.log("Email sent successfully", response);
+        console.log("Zepto: Email sent successfully", response);
     } catch (error) {
-        console.error("Error sending email:", error?.response?.data || error);
+        console.error("Zepto: Error sending email:", error?.response?.data || error);
         throw error;
     }
 };

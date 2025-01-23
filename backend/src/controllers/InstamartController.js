@@ -35,7 +35,7 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 export const getStoreData = async (req, res, next) => {
   try {
     const categories = await fetchProductCategories();
-    console.log("sending categories", categories?.length);
+    console.log("IM:sending categories", categories?.length);
     res.status(200).json(categories);
   } catch (error) {
     next(error);
@@ -71,14 +71,14 @@ export const getSubcategoryProducts = async (req, res, next) => {
       }
     );
     if (!response.data || !response.data.data) {
-      console.error("Swiggy API Response:", response?.data);
+      console.error("IM:Swiggy API Response:", response?.data);
       throw AppError.serviceUnavailable("Failed to fetch products from Swiggy");
     }
 
     res.status(200).json(response.data);
   } catch (error) {
     if (!(error instanceof AppError)) {
-      console.error("Unexpected Error:", error);
+      console.error("IM:Unexpected Error:", error);
       error = new AppError("An unexpected error occurred", 500);
     }
     next(error);
@@ -249,7 +249,7 @@ const fetchInstamartSubcategoryData = async (
     );
 
     // Add debug logging
-    // console.log('API Response:', JSON.stringify(response.data?.data, null, 2));
+    // console.log('IM: API Response:', JSON.stringify(response.data?.data, null, 2));
 
     const { totalItems = 0, widgets = [] } = response.data?.data || {};
 
@@ -266,7 +266,7 @@ const fetchInstamartSubcategoryData = async (
       totalItems,
     };
   } catch (error) {
-    console.error("Error fetching subcategory data:", error);
+    console.error("IM:Error fetching subcategory data:", error);
     return { products: [], totalItems: 0 };
   }
 };
@@ -349,7 +349,7 @@ const sendEmailWithDroppedProducts = async (droppedProducts) => {
   try {
     // Skip sending email if no dropped products
     if (!droppedProducts || droppedProducts.length === 0) {
-      console.log("No dropped products to send email for");
+      console.log("IM:No dropped products to send email for");
       return;
     }
 
@@ -407,9 +407,9 @@ const sendEmailWithDroppedProducts = async (droppedProducts) => {
       html: emailContent,
     });
 
-    console.log("Email sent successfully", response);
+    console.log("IM:Email sent successfully", response);
   } catch (error) {
-    console.error("Error sending email:", error?.response?.data || error);
+    console.error("IM:Error sending email:", error?.response?.data || error);
     throw error;
   }
 };
@@ -418,7 +418,7 @@ const sendEmailWithDroppedProducts = async (droppedProducts) => {
 const sendTelegramMessage = async (droppedProducts) => {
   try {
     if (!droppedProducts || droppedProducts.length === 0) {
-      console.log("No dropped products to send Telegram message for");
+      console.log("IM:No dropped products to send Telegram message for");
       return;
     }
 
@@ -436,7 +436,7 @@ const sendTelegramMessage = async (droppedProducts) => {
       .sort((a, b) => b.discount - a.discount);
 
     if (filteredProducts.length === 0) {
-      console.log("No products with discount > 59%");
+      console.log("IM:No products with discount > 59%");
       return;
     }
 
@@ -508,26 +508,26 @@ export const trackProductPrices = async () => {
 
     // Run if not in night time
     if (isNightTimeIST()) {
-      console.log("Skipping price tracking during night hours");
+      console.log("IM:Skipping price tracking during night hours");
       return;
     }
 
-    console.log("Fetching categories...");
+    console.log("IM:Fetching categories...");
     const categories = await fetchProductCategories();
 
     if (!categories?.length) {
-      console.error("No categories found or invalid categories data");
+      console.error("IM: No categories found or invalid categories data");
       return;
     }
 
-    console.log("Categories fetched:", categories.length);
+    console.log("IM:Categories fetched:", categories.length);
 
     // Process categories in parallel (in groups of 3 to avoid rate limiting)
     const categoryChunks = chunk(categories, 1);
     for (const categoryChunk of categoryChunks) {
       await Promise.all(
         categoryChunk.map(async (category) => {
-          console.log("processing category", category.name);
+          console.log("IM:processing category", category.name);
           if (!category.subCategories?.length) {
             console.log(`Skipping category ${category.name} - no subcategories found`);
             return;
@@ -607,10 +607,10 @@ export const trackProductPrices = async () => {
       sendTelegramMessage(droppedProducts)
     ]);
 
-    console.log("droppedProducts", droppedProducts.length);
-    console.log("at", new Date());
+    console.log("IM:droppedProducts", droppedProducts.length);
+    console.log("IM:at", new Date());
   } catch (error) {
-    console.error("Error tracking prices:", error);
+    console.error("IM:Error tracking prices:", error);
     throw error;
   } finally {
     trackingInterval = setInterval(() => trackProductPrices(), HALF_HOUR);
