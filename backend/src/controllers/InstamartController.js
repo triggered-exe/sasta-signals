@@ -349,7 +349,7 @@ const sendEmailWithDroppedProducts = async (droppedProducts) => {
   try {
     // Skip sending email if no dropped products
     if (!droppedProducts || droppedProducts.length === 0) {
-      console.log("IM:No dropped products to send email for");
+      console.log("IM: No dropped products to send email for");
       return;
     }
 
@@ -503,9 +503,6 @@ export const trackProductPrices = async () => {
       clearInterval(trackingInterval);
       trackingInterval = null;
     }
-
-   
-
     // Run if not in night time
     if (isNightTimeIST()) {
       console.log("IM:Skipping price tracking during night hours");
@@ -529,7 +526,7 @@ export const trackProductPrices = async () => {
         categoryChunk.map(async (category) => {
           console.log("IM:processing category", category.name);
           if (!category.subCategories?.length) {
-            console.log(`Skipping category ${category.name} - no subcategories found`);
+            console.log(`IM: Skipping category ${category.name} - no subcategories found`);
             return;
           }
 
@@ -564,7 +561,7 @@ export const trackProductPrices = async () => {
                     await new Promise(resolve => setTimeout(resolve, 5000));
                   }
 
-                  console.log(`Found ${allProducts.length} products in subcategory ${subCategory.name}`);
+                  console.log(`IM: Found ${allProducts.length} products in subcategory ${subCategory.name}`);
 
                   if (allProducts.length > 0) {
                     const bulkOperations = (
@@ -582,13 +579,13 @@ export const trackProductPrices = async () => {
                     }
                   }
                 } catch (error) {
-                  console.error(`Error processing subcategory ${subCategory.name}:`, error);
+                  console.error(`IM: Error processing subcategory ${subCategory.name}:`, error);
                 }
               })
             );
 
             // Add delay between subcategory groups
-            await new Promise(resolve => setTimeout(resolve, 10000));
+            await new Promise(resolve => setTimeout(resolve, 10 * 1000));
           }
         })
       );

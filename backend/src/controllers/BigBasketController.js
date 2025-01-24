@@ -29,7 +29,7 @@ const setCookiesAganstPincode = async (pincode) => {
 
             // Navigate to BigBasket
             await page.goto('https://www.bigbasket.com/', { waitUntil: 'networkidle' });
-            
+
             // Wait for the page to be fully loaded
             await page.waitForTimeout(5000);
 
@@ -59,8 +59,8 @@ const setCookiesAganstPincode = async (pincode) => {
                 autocompleteData = { success: true, data: JSON.parse(autocompleteText) };
             } catch (error) {
                 console.log('BB: Error parsing autocomplete response:', error);
-                autocompleteData = { 
-                    success: false, 
+                autocompleteData = {
+                    success: false,
                     error: error.message,
                     response: autocompleteText
                 };
@@ -94,8 +94,8 @@ const setCookiesAganstPincode = async (pincode) => {
             try {
                 addressData = { success: true, data: JSON.parse(addressText) };
             } catch (error) {
-                addressData = { 
-                    success: false, 
+                addressData = {
+                    success: false,
                     error: error.message,
                     response: addressText
                 };
@@ -207,7 +207,7 @@ export const searchProducts = async (req, res, next) => {
             );
 
             const products = searchResponse.data?.tabs?.[0]?.product_info?.products || [];
-            
+
             if (products.length === 0) {
                 hasMorePages = false;
                 break;
@@ -233,14 +233,14 @@ export const searchProducts = async (req, res, next) => {
             }));
 
             allProducts = [...allProducts, ...processedProducts];
-            
+
             // Check if we have more pages based on the total count
             const totalCount = searchResponse.data?.tabs?.[0]?.product_info?.total_count || 0;
             const productsPerPage = 48; // BigBasket's default page size
             hasMorePages = currentPage * productsPerPage < totalCount;
-            
+
             currentPage++;
-            
+
             // Add a small delay between requests to avoid rate limiting
             await new Promise(resolve => setTimeout(resolve, 500));
         }
@@ -373,7 +373,7 @@ const fetchProductsForCategoryInChunks = async (category, pincode) => {
             );
 
             const products = searchResponse.data?.tabs?.[0]?.product_info?.products || [];
-            
+
             if (products.length === 0) {
                 hasMorePages = false;
                 break;
@@ -381,7 +381,7 @@ const fetchProductsForCategoryInChunks = async (category, pincode) => {
 
             allProducts = [...allProducts, ...products];
             currentPage++;
-            
+
             // Add delay between pages to avoid rate limiting
             await new Promise(resolve => setTimeout(resolve, 1000));
         } catch (error) {
@@ -469,63 +469,78 @@ const sendTelegramMessage = async (droppedProducts) => {
 };
 
 // Sends email notification for products with price drops
-const sendEmailWithDroppedProducts = async (droppedProducts) => {
+const sendEmailWithDroppedProducts = async (sortedProducts) => {
     try {
         // Skip sending email if no dropped products
-        if (!droppedProducts || droppedProducts.length === 0) {
-            console.log("No dropped products to send email for");
+        if (!sortedProducts || sortedProducts.length === 0) {
+            console.log("BB: No dropped products to send email for");
             return;
         }
 
-        console.log(`Attempting to send email for ${droppedProducts.length} dropped products`);
+        console.log(`Attempting to send email for ${sortedProducts.length} dropped products`);
 
-        const emailContent = `
-            <h2>Recently Dropped Products on BigBasket</h2>
-            <div style="font-family: Arial, sans-serif;">
-                ${droppedProducts
-                    .map(
-                        (product) => `
-                    <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #eee; border-radius: 8px;">
-                        <a href="${product.url}"  
-                           style="text-decoration: none; color: inherit; display: block;">
-                            <div style="display: flex; align-items: center;">
-                                <img src="${product.imageUrl}" 
-                                     alt="${product.productName}" 
-                                     style="width: 100px; height: 100px; object-fit: cover; border-radius: 4px; margin-right: 15px;">
-                                <div>
-                                    <h3 style="margin: 0 0 8px 0;">${product.productName}</h3>
-                                    <p style="margin: 4px 0; color: #2f80ed;">
-                                        Current Price: ₹${product.price}
-                                        <span style="text-decoration: line-through; color: #666; margin-left: 8px;">
-                                            ₹${product.previousPrice}
-                                        </span>
-                                    </p>
-                                    <p style="margin: 4px 0; color: #219653;">
-                                        Price Drop: ₹${(product.previousPrice - product.price).toFixed(2)} (${product.discount}% off)
-                                    </p>
-                                </div>
-                            </div>
-                        </a>
-                    </div>
-                `
-                    )
-                    .join("")}
-            </div>
-        `;
-
-        // Verify Resend API key is set
-        if (!process.env.RESEND_API_KEY) {
-            throw new Error("RESEND_API_KEY is not configured");
+        // Split products into chunks of 50 each
+        const chunks = [];
+        for (let i = 0; i < sortedProducts.length; i += 50) {
+            chunks.push(sortedProducts.slice(i, i + 50));
         }
 
-        const response = await resend.emails.send({
-            from: "onboarding@resend.dev",
-            to: "harishanker.500apps@gmail.com",
-            subject: "🔥 Price Drops Alert - BigBasket Products",
-            html: emailContent,
-        });
+        // Send email for each chunk
+        for (let i = 0; i < chunks.length; i++) {
+            const chunk = chunks[i];
+            const emailContent = `
+                <h2>Recently Dropped Products on BigBasket (Part ${i + 1}/${chunks.length})</h2>
+                <div style="font-family: Arial, sans-serif;">
+                    ${chunk
+                    .map(
+                        (product) => `
+                        <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #eee; border-radius: 8px;">
+                            <a href="${product.url}"  
+                               style="text-decoration: none; color: inherit; display: block;">
+                                <div style="display: flex; align-items: center;">
+                                    <img src="${product.imageUrl}" 
+                                         alt="${product.productName}" 
+                                         style="width: 100px; height: 100px; object-fit: cover; border-radius: 4px; margin-right: 15px;">
+                                    <div>
+                                        <h3 style="margin: 0 0 8px 0;">${product.productName}</h3>
+                                        <p style="margin: 4px 0; color: #2f80ed;">
+                                            Current Price: ₹${product.price}
+                                            <span style="text-decoration: line-through; color: #666; margin-left: 8px;">
+                                                ₹${product.previousPrice}
+                                            </span>
+                                        </p>
+                                        <p style="margin: 4px 0; color: #219653;">
+                                            Price Drop: ₹${(product.previousPrice - product.price).toFixed(2)} (${product.discount}% off)
+                                        </p>
+                                    </div>
+                                </div>
+                            </a>
+                        </div>
+                    `
+                    )
+                    .join("")}
+                </div>
+            `;
 
-        console.log("BB: Email sent successfully", response);
+            // Verify Resend API key is set
+            if (!process.env.RESEND_API_KEY) {
+                throw new Error("RESEND_API_KEY is not configured");
+            }
+
+            const response = await resend.emails.send({
+                from: "onboarding@resend.dev",
+                to: "harishanker.500apps@gmail.com",
+                subject: `🔥 Price Drops Alert - BigBasket Products (Part ${i + 1}/${chunks.length})`,
+                html: emailContent,
+            });
+
+            console.log(`BB: Email part ${i + 1}/${chunks.length} sent successfully`, response);
+
+            // Add delay between emails if not the last chunk
+            if (i < chunks.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        }
     } catch (error) {
         console.error("BB: Error sending email:", error?.response?.data || error);
         throw error;
@@ -542,7 +557,7 @@ const trackPrices = async () => {
         }
 
         const pincode = '500064'; // Default pincode
-        
+
         if (!pincodeData[pincode]) {
             await setCookiesAganstPincode(pincode);
         }
@@ -570,7 +585,8 @@ const trackPrices = async () => {
 
         // Find products with price drops in the last 30 minutes
         const droppedProducts = await BigBasketProduct.find({
-            priceDroppedAt: { $gte: new Date(Date.now() - HALF_HOUR) }
+            priceDroppedAt: { $gte: new Date(Date.now() - HALF_HOUR) },
+            discount: { $gte: 40 }
         }).sort({ discount: -1 });
 
         // Send both email and Telegram notifications
@@ -602,7 +618,7 @@ export const startTrackingHandler = async () => {
 
 // Route handler for starting the tracking
 export const startTracking = async (req, res, next) => {
-    try {   
+    try {
         const message = await startTrackingHandler();
         res.status(200).json({ message });
     } catch (error) {

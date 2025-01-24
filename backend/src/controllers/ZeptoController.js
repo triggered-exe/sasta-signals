@@ -16,7 +16,7 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 let trackingInterval = null;
 const placesData = {};
 
-const CATEGORY_CHUNK_SIZE = 1;
+const CATEGORY_CHUNK_SIZE = 3;
 
 // Helper function to build MongoDB sort criteria based on user preference
 const buildSortCriteria = (sortOrder) => {
@@ -73,9 +73,9 @@ export const searchProducts = async (req, res, next) => {
 
 const getStoreId = async (placeName = "500081") => {
     const placeId = await getPlaceIdFromPlace(placeName);
-    console.log('got placeId', placeId);
+    console.log('Zepto: got placeId', placeId);
     const { latitude, longitude } = await getLatitudeAndLongitudeFromPlaceId(placeId);
-    console.log('got latitude and longitude', latitude, longitude);
+    console.log('Zepto: got latitude and longitude', latitude, longitude);
     const { isServiceable, storeId } = await checkLocationAvailabilityAndGetStoreId(latitude, longitude);
     console.log("Zepto: isServiceable", isServiceable, 'storeId', storeId);
     if (!isServiceable) {
@@ -467,14 +467,14 @@ const trackPrices = async (placeName = "500081") => {
         // Process categories in chunks
         for (let i = 0; i < allCategories.length; i += CATEGORY_CHUNK_SIZE) {
             const chunk = allCategories.slice(i, i + CATEGORY_CHUNK_SIZE);
-            console.log(`Processing chunk ${i / CATEGORY_CHUNK_SIZE + 1} of ${Math.ceil(allCategories.length / CATEGORY_CHUNK_SIZE)}`);
+            console.log(`Zepto: Processing chunk ${i / CATEGORY_CHUNK_SIZE + 1} of ${Math.ceil(allCategories.length / CATEGORY_CHUNK_SIZE)}`);
 
             // Process the chunk
             await processChunk(chunk, storeId);
 
             // Add delay between chunks
             if (i + CATEGORY_CHUNK_SIZE < allCategories.length) {
-                console.log('Waiting between chunks...');
+                console.log('Zepto: Waiting between chunks...');
                 await new Promise(resolve => setTimeout(resolve, 1000));
             }
         }
@@ -483,31 +483,34 @@ const trackPrices = async (placeName = "500081") => {
 
         // Find products with price drops in the last hour
         const priceDrops = await ZeptoProduct.find({
-            priceDroppedAt: { $gte: new Date(Date.now() - HALF_HOUR) }
+            priceDroppedAt: { $gte: new Date(Date.now() - HALF_HOUR) },
+            discount: { $gte: 40 }
         }).sort({ discount: -1 }).lean();
 
         if (priceDrops.length > 0) {
-            console.log(`Found ${priceDrops.length} products with price drops in the last hour`);
+            console.log(`Zepto: Found ${priceDrops.length} products with price drops in the last hour`);
             await sendPriceDropNotifications(priceDrops);
         }
 
     } catch (error) {
-        console.error('Failed to track prices:', error);
+        console.error('Zepto: Failed to track prices:', error);
     }
 };
 
 const processChunk = async (chunk, storeId) => {
     for (const category of chunk) {
-        console.log(`Processing category: ${category.name}`);
+        console.log(`Zepto: Processing category: ${category.name}`);
+
+        // category.subCategories.splice(0, category.subCategories.length - 2)
 
         // Loop through each subcategory
         for (const subcategory of category.subCategories) {
             if (subcategory.unlisted) {
-                console.log(`Skipping unlisted subcategory: ${subcategory.name}`);
+                console.log(`Zepto: Skipping unlisted subcategory: ${subcategory.name}`);
                 continue;
             }
 
-            console.log(`Fetching products for subcategory: ${subcategory.name}`);
+            console.log(`Zepto: Fetching products for subcategory: ${subcategory.name}`);
             let pageNumber = 1;
             let hasMoreProducts = true;
             let allSubcategoryProducts = [];
@@ -538,7 +541,7 @@ const processChunk = async (chunk, storeId) => {
                     await new Promise(resolve => setTimeout(resolve, 1000));
 
                 } catch (error) {
-                    console.error(`Error fetching products for subcategory ${subcategory.name}:`, error?.response?.data || error);
+                    console.error(`Zepto: Error fetching products for subcategory ${subcategory.name}:`, error?.response?.data || error);
                     hasMoreProducts = false;
                 }
             }
@@ -549,7 +552,7 @@ const processChunk = async (chunk, storeId) => {
                 const { processedCount } = await processProducts(allSubcategoryProducts, category, subcategory);
                 console.log(`Zepto: Completed processing subcategory ${subcategory.name}. Processed ${processedCount} products.`);
             }
-            
+
             await new Promise(resolve => setTimeout(resolve, 10 * 1000)); // 10 seconds delay
         }
     }
@@ -706,63 +709,77 @@ const sendTelegramMessage = async (droppedProducts) => {
 };
 
 // Sends email notification for products with price drops
-const sendEmailWithDroppedProducts = async (droppedProducts) => {
+const sendEmailWithDroppedProducts = async (sortedProducts) => {
     try {
         // Skip sending email if no dropped products
-        if (!droppedProducts || droppedProducts.length === 0) {
+        if (!sortedProducts || sortedProducts.length === 0) {
             console.log("Zepto: No dropped products to send email for");
             return;
         }
 
-        console.log(`Attempting to send email for ${droppedProducts.length} dropped products`);
+        console.log(`Zepto: Attempting to send email for ${sortedProducts.length} dropped products`);
 
-        const emailContent = `
-            <h2>Recently Dropped Products on Zepto</h2>
-            <div style="font-family: Arial, sans-serif;">
-                ${droppedProducts
-                    .map(
-                        (product) => `
-                    <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #eee; border-radius: 8px;">
-                        <a href="${product.url}"  
-                           style="text-decoration: none; color: inherit; display: block;">
-                            <div style="display: flex; align-items: center;">
-                                <img src="${product.imageUrl}" 
-                                     alt="${product.productName}" 
-                                     style="width: 100px; height: 100px; object-fit: cover; border-radius: 4px; margin-right: 15px;">
-                                <div>
-                                    <h3 style="margin: 0 0 8px 0;">${product.productName}</h3>
-                                    <p style="margin: 4px 0; color: #2f80ed;">
-                                        Current Price: ₹${product.price}
-                                        <span style="text-decoration: line-through; color: #666; margin-left: 8px;">
-                                            ₹${product.previousPrice}
-                                        </span>
-                                    </p>
-                                    <p style="margin: 4px 0; color: #219653;">
-                                        Price Drop: ₹${(product.previousPrice - product.price).toFixed(2)} (${product.discount}% off)
-                                    </p>
-                                </div>
-                            </div>
-                        </a>
-                    </div>
-                `
-                    )
-                    .join("")}
-            </div>
-        `;
-
-        // Verify Resend API key is set
-        if (!process.env.RESEND_API_KEY) {
-            throw new Error("RESEND_API_KEY is not configured");
+        // Split products into chunks of 50 each
+        const chunks = [];
+        for (let i = 0; i < sortedProducts.length; i += 50) {
+            chunks.push(sortedProducts.slice(i, i + 50));
         }
 
-        const response = await resend.emails.send({
-            from: "onboarding@resend.dev",
-            to: "harishanker.500apps@gmail.com",
-            subject: "🔥 Price Drops Alert - Zepto Products",
-            html: emailContent,
-        });
+        // Send email for each chunk
+        for (let i = 0; i < chunks.length; i++) {
+            const emailContent = `
+                <h2>Recently Dropped Products on Zepto (Part ${i + 1}/${chunks.length})</h2>
+                <div style="font-family: Arial, sans-serif;">
+                    ${chunks[i]
+                        .map(
+                            (product) => `
+                        <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #eee; border-radius: 8px;">
+                            <a href="${product.url}"  
+                               style="text-decoration: none; color: inherit; display: block;">
+                                <div style="display: flex; align-items: center;">
+                                    <img src="${product.imageUrl}" 
+                                         alt="${product.productName}" 
+                                         style="width: 100px; height: 100px; object-fit: cover; border-radius: 4px; margin-right: 15px;">
+                                    <div>
+                                        <h3 style="margin: 0 0 8px 0;">${product.productName}</h3>
+                                        <p style="margin: 4px 0; color: #2f80ed;">
+                                            Current Price: ₹${product.price}
+                                            <span style="text-decoration: line-through; color: #666; margin-left: 8px;">
+                                                ₹${product.previousPrice}
+                                            </span>
+                                        </p>
+                                        <p style="margin: 4px 0; color: #219653;">
+                                            Price Drop: ₹${(product.previousPrice - product.price).toFixed(2)} (${product.discount}% off)
+                                        </p>
+                                    </div>
+                                </div>
+                            </a>
+                        </div>
+                    `
+                        )
+                        .join("")}
+                </div>
+            `;
 
-        console.log("Zepto: Email sent successfully", response);
+            // Verify Resend API key is set
+            if (!process.env.RESEND_API_KEY) {
+                throw new Error("RESEND_API_KEY is not configured");
+            }
+
+            const response = await resend.emails.send({
+                from: "onboarding@resend.dev",
+                to: "harishanker.500apps@gmail.com",
+                subject: `🔥 Price Drops Alert - Zepto (Part ${i + 1}/${chunks.length}, ${chunks[i].length} products)`,
+                html: emailContent,
+            });
+
+            console.log(`Zepto: Email part ${i + 1}/${chunks.length} sent successfully`, response);
+
+            // Add a small delay between emails to avoid rate limiting
+            if (i < chunks.length - 1) {
+                await new Promise((resolve) => setTimeout(resolve, 1000));
+            }
+        }
     } catch (error) {
         console.error("Zepto: Error sending email:", error?.response?.data || error);
         throw error;
