@@ -26,28 +26,10 @@ const zeptoProductSchema = new mongoose.Schema({
         type: Date,
         default: null
     },
-    createdAt: { type: Date },
-    updatedAt: { type: Date },
-
-    // Additional fields from Zepto API
-    description: { type: String, default: '' },
-    ingredients: { type: String, default: '' },
-    countryOfOrigin: { type: String, default: '' },
-    manufacturerName: { type: String, default: '' },
-    manufacturerAddress: { type: String, default: '' },
-    howToUse: { type: String, default: '' },
-    searchKeywords: [{ type: String }],
-    imported: { type: Boolean, default: false },
-    minimumRequiredAge: { type: Number, default: 0 },
-    discountApplicable: { type: Boolean, default: false },
-    rating: { type: Number, default: 0 },
-    totalRatings: { type: Number, default: 0 },
-    maxAllowedQuantity: { type: Number, default: 0 },
-    shelfLife: { type: String, default: '' },
-    storageInstructions: { type: String, default: '' },
-    packagingType: { type: String, default: '' },
-    fssaiLicense: { type: String, default: '' },
-    nutritionalInfo: { type: String, default: '' }
+}, { 
+    collection: 'zepto_products',
+    strict: true,
+    timestamps: true
 });
 
 // Indexes for commonly queried fields
