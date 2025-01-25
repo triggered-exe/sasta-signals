@@ -329,7 +329,7 @@ export const getCategoriesHandler = async (req, res, next) => {
 const fetchCategories = async (placeName = "500081") => {
     try {
         if (placesData[placeName] && placesData[placeName].categories) {
-            return placesData[placeName];
+            return placesData[placeName].categories;
         }
         // Step1: Get the storeId
         const storeId = await getStoreId(placeName);
