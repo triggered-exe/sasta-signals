@@ -33,7 +33,6 @@ const zeptoProductSchema = new mongoose.Schema({
 });
 
 // Indexes for commonly queried fields
-zeptoProductSchema.index({ productId: 1 });
 zeptoProductSchema.index({ price: 1 });
 zeptoProductSchema.index({ priceDroppedAt: 1 });
 zeptoProductSchema.index({ updatedAt: 1 });
