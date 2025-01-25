@@ -498,7 +498,18 @@ const trackPrices = async (placeName = "500081") => {
 
             if (priceDrops.length > 0) {
                 console.log(`Zepto: Found ${priceDrops.length} products with price drops in the last hour`);
+                
+                // Send notifications
                 await sendPriceDropNotifications(priceDrops);
+                
+                // Mark these products as notified
+                const productIds = priceDrops.map(product => product.productId);
+                await ZeptoProduct.updateMany(
+                    { productId: { $in: productIds } },
+                    { $set: { notified: true } }
+                );
+                
+                console.log(`Zepto: Marked ${productIds.length} products as notified`);
             }
 
         } catch (error) {
@@ -640,8 +651,6 @@ const processProducts = async (products, category, subcategory) => {
                     productData.previousPrice = existingProduct.price;
                     productData.priceDroppedAt = now;
                 } else {
-                    // It might have been dropped and notified, so marking it as notified
-                    productData.notified = true;
                     // Preserve existing price history if no drop
                     if (existingProduct.previousPrice) {
                         productData.previousPrice = existingProduct.previousPrice;

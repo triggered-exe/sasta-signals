@@ -319,7 +319,6 @@ const processProducts = async (products, category) => {
                     productData.previousPrice = existingProduct.price;
                     productData.priceDroppedAt = now;
                 } else {
-                    productData.notified = true;
                     // Preserve existing price history if no drop
                     if (existingProduct.previousPrice) {
                         productData.previousPrice = existingProduct.previousPrice;
@@ -390,7 +389,7 @@ const fetchProductsForCategoryInChunks = async (category, pincode) => {
             if (error.response?.status === 429) {
                 console.log(`BB: Rate limited for category ${category.name}, waiting before retry...`);
                 retryCount++;
-                
+
                 if (retryCount > MAX_RETRIES) {
                     console.error(`BB: Max retries reached for category ${category.name}, moving on...`);
                     break;
@@ -398,7 +397,7 @@ const fetchProductsForCategoryInChunks = async (category, pincode) => {
 
                 // Wait for progressively longer times between retries (1m, 2m, 3m)
                 const waitTime = retryCount * 60 * 1000;
-                console.log(`BB: Waiting ${waitTime/1000} seconds before retry ${retryCount}/${MAX_RETRIES}`);
+                console.log(`BB: Waiting ${waitTime / 1000} seconds before retry ${retryCount}/${MAX_RETRIES}`);
                 await new Promise(resolve => setTimeout(resolve, waitTime));
                 continue;
             }
@@ -630,6 +629,13 @@ const trackPrices = async () => {
                     sendTelegramMessage(priceDrops)
                 ]);
             }
+
+            // Mark these products as notified
+            const productIds = priceDrops.map(product => product.productId);
+            await BigBasketProduct.updateMany(
+                { productId: { $in: productIds } },
+                { $set: { notified: true } }
+            );
 
         } catch (error) {
             console.error('BB: Failed to track prices:', error);
