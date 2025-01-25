@@ -315,9 +315,11 @@ const processProducts = async (products, category) => {
             if (existingProduct) {
                 // If price has dropped, update price history
                 if (currentPrice < existingProduct.price) {
+                    productData.notified = false;
                     productData.previousPrice = existingProduct.price;
                     productData.priceDroppedAt = now;
                 } else {
+                    productData.notified = true;
                     // Preserve existing price history if no drop
                     if (existingProduct.previousPrice) {
                         productData.previousPrice = existingProduct.previousPrice;
@@ -617,7 +619,8 @@ const trackPrices = async () => {
             // Find products with price drops in the last 30 minutes
             const priceDrops = await BigBasketProduct.find({
                 priceDroppedAt: { $gte: new Date(Date.now() - HALF_HOUR) },
-                discount: { $gte: 40 }
+                discount: { $gte: 40 },
+                notified: false
             }).sort({ discount: -1 }).lean();
 
             if (priceDrops.length > 0) {
