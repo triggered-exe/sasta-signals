@@ -14,8 +14,18 @@ const zeptoProductSchema = new mongoose.Schema({
     brand: { type: String },
     url: { type: String },
     eta: { type: String },
-    previousPrice: { type: Number },
-    priceDroppedAt: { type: Date },
+    notified: {
+        type: Boolean,
+        default: false
+    },
+    previousPrice: {
+        type: Number,
+        default: null
+    },
+    priceDroppedAt: {
+        type: Date,
+        default: null
+    },
     createdAt: { type: Date },
     updatedAt: { type: Date },
 

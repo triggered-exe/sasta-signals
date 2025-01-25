@@ -18,6 +18,10 @@ const bigBasketProductSchema = new mongoose.Schema({
     url: String,
     mrp: Number,
     eta: String,
+    notified: {
+        type: Boolean,
+        default: false
+    },
     trackedAt: Date
 }, { 
     collection: 'bigbasket_products',

@@ -635,10 +635,12 @@ const processProducts = async (products, category, subcategory) => {
             if (existingProduct) {
                 // If price has dropped, update price history
                 if (currentPrice < existingProduct.price) {
+                    // we have to notify only if the price has dropped
                     productData.notified = false;
                     productData.previousPrice = existingProduct.price;
                     productData.priceDroppedAt = now;
                 } else {
+                    // It might have been dropped and notified, so marking it as notified
                     productData.notified = true;
                     // Preserve existing price history if no drop
                     if (existingProduct.previousPrice) {
