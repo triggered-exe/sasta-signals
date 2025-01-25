@@ -356,6 +356,8 @@ const fetchProductsForCategoryInChunks = async (category, pincode) => {
     let allProducts = [];
     let currentPage = 1;
     let hasMorePages = true;
+    let retryCount = 0;
+    const MAX_RETRIES = 3;
 
     // First fetch all products
     while (hasMorePages) {
@@ -381,10 +383,24 @@ const fetchProductsForCategoryInChunks = async (category, pincode) => {
 
             allProducts = [...allProducts, ...products];
             currentPage++;
-
-            // Add delay between pages to avoid rate limiting
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            retryCount = 0; // Reset retry count on successful request
         } catch (error) {
+            if (error.response?.status === 429) {
+                console.log(`BB: Rate limited for category ${category.name}, waiting before retry...`);
+                retryCount++;
+                
+                if (retryCount > MAX_RETRIES) {
+                    console.error(`BB: Max retries reached for category ${category.name}, moving on...`);
+                    break;
+                }
+
+                // Wait for progressively longer times between retries (1m, 2m, 3m)
+                const waitTime = retryCount * 60 * 1000;
+                console.log(`BB: Waiting ${waitTime/1000} seconds before retry ${retryCount}/${MAX_RETRIES}`);
+                await new Promise(resolve => setTimeout(resolve, waitTime));
+                continue;
+            }
+
             console.error(`BB: Error processing page ${currentPage} for category ${category.name}:`, error);
             break;
         }
@@ -535,11 +551,6 @@ const sendEmailWithDroppedProducts = async (sortedProducts) => {
             });
 
             console.log(`BB: Email part ${i + 1}/${chunks.length} sent successfully`, response);
-
-            // Add delay between emails if not the last chunk
-            if (i < chunks.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            }
         }
     } catch (error) {
         console.error("BB: Error sending email:", error?.response?.data || error);
@@ -547,74 +558,94 @@ const sendEmailWithDroppedProducts = async (sortedProducts) => {
     }
 };
 
+const processChunk = async (chunk, pincode) => {
+    for (const category of chunk) {
+        console.log(`BB: Processing category: ${category.name}`);
+
+        // Loop through each subcategory
+        const products = await fetchProductsForCategoryInChunks(category, pincode);
+        if (products.length > 0) {
+            console.log(`BB: Processing ${products.length} total products for category ${category.name}`);
+            const { processedCount } = await processProducts(products, category);
+            console.log(`BB: Completed processing category ${category.name}. Processed ${processedCount} products.`);
+        }
+        // await new Promise(resolve => setTimeout(resolve, 5 * 1000)); // 5 seconds delay
+    }
+};
+
 // Main tracking function (not a route handler)
 const trackPrices = async () => {
-    try {
-        // Skip if it's night time (12 AM to 6 AM IST)
-        if (isNightTimeIST()) {
-            console.log("BB: Skipping price tracking during night hours");
-            return;
+    while (true) {
+        try {
+            // Skip if it's night time (12 AM to 6 AM IST)
+            if (isNightTimeIST()) {
+                console.log("BB: Skipping price tracking during night hours");
+                // Wait for 5 minutes before checking night time status again
+                await new Promise(resolve => setTimeout(resolve, 5 * 60 * 1000));
+                continue;
+            }
+
+            console.log("BB: Starting new tracking cycle at:", new Date().toISOString());
+
+            const pincode = '500064'; // Default pincode
+            if (!pincodeData[pincode]) {
+                await setCookiesAganstPincode(pincode);
+            }
+
+            const categories = await fetchCategories(); // Contains all the final categories in flattened format
+            if (!categories || categories.length === 0) {
+                console.log("BB: No categories found");
+                continue;
+            }
+
+            // Process categories in parallel chunks
+            const CATEGORY_CHUNK_SIZE = 3;
+            const categoryChunks = [];
+            for (let i = 0; i < categories.length; i += CATEGORY_CHUNK_SIZE) {
+                categoryChunks.push(categories.slice(i, i + CATEGORY_CHUNK_SIZE));
+            }
+
+            console.log("BB: Starting to fetch products for all categories");
+
+            for (const chunk of categoryChunks) {
+                console.log(`BB: Processing chunk ${categoryChunks.indexOf(chunk) + 1} of ${categoryChunks.length}`);
+                await processChunk(chunk, pincode);
+            }
+
+            console.log("BB: Finished tracking prices for all categories");
+
+            // Find products with price drops in the last 30 minutes
+            const priceDrops = await BigBasketProduct.find({
+                priceDroppedAt: { $gte: new Date(Date.now() - HALF_HOUR) },
+                discount: { $gte: 40 }
+            }).sort({ discount: -1 }).lean();
+
+            if (priceDrops.length > 0) {
+                console.log(`BB: Found ${priceDrops.length} products with price drops in the last hour`);
+                await Promise.all([
+                    sendEmailWithDroppedProducts(priceDrops),
+                    sendTelegramMessage(priceDrops)
+                ]);
+            }
+
+        } catch (error) {
+            console.error('BB: Failed to track prices:', error);
+        } finally {
+            console.log("BB: Tracking cycle completed at:", new Date().toISOString());
+            // Add a small delay before starting the next cycle to prevent overwhelming the system
+            await new Promise(resolve => setTimeout(resolve, 60 * 1000));
         }
-
-        const pincode = '500064'; // Default pincode
-
-        if (!pincodeData[pincode]) {
-            await setCookiesAganstPincode(pincode);
-        }
-
-        const categories = await fetchCategories();
-
-        // Process categories in parallel chunks
-        const CATEGORY_CHUNK_SIZE = 3;
-        const categoryChunks = [];
-        for (let i = 0; i < categories.length; i += CATEGORY_CHUNK_SIZE) {
-            categoryChunks.push(categories.slice(i, i + CATEGORY_CHUNK_SIZE));
-        }
-
-        for (const chunk of categoryChunks) {
-            await Promise.all(chunk.map(async (category) => {
-                try {
-                    const products = await fetchProductsForCategoryInChunks(category, pincode);
-                    await new Promise(resolve => setTimeout(resolve, 10 * 1000)); // 10 seconds delay
-                } catch (error) {
-                    console.error(`BB: Error processing category ${category.name}:`, error);
-                }
-            }));
-
-        }
-
-        // Find products with price drops in the last 30 minutes
-        const droppedProducts = await BigBasketProduct.find({
-            priceDroppedAt: { $gte: new Date(Date.now() - HALF_HOUR) },
-            discount: { $gte: 40 }
-        }).sort({ discount: -1 });
-
-        // Send both email and Telegram notifications
-        await Promise.all([
-            sendEmailWithDroppedProducts(droppedProducts),
-            sendTelegramMessage(droppedProducts)
-        ]);
-
-        console.log('BB: droppedProducts', droppedProducts.length);
-        console.log('BB: Crawl completed at:', new Date().toISOString());
-    } catch (error) {
-        console.error('BB: Failed to crawl categories:', error);
     }
 };
 
 export const startTrackingHandler = async () => {
     console.log("BB: starting tracking");
-    let message = "BigBasket price tracking started";
-    if (trackingInterval) {
-        clearInterval(trackingInterval);
-        trackingInterval = null;
-        message = "BB: Restarted BigBasket price tracking";
-    }
-
-    trackingInterval = setInterval(() => trackPrices(), HALF_HOUR);
-    await trackPrices(); // Run immediately for the first time
-    return message;
-}
+    // Start the continuous tracking loop without awaiting it
+    trackPrices().catch(error => {
+        console.error('BB: Failed in tracking loop:', error);
+    });
+    return "BigBasket price tracking started";
+};
 
 // Route handler for starting the tracking
 export const startTracking = async (req, res, next) => {

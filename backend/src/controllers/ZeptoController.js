@@ -433,75 +433,86 @@ export const startTracking = async (req, res, next) => {
 
 export const startTrackingHandler = async () => {
     console.log("Zepto: starting tracking");
-    let message = "Zepto price tracking started";
-    if (trackingInterval) {
-        clearInterval(trackingInterval);
-        trackingInterval = null;
-        message = "Restarted Zepto price tracking";
-    }
-
-    trackingInterval = setInterval(() => trackPrices(), HALF_HOUR);
-    await trackPrices(); // Run immediately for the first time
-    return message;
+    // Start the continuous tracking loop without awaiting it
+    trackPrices().catch(error => {
+        console.error('Zepto: Failed in tracking loop:', error);
+    });
+    return "Zepto price tracking started";
 };
 
 const trackPrices = async (placeName = "500081") => {
-    try {
-        // Skip if it's night time (12 AM to 6 AM IST)
-        if (isNightTimeIST()) {
-            console.log("Zepto: Skipping price tracking during night hours");
-            return;
-        }
-
-        // Step1: Get the categories
-        const categories = await fetchCategories(placeName);
-        const storeId = placesData[placeName].storeId;
-
-        console.log("Zepto: Starting to fetch products for all categories");
-
-        // Flatten categories from all groups into a single array
-        const allCategories = categories.reduce((acc, group) => {
-            return acc.concat(group.categories);
-        }, []);
-
-        // Process categories in chunks
-        for (let i = 0; i < allCategories.length; i += CATEGORY_CHUNK_SIZE) {
-            const chunk = allCategories.slice(i, i + CATEGORY_CHUNK_SIZE);
-            console.log(`Zepto: Processing chunk ${i / CATEGORY_CHUNK_SIZE + 1} of ${Math.ceil(allCategories.length / CATEGORY_CHUNK_SIZE)}`);
-
-            // Process the chunk
-            await processChunk(chunk, storeId);
-
-            // Add delay between chunks
-            if (i + CATEGORY_CHUNK_SIZE < allCategories.length) {
-                console.log('Zepto: Waiting between chunks...');
-                await new Promise(resolve => setTimeout(resolve, 1000));
+    while (true) {
+        try {
+            // Skip if it's night time (12 AM to 6 AM IST)
+            if (isNightTimeIST()) {
+                console.log("Zepto: Skipping price tracking during night hours");
+                // Wait for 5 minutes before checking night time status again
+                await new Promise(resolve => setTimeout(resolve, 5 * 60 * 1000));
+                continue;
             }
+
+            console.log("Zepto: Starting new tracking cycle at:", new Date().toISOString());
+
+            // Step1: Get the categories
+            const categories = await fetchCategories(placeName);
+            const storeId = placesData[placeName].storeId;
+
+            console.log("Zepto: Starting to fetch products for all categories");
+
+            if (!categories || categories.length === 0) {
+                console.log("Zepto: No categories found");
+                continue;
+            }
+
+            // Randomize the categories
+            const randomizedCategories = categories.sort(() => Math.random() - 0.5);
+
+            // Flatten categories from all groups into a single array
+            const allCategories = categories.reduce((acc, group) => {
+                return acc.concat(group.categories);
+            }, []);
+
+            // Process categories in chunks
+            for (let i = 0; i < allCategories.length; i += CATEGORY_CHUNK_SIZE) {
+                const chunk = allCategories.slice(i, i + CATEGORY_CHUNK_SIZE);
+                console.log(`Zepto: Processing chunk ${i / CATEGORY_CHUNK_SIZE + 1} of ${Math.ceil(allCategories.length / CATEGORY_CHUNK_SIZE)}`);
+
+                // Process the chunk
+                await processChunk(chunk, storeId);
+
+                // Add delay between chunks
+                if (i + CATEGORY_CHUNK_SIZE < allCategories.length) {
+                    console.log('Zepto: Waiting between chunks...');
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+            }
+
+            console.log("Zepto: Finished tracking prices for all categories");
+
+            // Find products with price drops in the last hour
+            const priceDrops = await ZeptoProduct.find({
+                priceDroppedAt: { $gte: new Date(Date.now() - HALF_HOUR) },
+                discount: { $gte: 40 }
+            }).sort({ discount: -1 }).lean();
+
+            if (priceDrops.length > 0) {
+                console.log(`Zepto: Found ${priceDrops.length} products with price drops in the last hour`);
+                await sendPriceDropNotifications(priceDrops);
+            }
+
+        } catch (error) {
+            console.error('Zepto: Failed to track prices:', error);
+        } finally {
+            console.log("Zepto: Tracking cycle completed at:", new Date().toISOString());
+            // Add a small delay before starting the next cycle to prevent overwhelming the system
+            await new Promise(resolve => setTimeout(resolve, 60 * 1000));
         }
-
-        console.log("Zepto: Finished tracking prices for all categories");
-
-        // Find products with price drops in the last hour
-        const priceDrops = await ZeptoProduct.find({
-            priceDroppedAt: { $gte: new Date(Date.now() - HALF_HOUR) },
-            discount: { $gte: 40 }
-        }).sort({ discount: -1 }).lean();
-
-        if (priceDrops.length > 0) {
-            console.log(`Zepto: Found ${priceDrops.length} products with price drops in the last hour`);
-            await sendPriceDropNotifications(priceDrops);
-        }
-
-    } catch (error) {
-        console.error('Zepto: Failed to track prices:', error);
     }
 };
 
 const processChunk = async (chunk, storeId) => {
     for (const category of chunk) {
         console.log(`Zepto: Processing category: ${category.name}`);
-
-        // category.subCategories.splice(0, category.subCategories.length - 2)
 
         // Loop through each subcategory
         for (const subcategory of category.subCategories) {
@@ -514,6 +525,8 @@ const processChunk = async (chunk, storeId) => {
             let pageNumber = 1;
             let hasMoreProducts = true;
             let allSubcategoryProducts = [];
+            let retryCount = 0;
+            const MAX_RETRIES = 3;
 
             // Collect all products for this subcategory
             while (hasMoreProducts) {
@@ -536,11 +549,25 @@ const processChunk = async (chunk, storeId) => {
 
                     allSubcategoryProducts = allSubcategoryProducts.concat(storeProducts);
                     pageNumber++;
-
-                    // Add a small delay to avoid rate limiting
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-
+                    retryCount = 0; // Reset retry count on successful request
                 } catch (error) {
+                    if (error.response?.status === 429) {
+                        console.log(`Zepto: Rate limited for subcategory ${subcategory.name}, waiting before retry...`);
+                        retryCount++;
+                        
+                        if (retryCount > MAX_RETRIES) {
+                            console.error(`Zepto: Max retries reached for subcategory ${subcategory.name}, moving on...`);
+                            hasMoreProducts = false;
+                            break;
+                        }
+
+                        // Wait for progressively longer times between retries (1m, 2m, 3m)
+                        const waitTime = retryCount * 60 * 1000;
+                        console.log(`Zepto: Waiting ${waitTime/1000} seconds before retry ${retryCount}/${MAX_RETRIES}`);
+                        await new Promise(resolve => setTimeout(resolve, waitTime));
+                        continue;
+                    }
+
                     console.error(`Zepto: Error fetching products for subcategory ${subcategory.name}:`, error?.response?.data || error);
                     hasMoreProducts = false;
                 }
@@ -552,8 +579,6 @@ const processChunk = async (chunk, storeId) => {
                 const { processedCount } = await processProducts(allSubcategoryProducts, category, subcategory);
                 console.log(`Zepto: Completed processing subcategory ${subcategory.name}. Processed ${processedCount} products.`);
             }
-
-            await new Promise(resolve => setTimeout(resolve, 10 * 1000)); // 10 seconds delay
         }
     }
 };
