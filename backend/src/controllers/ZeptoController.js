@@ -231,7 +231,7 @@ const searchProductsFromZeptoHelper = async (query, storeId) => {
                                     sub: productData.primarySubcategoryName,
                                     leaf: productData.l3CategoriesDetail?.[0]?.name
                                 },
-                                url: `https://www.zeptonow.com/product/${product.id}`,
+                                url: `https://www.zeptonow.com/pn/${product.name.toLowerCase().replace(/\s+/g, '-')}/pvid/${variant.id}`,
                                 attributes: variant.l4Attributes || {}
                             };
                         });
@@ -626,7 +626,7 @@ const processProducts = async (products, category, subcategory) => {
                 discount: storeProduct.discountPercent || 0,
                 weight: `${variant.packsize} ${variant.unitOfMeasure.toLowerCase()}`,
                 brand: product.brand || '',
-                url: storeProduct.deeplinkUrl || '',
+                url: `https://www.zeptonow.com/pn/${product.name.toLowerCase().replace(/\s+/g, '-')}/pvid/${variant.id}`,
                 eta: variant.shelfLifeInHours || '',
                 updatedAt: now
             };
