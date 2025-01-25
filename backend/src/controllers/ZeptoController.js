@@ -546,6 +546,10 @@ const processChunk = async (chunk, storeId) => {
 
                     const storeProducts = response.data?.storeProducts || [];
                     hasMoreProducts = !response.data?.endOfList;
+                    // Sometimes the endOfList is false but the products are empty
+                    if(hasMoreProducts){
+                        hasMoreProducts = storeProducts.length > 0;
+                    }
 
                     allSubcategoryProducts = allSubcategoryProducts.concat(storeProducts);
                     pageNumber++;
