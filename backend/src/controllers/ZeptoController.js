@@ -13,7 +13,7 @@ const TELEGRAM_CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID;
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Global variables
-let trackingInterval = null;
+let isTrackingActive = false;
 const placesData = {};
 
 const CATEGORY_CHUNK_SIZE = 3;
@@ -643,6 +643,11 @@ const processProducts = async (products, category, subcategory) => {
                 updatedAt: now,
                 notified: true  // Always set notified field when processing products
             };
+            
+            // if the price didnt change then dont update the product
+            if(existingProduct && existingProduct.price === currentPrice){
+                continue;
+            }
             
             if (existingProduct) {
                 if(existingProduct.productId === "54a0f7ad-26c5-4dc3-b998-f6189d4cd0db"){

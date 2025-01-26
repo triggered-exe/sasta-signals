@@ -6,3 +6,12 @@ export const isNightTimeIST = () => {
     const hours = istTime.getUTCHours();
     return hours >= 0 && hours < 6;
 };
+
+// Utility function to split arrays into smaller chunks for batch processing
+export const chunk = (array, size) => {
+    const chunks = [];
+    for (let i = 0; i < array.length; i += size) {
+      chunks.push(array.slice(i, i + size));
+    }
+    return chunks;
+  };

@@ -313,6 +313,11 @@ const processProducts = async (products, category) => {
                 notified: true
             };
 
+            // if the price didnt change then dont update the product
+            if(existingProduct && existingProduct.price === currentPrice){
+                continue;
+            }
+
             if (existingProduct) {
                 // If price has dropped, update price history
                 if (currentPrice < existingProduct.price) {
