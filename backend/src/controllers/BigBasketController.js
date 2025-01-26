@@ -444,16 +444,19 @@ const sendTelegramMessage = async (droppedProducts) => {
             return;
         }
 
-        // Create product entries
+        // Create product entries with current and previous prices/discounts
         const productEntries = filteredProducts.map((product) => {
-            return `<a href="${product.url}">` +
-                `${product.productName}\n` +
-                `💰 ₹${product.price} (was ₹${product.previousPrice})\n` +
-                `📉 Drop: ${product.discount}%` +
-                `</a>\n`;
+            const prevDiscount = Math.floor(((product.mrp - product.previousPrice) / product.mrp) * 100);
+            return (
+                `<b>${product.productName}</b>\n` +
+                `Current: ₹${product.price} (${product.discount}% off)\n` +
+                `Previous: ₹${product.previousPrice} (${prevDiscount}% off)\n` +
+                `MRP: ₹${product.mrp}\n` +
+                `<a href="${product.url}">View on BigBasket</a>\n`
+            );
         });
 
-        // Split into chunks of 10 products each
+        // Split into chunks of 15 products each
         const chunks = [];
         for (let i = 0; i < productEntries.length; i += 15) {
             chunks.push(productEntries.slice(i, i + 15));
@@ -477,11 +480,11 @@ const sendTelegramMessage = async (droppedProducts) => {
 
             // Add a small delay between messages to avoid rate limiting
             if (i < chunks.length - 1) {
-                await new Promise((resolve) => setTimeout(resolve, 1000));
+                await new Promise(resolve => setTimeout(resolve, 1000));
             }
         }
     } catch (error) {
-        console.error("Error in Telegram message preparation:", error?.response?.data || error);
+        console.error("BB: Error in Telegram message preparation:", error?.response?.data || error);
     }
 };
 
@@ -494,7 +497,7 @@ const sendEmailWithDroppedProducts = async (sortedProducts) => {
             return;
         }
 
-        console.log(`Attempting to send email for ${sortedProducts.length} dropped products`);
+        console.log(`BB: Attempting to send email for ${sortedProducts.length} dropped products`);
 
         // Split products into chunks of 50 each
         const chunks = [];
@@ -504,38 +507,43 @@ const sendEmailWithDroppedProducts = async (sortedProducts) => {
 
         // Send email for each chunk
         for (let i = 0; i < chunks.length; i++) {
-            const chunk = chunks[i];
             const emailContent = `
                 <h2>Recently Dropped Products on BigBasket (Part ${i + 1}/${chunks.length})</h2>
                 <div style="font-family: Arial, sans-serif;">
-                    ${chunk
-                    .map(
-                        (product) => `
-                        <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #eee; border-radius: 8px;">
-                            <a href="${product.url}"  
-                               style="text-decoration: none; color: inherit; display: block;">
-                                <div style="display: flex; align-items: center;">
-                                    <img src="${product.imageUrl}" 
-                                         alt="${product.productName}" 
-                                         style="width: 100px; height: 100px; object-fit: cover; border-radius: 4px; margin-right: 15px;">
-                                    <div>
-                                        <h3 style="margin: 0 0 8px 0;">${product.productName}</h3>
-                                        <p style="margin: 4px 0; color: #2f80ed;">
-                                            Current Price: ₹${product.price}
-                                            <span style="text-decoration: line-through; color: #666; margin-left: 8px;">
-                                                ₹${product.previousPrice}
-                                            </span>
-                                        </p>
-                                        <p style="margin: 4px 0; color: #219653;">
-                                            Price Drop: ₹${(product.previousPrice - product.price).toFixed(2)} (${product.discount}% off)
-                                        </p>
-                                    </div>
+                    ${chunks[i]
+                        .map(
+                            (product) => {
+                                const prevDiscount = Math.floor(((product.mrp - product.previousPrice) / product.mrp) * 100);
+                                return `
+                                <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #eee; border-radius: 8px;">
+                                    <a href="${product.url}"  
+                                       style="text-decoration: none; color: inherit; display: block;">
+                                        <div style="display: flex; align-items: center;">
+                                            <img src="${product.imageUrl}" 
+                                                 alt="${product.productName}" 
+                                                 style="width: 100px; height: 100px; object-fit: cover; border-radius: 4px; margin-right: 15px;">
+                                            <div>
+                                                <h3 style="margin: 0 0 8px 0;">${product.productName}</h3>
+                                                <p style="margin: 4px 0; color: #2f80ed;">
+                                                    Current: ₹${product.price} (${product.discount}% off)
+                                                </p>
+                                                <p style="margin: 4px 0; color: #666;">
+                                                    Previous: ₹${product.previousPrice} (${prevDiscount}% off)
+                                                </p>
+                                                <p style="margin: 4px 0; text-decoration: line-through; color: #666;">
+                                                    MRP: ₹${product.mrp}
+                                                </p>
+                                                <p style="margin: 4px 0; color: #219653;">
+                                                    Price Drop: ₹${(product.previousPrice - product.price).toFixed(2)}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </a>
                                 </div>
-                            </a>
-                        </div>
-                    `
-                    )
-                    .join("")}
+                            `
+                            }
+                        )
+                        .join("")}
                 </div>
             `;
 
@@ -547,11 +555,16 @@ const sendEmailWithDroppedProducts = async (sortedProducts) => {
             const response = await resend.emails.send({
                 from: "onboarding@resend.dev",
                 to: "harishanker.500apps@gmail.com",
-                subject: `🔥 Price Drops Alert - BigBasket Products (Part ${i + 1}/${chunks.length})`,
+                subject: `🔥 Price Drops Alert - BigBasket (Part ${i + 1}/${chunks.length}, ${chunks[i].length} products)`,
                 html: emailContent,
             });
 
             console.log(`BB: Email part ${i + 1}/${chunks.length} sent successfully`, response);
+
+            // Add a small delay between emails to avoid rate limiting
+            if (i < chunks.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
         }
     } catch (error) {
         console.error("BB: Error sending email:", error?.response?.data || error);
@@ -619,7 +632,7 @@ const trackPrices = async () => {
             const priceDrops = await BigBasketProduct.find({
                 priceDroppedAt: { $gte: new Date(Date.now() - HALF_HOUR) },
                 discount: { $gte: 40 },
-                notified: false
+                notified: { $exists: true, $eq: false }
             }).sort({ discount: -1 }).lean();
 
             if (priceDrops.length > 0) {

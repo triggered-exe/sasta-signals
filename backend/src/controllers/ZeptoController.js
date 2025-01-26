@@ -712,12 +712,14 @@ const sendTelegramMessage = async (droppedProducts) => {
             return;
         }
 
-        // Create product entries
+        // Create product entries with current and previous prices/discounts
         const productEntries = filteredProducts.map((product) => {
+            const prevDiscount = Math.floor(((product.mrp - product.previousPrice) / product.mrp) * 100);
             return (
                 `<b>${product.productName}</b>\n` +
-                `💰 ₹${product.price} (was ₹${product.previousPrice})\n` +
-                `📉 Drop: ${product.discount}%\n` +
+                `Current: ₹${product.price} (${product.discount}% off)\n` +
+                `Previous: ₹${product.previousPrice} (${prevDiscount}% off)\n` +
+                `MRP: ₹${product.mrp}\n` +
                 `<a href="${product.url}">View on Zepto</a>\n`
             );
         });
@@ -778,30 +780,36 @@ const sendEmailWithDroppedProducts = async (sortedProducts) => {
                 <div style="font-family: Arial, sans-serif;">
                     ${chunks[i]
                         .map(
-                            (product) => `
-                        <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #eee; border-radius: 8px;">
-                            <a href="${product.url}"  
-                               style="text-decoration: none; color: inherit; display: block;">
-                                <div style="display: flex; align-items: center;">
-                                    <img src="${product.imageUrl}" 
-                                         alt="${product.productName}" 
-                                         style="width: 100px; height: 100px; object-fit: cover; border-radius: 4px; margin-right: 15px;">
-                                    <div>
-                                        <h3 style="margin: 0 0 8px 0;">${product.productName}</h3>
-                                        <p style="margin: 4px 0; color: #2f80ed;">
-                                            Current Price: ₹${product.price}
-                                            <span style="text-decoration: line-through; color: #666; margin-left: 8px;">
-                                                ₹${product.previousPrice}
-                                            </span>
-                                        </p>
-                                        <p style="margin: 4px 0; color: #219653;">
-                                            Price Drop: ₹${(product.previousPrice - product.price).toFixed(2)} (${product.discount}% off)
-                                        </p>
-                                    </div>
+                            (product) => {
+                                const prevDiscount = Math.floor(((product.mrp - product.previousPrice) / product.mrp) * 100);
+                                return `
+                                <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #eee; border-radius: 8px;">
+                                    <a href="${product.url}"  
+                                       style="text-decoration: none; color: inherit; display: block;">
+                                        <div style="display: flex; align-items: center;">
+                                            <img src="${product.imageUrl}" 
+                                                 alt="${product.productName}" 
+                                                 style="width: 100px; height: 100px; object-fit: cover; border-radius: 4px; margin-right: 15px;">
+                                            <div>
+                                                <h3 style="margin: 0 0 8px 0;">${product.productName}</h3>
+                                                <p style="margin: 4px 0; color: #2f80ed;">
+                                                    Current: ₹${product.price} (${product.discount}% off)
+                                                </p>
+                                                <p style="margin: 4px 0; color: #666;">
+                                                    Previous: ₹${product.previousPrice} (${prevDiscount}% off)
+                                                </p>
+                                                <p style="margin: 4px 0; text-decoration: line-through; color: #666;">
+                                                    MRP: ₹${product.mrp}
+                                                </p>
+                                                <p style="margin: 4px 0; color: #219653;">
+                                                    Price Drop: ₹${(product.previousPrice - product.price).toFixed(2)}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </a>
                                 </div>
-                            </a>
-                        </div>
-                    `
+                            `
+                            }
                         )
                         .join("")}
                 </div>
@@ -823,7 +831,7 @@ const sendEmailWithDroppedProducts = async (sortedProducts) => {
 
             // Add a small delay between emails to avoid rate limiting
             if (i < chunks.length - 1) {
-                await new Promise((resolve) => setTimeout(resolve, 1000));
+                await new Promise(resolve => setTimeout(resolve, 1000));
             }
         }
     } catch (error) {
