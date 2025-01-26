@@ -192,7 +192,7 @@ const processCategoriesChunk = async (categoryChunk, storeId, cookie) => {
                   .flatMap((widget) => widget.data || [])
                   .filter((product) => product);
 
-                // console.log(`IM: Found ${products.length} products in subcategory ${subCategory.name}`);
+                console.log(`IM: Found ${products.length} products in subcategory ${subCategory.name}`);
 
                 if (!products.length) {
                   console.log("IM: no products found in subcategory", subCategory.name);
