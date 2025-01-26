@@ -20,7 +20,7 @@ const bigBasketProductSchema = new mongoose.Schema({
     eta: String,
     notified: {
         type: Boolean,
-        default: false
+        default: true
     },
     trackedAt: Date
 }, { 

@@ -309,7 +309,8 @@ const processProducts = async (products, category) => {
                 brand: product.brand?.name,
                 url: `https://www.bigbasket.com${product.absolute_url}`,
                 eta: product.availability?.medium_eta,
-                updatedAt: now
+                updatedAt: now,
+                notified: true
             };
 
             if (existingProduct) {

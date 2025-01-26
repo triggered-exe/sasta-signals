@@ -658,9 +658,6 @@ const processProducts = async (products, category, subcategory) => {
                     if (existingProduct.priceDroppedAt) {
                         productData.priceDroppedAt = existingProduct.priceDroppedAt;
                     }
-                    if (existingProduct.notified !== undefined) {
-                        productData.notified = existingProduct.notified;
-                    }
                 }
             }
 
