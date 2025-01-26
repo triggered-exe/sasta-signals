@@ -683,6 +683,8 @@ const processProducts = async (products, category, subcategory) => {
 
         if (bulkOps.length > 0) {
             const result = await ZeptoProduct.bulkWrite(bulkOps, { ordered: false });
+        } else {
+            console.log("Zepto: No products to update in", subcategory.name);
         }
 
         return { processedCount: bulkOps.length };

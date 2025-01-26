@@ -350,6 +350,8 @@ const processProducts = async (products, category) => {
         if (bulkOps.length > 0) {
             const result = await BigBasketProduct.bulkWrite(bulkOps, { ordered: false });
             console.log(`BB: Processed ${bulkOps.length} products for ${category.name} with ${result.upsertedCount} inserts and ${result.modifiedCount} updates`);
+        } else {
+            console.log("BB: No products to update in", category.name);
         }
 
         return { processedCount: bulkOps.length };

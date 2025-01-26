@@ -192,7 +192,7 @@ const processCategoriesChunk = async (categoryChunk, storeId, cookie) => {
                   .flatMap((widget) => widget.data || [])
                   .filter((product) => product);
 
-                console.log(`IM: Found ${products.length} products in subcategory ${subCategory.name}`);
+                // console.log(`IM: Found ${products.length} products in subcategory ${subCategory.name}`);
 
                 if (!products.length) {
                   console.log("IM: no products found in subcategory", subCategory.name);
@@ -213,10 +213,9 @@ const processCategoriesChunk = async (categoryChunk, storeId, cookie) => {
             }
 
             if (allProducts.length > 0) {
+              console.log("IM: Processing products for subcategory", subCategory.name, "length", allProducts.length);
               const updatedCount = await processProducts(allProducts, category, subCategory);
-              console.log(`IM: Processed ${updatedCount} products in ${subCategory.name}`);
-              // Add delay after processing products
-              await new Promise(resolve => setTimeout(resolve, 1000));
+              // console.log(`IM: Processed ${updatedCount} products in ${subCategory.name}`);
             }
           } catch (error) {
             console.error(`IM: Error processing subcategory ${subCategory.name}:`, error);
@@ -597,6 +596,8 @@ const processProducts = async (products, category, subcategory) => {
     if (bulkOperations.length > 0) {
       await InstamartProduct.bulkWrite(bulkOperations, { ordered: false });
       console.log(`IM: Updated ${bulkOperations.length} variations in ${subcategory.name}`);
+    }else{
+      console.log("IM: No variations to update in", subcategory.name);
     }
 
     return bulkOperations.length;
