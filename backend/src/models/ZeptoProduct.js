@@ -13,7 +13,6 @@ const zeptoProductSchema = new mongoose.Schema({
     weight: { type: String },
     brand: { type: String },
     url: { type: String },
-    eta: { type: String },
     notified: {
         type: Boolean,
         default: true

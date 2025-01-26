@@ -605,7 +605,7 @@ const processProducts = async (products, category, subcategory) => {
         const now = new Date();
         const productIds = products
             .filter(p => !p.outOfStock)
-            .map(p => p.product.id);
+            .map(p => p.productVariant.id);
 
         // Get existing products from DB
         const existingProducts = await ZeptoProduct.find({
@@ -624,10 +624,10 @@ const processProducts = async (products, category, subcategory) => {
             const product = storeProduct.product;
             const variant = storeProduct.productVariant;
             const currentPrice = storeProduct.discountedSellingPrice / 100;
-            const existingProduct = existingProductsMap.get(product.id);
-
+            const existingProduct = existingProductsMap.get(variant.id);
+            
             const productData = {
-                productId: product.id,
+                productId: variant.id,
                 categoryName: category.name,
                 subcategoryName: subcategory.name,
                 inStock: true,
@@ -645,6 +645,9 @@ const processProducts = async (products, category, subcategory) => {
             };
             
             if (existingProduct) {
+                if(existingProduct.productId === "54a0f7ad-26c5-4dc3-b998-f6189d4cd0db"){
+                    console.log("Zepto: existingProduct", existingProduct);
+                }
                 // If price has dropped, update price history and reset notification status
                 if (currentPrice < existingProduct.price) {
                     productData.previousPrice = existingProduct.price;
@@ -663,7 +666,7 @@ const processProducts = async (products, category, subcategory) => {
 
             bulkOps.push({
                 updateOne: {
-                    filter: { productId: product.id },
+                    filter: { productId: variant.id },
                     update: {
                         $set: productData,
                         $setOnInsert: { createdAt: now }
@@ -675,7 +678,6 @@ const processProducts = async (products, category, subcategory) => {
 
         if (bulkOps.length > 0) {
             const result = await ZeptoProduct.bulkWrite(bulkOps, { ordered: false });
-            // console.log(`Zepto: Processed ${bulkOps.length} products for ${subcategory.name} with ${result.upsertedCount} inserts and ${result.modifiedCount} updates`);
         }
 
         return { processedCount: bulkOps.length };
