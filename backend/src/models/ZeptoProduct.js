@@ -16,7 +16,7 @@ const zeptoProductSchema = new mongoose.Schema({
     eta: { type: String },
     notified: {
         type: Boolean,
-        default: false
+        default: true
     },
     previousPrice: {
         type: Number,
@@ -37,5 +37,14 @@ zeptoProductSchema.index({ price: 1 });
 zeptoProductSchema.index({ priceDroppedAt: 1 });
 zeptoProductSchema.index({ updatedAt: 1 });
 zeptoProductSchema.index({ inStock: 1 });
+
+zeptoProductSchema.pre('save', function(next) {
+    console.log('Zepto: Pre-save document:', {
+        productId: this.productId,
+        notified: this.notified,
+        isNew: this.isNew
+    });
+    next();
+});
 
 export const ZeptoProduct = mongoose.model('zepto_products', zeptoProductSchema); 

@@ -479,12 +479,6 @@ const trackPrices = async (placeName = "500081") => {
 
                 // Process the chunk
                 await processChunk(chunk, storeId);
-
-                // Add delay between chunks
-                if (i + CATEGORY_CHUNK_SIZE < allCategories.length) {
-                    console.log('Zepto: Waiting between chunks...');
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                }
             }
 
             console.log("Zepto: Finished tracking prices for all categories");
@@ -493,23 +487,29 @@ const trackPrices = async (placeName = "500081") => {
             const priceDrops = await ZeptoProduct.find({
                 priceDroppedAt: { $gte: new Date(Date.now() - HALF_HOUR) },
                 discount: { $gte: 40 },
-                notified: false
+                notified: { $exists: true, $eq: false }  // Only match documents where notified exists and is false
             }).sort({ discount: -1 }).lean();
 
             if (priceDrops.length > 0) {
                 console.log(`Zepto: Found ${priceDrops.length} products with price drops in the last hour`);
                 
-                // Send notifications
-                await sendPriceDropNotifications(priceDrops);
-                
-                // Mark these products as notified
-                const productIds = priceDrops.map(product => product.productId);
-                await ZeptoProduct.updateMany(
-                    { productId: { $in: productIds } },
-                    { $set: { notified: true } }
-                );
-                
-                console.log(`Zepto: Marked ${productIds.length} products as notified`);
+                try {
+                    // Send notifications
+                    await sendPriceDropNotifications(priceDrops);
+                    
+                    // Mark these products as notified
+                    const productIds = priceDrops.map(product => product.productId);
+                    const updateResult = await ZeptoProduct.updateMany(
+                        { productId: { $in: productIds } },
+                        { 
+                            $set: { notified: true }
+                        }
+                    );
+                    
+                    console.log(`Zepto: Marked ${updateResult.modifiedCount} products as notified out of ${productIds.length} products`);
+                } catch (error) {
+                    console.error('Zepto: Error in notification process:', error);
+                }
             }
 
         } catch (error) {
@@ -640,16 +640,16 @@ const processProducts = async (products, category, subcategory) => {
                 brand: product.brand || '',
                 url: `https://www.zeptonow.com/pn/${product.name.toLowerCase().replace(/\s+/g, '-')}/pvid/${variant.id}`,
                 eta: variant.shelfLifeInHours || '',
-                updatedAt: now
+                updatedAt: now,
+                notified: true  // Always set notified field when processing products
             };
             
             if (existingProduct) {
-                // If price has dropped, update price history
+                // If price has dropped, update price history and reset notification status
                 if (currentPrice < existingProduct.price) {
-                    // we have to notify only if the price has dropped
-                    productData.notified = false;
                     productData.previousPrice = existingProduct.price;
                     productData.priceDroppedAt = now;
+                    productData.notified = false;  // Reset notification status on price drop
                 } else {
                     // Preserve existing price history if no drop
                     if (existingProduct.previousPrice) {
@@ -657,6 +657,9 @@ const processProducts = async (products, category, subcategory) => {
                     }
                     if (existingProduct.priceDroppedAt) {
                         productData.priceDroppedAt = existingProduct.priceDroppedAt;
+                    }
+                    if (existingProduct.notified !== undefined) {
+                        productData.notified = existingProduct.notified;
                     }
                 }
             }
