@@ -504,7 +504,7 @@ const fetchProductCategories = async (address = "500064") => {
 
     return placesData[address];
   } catch (error) {
-    console.error('Error fetching categories:', error?.response?.data || error);
+    console.error('IM: Error fetching categories:', error?.response?.data || error);
     throw new AppError('Failed to fetch categories', 500);
   }
 };
