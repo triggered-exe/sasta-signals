@@ -135,9 +135,6 @@ const processCategoriesChunk = async (categoryChunk, storeId, cookie) => {
               const MAX_RETRIES = 3;
 
               try {
-                // Add delay between requests to avoid rate limiting
-                await new Promise(resolve => setTimeout(resolve, 2000));
-
                 // Fetch subcategory data
                 const response = await axios.post(
                   `https://www.swiggy.com/api/instamart/category-listing/filter`,
@@ -273,7 +270,10 @@ export const trackProductPrices = async () => {
       }
 
       const droppedProducts = await InstamartProduct.find({
-        priceDroppedAt: { $gte: new Date(Date.now() - HALF_HOUR) }
+        priceDroppedAt: { $gte: new Date(Date.now() - HALF_HOUR) },
+        discount: { $gte: 40 },
+        inStock: true,
+        priceDropNotificationSent: { $exists: true, $eq: false }
       }).sort({ discount: -1 });
 
       // Send both email and Telegram notifications
@@ -286,12 +286,12 @@ export const trackProductPrices = async () => {
       console.log("IM: Tracking cycle completed at:", new Date().toISOString());
 
       // Add a delay before starting the next cycle
-      await new Promise(resolve => setTimeout(resolve, 60 * 1000));
+      await new Promise(resolve => setTimeout(resolve, 5 * 60 * 1000));
 
     } catch (error) {
       console.error("IM: Error in tracking cycle:", error);
       // Wait before retrying after error
-      await new Promise(resolve => setTimeout(resolve, 30 * 1000));
+      await new Promise(resolve => setTimeout(resolve, 5 * 60 * 1000));
     }
   }
 };
