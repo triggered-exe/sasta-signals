@@ -209,10 +209,11 @@ const processCategoriesChunk = async (categoryChunk, storeId, cookie) => {
               }
             }
 
+            // After processing products in each subcategory
             if (allProducts.length > 0) {
               console.log("IM: Processing products for subcategory", subCategory.name, "length", allProducts.length);
               const updatedCount = await processProducts(allProducts, category, subCategory);
-              // console.log(`IM: Processed ${updatedCount} products in ${subCategory.name}`);
+              console.log(`IM: Processed ${updatedCount} products in ${subCategory.name}`);
             }
           } catch (error) {
             console.error(`IM: Error processing subcategory ${subCategory.name}:`, error);
@@ -269,20 +270,6 @@ export const trackProductPrices = async () => {
         await processCategoriesChunk(categoryChunk, storeId, cookie);
       }
 
-      const droppedProducts = await InstamartProduct.find({
-        priceDroppedAt: { $gte: new Date(Date.now() - HALF_HOUR) },
-        discount: { $gte: 40 },
-        inStock: true,
-        priceDropNotificationSent: { $exists: true, $eq: false }
-      }).sort({ discount: -1 });
-
-      // Send both email and Telegram notifications
-      await Promise.all([
-        sendEmailWithDroppedProducts(droppedProducts),
-        sendTelegramMessage(droppedProducts)
-      ]);
-
-      console.log("IM: droppedProducts", droppedProducts.length);
       console.log("IM: Tracking cycle completed at:", new Date().toISOString());
 
       // Add a delay before starting the next cycle
@@ -533,6 +520,8 @@ const processProducts = async (products, category, subcategory) => {
       existingProducts.map(product => [product.variationId, product])
     );
 
+    const droppedProducts = [];
+
     const bulkOperations = allVariations
       .map(variation => {
         const currentPrice = variation.price?.offer_price || 0;
@@ -552,6 +541,19 @@ const processProducts = async (products, category, subcategory) => {
           if (currentPrice < previousPrice) {
             priceDroppedAt = new Date();
             priceDropNotificationSent = false;
+            // Add the complete product data to droppedProducts
+            droppedProducts.push({
+              productId: variation.product_id,
+              productName: variation.product_name,
+              price: currentPrice,
+              previousPrice,
+              discount: Math.floor(
+                ((variation.price?.discount_value) /
+                  variation.price?.mrp) *
+                100
+              ),
+              variationId: variation.id
+            });
           }
         }
 
@@ -592,6 +594,16 @@ const processProducts = async (products, category, subcategory) => {
         };
       })
       .filter(Boolean);
+
+    if (droppedProducts.length > 0) {
+      console.log(`IM: Found ${droppedProducts.length} dropped products in ${subcategory.name}`);
+      try {
+        await sendTelegramMessage(droppedProducts);
+      } catch (error) {
+        console.error('IM: Error sending Telegram notification:', error);
+        // Don't throw the error to continue processing
+      }
+    }
 
     if (bulkOperations.length > 0) {
       await InstamartProduct.bulkWrite(bulkOperations, { ordered: false });
@@ -686,28 +698,28 @@ const sendTelegramMessage = async (droppedProducts) => {
 
     // Filter products with discount > 59% and sort by highest discount
     const filteredProducts = droppedProducts
-      .filter((product) => product.discount > 59 && !product.priceDropNotificationSent)
+      .filter((product) => product.discount > 59)
       .sort((a, b) => b.discount - a.discount);
 
     if (filteredProducts.length === 0) {
-      console.log("IM: No products with discount > 59% or all already notified");
       return;
     }
 
     // Chunk products into groups of 10
     const productChunks = chunk(filteredProducts, 10);
-    console.log(`IM: Sending Telegram messages for ${filteredProducts.length} products in ${productChunks.length} chunks`);
+    console.log(`IM: Sending Telegram messages for ${filteredProducts.length} products`);
 
     for (let i = 0; i < productChunks.length; i++) {
       const products = productChunks[i];
-      const messageText = `🔥 <b>Latest Price Drops (Part ${i + 1}/${productChunks.length})</b>\n\n` +
+      const messageText = `🔥 <b>Instamart Price Drops</b>\n\n` +
         products.map((product) => {
           const priceDrop = product.previousPrice - product.price;
           return (
             `<b>${product.productName}</b>\n` +
-            `💰 ₹${product.price} (was ₹${product.previousPrice})\n` +
-            `📉 Drop: ₹${priceDrop.toFixed(2)} (${product.discount}%)\n` +
-            `<a href="https://www.swiggy.com/stores/instamart/item/${product.productId}">View on Instamart</a>\n`
+            `💰 Current: ₹${product.price}\n` +
+            `📊 Previous: ₹${product.previousPrice}\n` +
+            `📉 Drop: ₹${priceDrop.toFixed(2)} (${product.discount}% off)\n` +
+            `🔗 <a href="https://www.swiggy.com/stores/instamart/item/${product.productId}">View on Instamart</a>\n`
           );
         }).join("\n");
 
@@ -721,22 +733,16 @@ const sendTelegramMessage = async (droppedProducts) => {
         }
       );
 
-      // Mark these products as notified
-      const productIds = products.map(p => p.variationId);
-      await InstamartProduct.updateMany(
-        { variationId: { $in: productIds } },
-        { $set: { priceDropNotificationSent: true } }
-      );
-
       // Add delay between chunks
       if (i < productChunks.length - 1) {
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     }
 
-    console.log("IM: Telegram notifications sent and products marked as notified");
+    console.log(`IM: Sent notifications for ${filteredProducts.length} products`);
   } catch (error) {
-    console.error("IM: Error in Telegram message preparation:", error?.response?.data || error);
+    console.error("IM: Error sending Telegram message:", error?.response?.data || error);
+    throw error; // Rethrow to handle in the calling function
   }
 };
 

@@ -492,20 +492,20 @@ const trackPrices = async (placeName = "500081") => {
 
             if (priceDrops.length > 0) {
                 console.log(`Zepto: Found ${priceDrops.length} products with price drops in the last hour`);
-                
+
                 try {
                     // Send notifications
                     await sendPriceDropNotifications(priceDrops);
-                    
+
                     // Mark these products as notified
                     const productIds = priceDrops.map(product => product.productId);
                     const updateResult = await ZeptoProduct.updateMany(
                         { productId: { $in: productIds } },
-                        { 
+                        {
                             $set: { notified: true }
                         }
                     );
-                    
+
                     console.log(`Zepto: Marked ${updateResult.modifiedCount} products as notified out of ${productIds.length} products`);
                 } catch (error) {
                     console.error('Zepto: Error in notification process:', error);
@@ -559,7 +559,7 @@ const processChunk = async (chunk, storeId) => {
                     const storeProducts = response.data?.storeProducts || [];
                     hasMoreProducts = !response.data?.endOfList;
                     // Sometimes the endOfList is false but the products are empty
-                    if(hasMoreProducts){
+                    if (hasMoreProducts) {
                         hasMoreProducts = storeProducts.length > 0;
                     }
 
@@ -570,7 +570,7 @@ const processChunk = async (chunk, storeId) => {
                     if (error.response?.status === 429) {
                         console.log(`Zepto: Rate limited for subcategory ${subcategory.name}, waiting before retry...`);
                         retryCount++;
-                        
+
                         if (retryCount > MAX_RETRIES) {
                             console.error(`Zepto: Max retries reached for subcategory ${subcategory.name}, moving on...`);
                             hasMoreProducts = false;
@@ -579,7 +579,7 @@ const processChunk = async (chunk, storeId) => {
 
                         // Wait for progressively longer times between retries (1m, 2m, 3m)
                         const waitTime = retryCount * 60 * 1000;
-                        console.log(`Zepto: Waiting ${waitTime/1000} seconds before retry ${retryCount}/${MAX_RETRIES}`);
+                        console.log(`Zepto: Waiting ${waitTime / 1000} seconds before retry ${retryCount}/${MAX_RETRIES}`);
                         await new Promise(resolve => setTimeout(resolve, waitTime));
                         continue;
                     }
@@ -616,6 +616,7 @@ const processProducts = async (products, category, subcategory) => {
         const existingProductsMap = new Map(
             existingProducts.map(p => [p.productId, p])
         );
+        const droppedProducts = [];
 
         // Process each product
         for (const storeProduct of products) {
@@ -625,7 +626,7 @@ const processProducts = async (products, category, subcategory) => {
             const variant = storeProduct.productVariant;
             const currentPrice = storeProduct.discountedSellingPrice / 100;
             const existingProduct = existingProductsMap.get(variant.id);
-            
+
             const productData = {
                 productId: variant.id,
                 categoryName: category.name,
@@ -640,71 +641,68 @@ const processProducts = async (products, category, subcategory) => {
                 brand: product.brand || '',
                 url: `https://www.zeptonow.com/pn/${product.name.toLowerCase().replace(/\s+/g, '-')}/pvid/${variant.id}`,
                 eta: variant.shelfLifeInHours || '',
-                updatedAt: now,
-                notified: true  // Always set notified field when processing products
+                updatedAt: now
             };
-            
-            // if the price didnt change then dont update the product
-            if(existingProduct && existingProduct.price === currentPrice){
+
+            // Only process if price has changed
+            if (existingProduct && existingProduct.price === currentPrice) {
                 continue;
             }
-            
+
             if (existingProduct) {
-                if(existingProduct.productId === "54a0f7ad-26c5-4dc3-b998-f6189d4cd0db"){
-                    console.log("Zepto: existingProduct", existingProduct);
-                }
-                // If price has dropped, update price history and reset notification status
+                productData.previousPrice = existingProduct.price;
+                // Only set priceDroppedAt and add to droppedProducts if price decreased
                 if (currentPrice < existingProduct.price) {
-                    productData.previousPrice = existingProduct.price;
                     productData.priceDroppedAt = now;
-                    productData.notified = false;  // Reset notification status on price drop
+                    productData.priceDropNotificationSent = false;
+                    droppedProducts.push({
+                        ...productData,
+                        previousPrice: existingProduct.price
+                    });
                 } else {
-                    // Preserve existing price history if no drop
-                    if (existingProduct.previousPrice) {
-                        productData.previousPrice = existingProduct.previousPrice;
-                    }
+                    // Keep existing priceDroppedAt and notification status if price increased
                     if (existingProduct.priceDroppedAt) {
                         productData.priceDroppedAt = existingProduct.priceDroppedAt;
                     }
+                    productData.priceDropNotificationSent = true;
                 }
             }
 
             bulkOps.push({
                 updateOne: {
                     filter: { productId: variant.id },
-                    update: {
-                        $set: productData,
-                        $setOnInsert: { createdAt: now }
-                    },
+                    update: { $set: productData },
                     upsert: true
                 }
             });
         }
 
+        if (droppedProducts.length > 0) {
+            console.log(`Zepto: Found ${droppedProducts.length} dropped products in ${category.name}`);
+            try {
+                await sendTelegramMessage(droppedProducts);
+            } catch (error) {
+                console.error('Zepto: Error sending Telegram notification:', error);
+                // Don't throw the error to continue processing
+            }
+        }
+
         if (bulkOps.length > 0) {
-            const result = await ZeptoProduct.bulkWrite(bulkOps, { ordered: false });
-        } else {
-            console.log("Zepto: No products to update in", subcategory.name);
+            await ZeptoProduct.bulkWrite(bulkOps, { ordered: false });
+            console.log(`Zepto: Updated ${bulkOps.length} products in ${category.name}`);
         }
 
         return { processedCount: bulkOps.length };
     } catch (error) {
-        console.error('Zepto: Error in processProducts for Zepto :', error);
-        throw error;
+        console.error('Zepto: Error processing products:', error);
+        return { processedCount: 0 };
     }
 };
 
-// Sends Telegram message for products with price drops
 const sendTelegramMessage = async (droppedProducts) => {
     try {
         if (!droppedProducts || droppedProducts.length === 0) {
             console.log("Zepto: No dropped products to send Telegram message for");
-            return;
-        }
-
-        // Verify Telegram configuration
-        if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHANNEL_ID) {
-            console.error("Zepto: Missing Telegram configuration. Please check your .env file");
             return;
         }
 
@@ -714,33 +712,29 @@ const sendTelegramMessage = async (droppedProducts) => {
             .sort((a, b) => b.discount - a.discount);
 
         if (filteredProducts.length === 0) {
-            console.log("Zepto: No products with discount > 59%");
             return;
         }
 
-        // Create product entries with current and previous prices/discounts
-        const productEntries = filteredProducts.map((product) => {
-            const prevDiscount = Math.floor(((product.mrp - product.previousPrice) / product.mrp) * 100);
-            return (
-                `<b>${product.productName}</b>\n` +
-                `Current: ₹${product.price} (${product.discount}% off)\n` +
-                `Previous: ₹${product.previousPrice} (${prevDiscount}% off)\n` +
-                `MRP: ₹${product.mrp}\n` +
-                `<a href="${product.url}">View on Zepto</a>\n`
-            );
-        });
-
-        // Split into chunks of 10 products each
+        // Split into chunks of 15 products each
         const chunks = [];
-        for (let i = 0; i < productEntries.length; i += 15) {
-            chunks.push(productEntries.slice(i, i + 15));
+        for (let i = 0; i < filteredProducts.length; i += 15) {
+            chunks.push(filteredProducts.slice(i, i + 15));
         }
+
+        console.log(`Zepto: Sending Telegram messages for ${filteredProducts.length} products`);
 
         // Send each chunk as a separate message
         for (let i = 0; i < chunks.length; i++) {
             const messageText =
-                `🔥 <b>Zepto Latest Price Drops (Part ${i + 1}/${chunks.length})</b>\n\n` +
-                chunks[i].join("\n");
+                `🔥 <b>Zepto Price Drops</b>\n\n` +
+                chunks[i].map((product) => {
+                    const priceDrop = product.previousPrice - product.price;
+                    return `<b>${product.productName}</b>\n` +
+                        `💰 Current: ₹${product.price}\n` +
+                        `📊 Previous: ₹${product.previousPrice}\n` +
+                        `📉 Drop: ₹${priceDrop.toFixed(2)} (${product.discount}% off)\n` +
+                        `🔗 <a href="${product.url}">View on Zepto</a>\n`;
+                }).join("\n");
 
             await axios.post(
                 `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
@@ -752,13 +746,16 @@ const sendTelegramMessage = async (droppedProducts) => {
                 }
             );
 
-            // Add a small delay between messages to avoid rate limiting
+            // Add a small delay between messages
             if (i < chunks.length - 1) {
                 await new Promise((resolve) => setTimeout(resolve, 1000));
             }
         }
+
+        console.log(`Zepto: Sent notifications for ${filteredProducts.length} products`);
     } catch (error) {
-        console.error("Zepto: Error in Telegram message preparation:", error?.response?.data || error);
+        console.error("Zepto: Error sending Telegram message:", error?.response?.data || error);
+        throw error;
     }
 };
 
@@ -785,10 +782,10 @@ const sendEmailWithDroppedProducts = async (sortedProducts) => {
                 <h2>Recently Dropped Products on Zepto (Part ${i + 1}/${chunks.length})</h2>
                 <div style="font-family: Arial, sans-serif;">
                     ${chunks[i]
-                        .map(
-                            (product) => {
-                                const prevDiscount = Math.floor(((product.mrp - product.previousPrice) / product.mrp) * 100);
-                                return `
+                    .map(
+                        (product) => {
+                            const prevDiscount = Math.floor(((product.mrp - product.previousPrice) / product.mrp) * 100);
+                            return `
                                 <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #eee; border-radius: 8px;">
                                     <a href="${product.url}"  
                                        style="text-decoration: none; color: inherit; display: block;">
@@ -815,9 +812,9 @@ const sendEmailWithDroppedProducts = async (sortedProducts) => {
                                     </a>
                                 </div>
                             `
-                            }
-                        )
-                        .join("")}
+                        }
+                    )
+                    .join("")}
                 </div>
             `;
 

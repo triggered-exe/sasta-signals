@@ -285,6 +285,7 @@ const processProducts = async (products, category) => {
         const existingProductsMap = new Map(
             existingProducts.map(p => [p.productId, p])
         );
+        const droppedProducts = [];
 
         // Process each product
         for (const product of products) {
@@ -309,26 +310,26 @@ const processProducts = async (products, category) => {
                 brand: product.brand?.name,
                 url: `https://www.bigbasket.com${product.absolute_url}`,
                 eta: product.availability?.medium_eta,
-                updatedAt: now,
-                notified: true
+                updatedAt: now
             };
 
-            // if the price didnt change then dont update the product
-            if(existingProduct && existingProduct.price === currentPrice){
+            // Only process if price has changed
+            if (existingProduct && existingProduct.price === currentPrice) {
                 continue;
             }
 
             if (existingProduct) {
-                // If price has dropped, update price history
+                productData.previousPrice = existingProduct.price;
+                // Only set priceDroppedAt and add to droppedProducts if price decreased
                 if (currentPrice < existingProduct.price) {
-                    productData.notified = false;
-                    productData.previousPrice = existingProduct.price;
                     productData.priceDroppedAt = now;
+                    productData.priceDropNotificationSent = false;
+                    droppedProducts.push({
+                        ...productData,
+                        previousPrice: existingProduct.price
+                    });
                 } else {
-                    // Preserve existing price history if no drop
-                    if (existingProduct.previousPrice) {
-                        productData.previousPrice = existingProduct.previousPrice;
-                    }
+                    // Keep existing priceDroppedAt and notification status if price increased
                     if (existingProduct.priceDroppedAt) {
                         productData.priceDroppedAt = existingProduct.priceDroppedAt;
                     }
@@ -338,26 +339,31 @@ const processProducts = async (products, category) => {
             bulkOps.push({
                 updateOne: {
                     filter: { productId: product.id },
-                    update: {
-                        $set: productData,
-                        $setOnInsert: { createdAt: now }
-                    },
+                    update: { $set: productData },
                     upsert: true
                 }
             });
         }
 
+        if (droppedProducts.length > 0) {
+            console.log(`BB: Found ${droppedProducts.length} dropped products in ${category.name}`);
+            try {
+                await sendTelegramMessage(droppedProducts);
+            } catch (error) {
+                console.error('BB: Error sending Telegram notification:', error);
+                // Don't throw the error to continue processing
+            }
+        }
+
         if (bulkOps.length > 0) {
-            const result = await BigBasketProduct.bulkWrite(bulkOps, { ordered: false });
-            console.log(`BB: Processed ${bulkOps.length} products for ${category.name} with ${result.upsertedCount} inserts and ${result.modifiedCount} updates`);
-        } else {
-            console.log("BB: No products to update in", category.name);
+            await BigBasketProduct.bulkWrite(bulkOps, { ordered: false });
+            console.log(`BB: Updated ${bulkOps.length} products in ${category.name}`);
         }
 
         return { processedCount: bulkOps.length };
     } catch (error) {
-        console.error('BB: Error in processProducts:', error);
-        throw error;
+        console.error('BB: Error processing products:', error);
+        return { processedCount: 0 };
     }
 };
 
@@ -436,45 +442,35 @@ const sendTelegramMessage = async (droppedProducts) => {
             return;
         }
 
-        // Verify Telegram configuration
-        if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHANNEL_ID) {
-            console.error("BB: Missing Telegram configuration. Please check your .env file");
-            return;
-        }
-
         // Filter products with discount > 59% and sort by highest discount
         const filteredProducts = droppedProducts
             .filter((product) => product.discount > 59)
             .sort((a, b) => b.discount - a.discount);
 
         if (filteredProducts.length === 0) {
-            console.log("BB: No products with discount > 59%");
             return;
         }
 
-        // Create product entries with current and previous prices/discounts
-        const productEntries = filteredProducts.map((product) => {
-            const prevDiscount = Math.floor(((product.mrp - product.previousPrice) / product.mrp) * 100);
-            return (
-                `<b>${product.productName}</b>\n` +
-                `Current: ₹${product.price} (${product.discount}% off)\n` +
-                `Previous: ₹${product.previousPrice} (${prevDiscount}% off)\n` +
-                `MRP: ₹${product.mrp}\n` +
-                `<a href="${product.url}">View on BigBasket</a>\n`
-            );
-        });
-
         // Split into chunks of 15 products each
         const chunks = [];
-        for (let i = 0; i < productEntries.length; i += 15) {
-            chunks.push(productEntries.slice(i, i + 15));
+        for (let i = 0; i < filteredProducts.length; i += 15) {
+            chunks.push(filteredProducts.slice(i, i + 15));
         }
+
+        console.log(`BB: Sending Telegram messages for ${filteredProducts.length} products`);
 
         // Send each chunk as a separate message
         for (let i = 0; i < chunks.length; i++) {
             const messageText =
-                `🔥 <b>BigBasket Latest Price Drops (Part ${i + 1}/${chunks.length})</b>\n\n` +
-                chunks[i].join("\n");
+                `🔥 <b>BigBasket Price Drops</b>\n\n` +
+                chunks[i].map((product) => {
+                    const priceDrop = product.previousPrice - product.price;
+                    return `<b>${product.productName}</b>\n` +
+                        `💰 Current: ₹${product.price}\n` +
+                        `📊 Previous: ₹${product.previousPrice}\n` +
+                        `📉 Drop: ₹${priceDrop.toFixed(2)} (${product.discount}% off)\n` +
+                        `🔗 <a href="${product.url}">View on BigBasket</a>\n`;
+                }).join("\n");
 
             await axios.post(
                 `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
@@ -486,13 +482,16 @@ const sendTelegramMessage = async (droppedProducts) => {
                 }
             );
 
-            // Add a small delay between messages to avoid rate limiting
+            // Add a small delay between messages
             if (i < chunks.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                await new Promise((resolve) => setTimeout(resolve, 1000));
             }
         }
+
+        console.log(`BB: Sent notifications for ${filteredProducts.length} products`);
     } catch (error) {
-        console.error("BB: Error in Telegram message preparation:", error?.response?.data || error);
+        console.error("BB: Error sending Telegram message:", error?.response?.data || error);
+        throw error;
     }
 };
 
@@ -635,28 +634,6 @@ const trackPrices = async () => {
             }
 
             console.log("BB: Finished tracking prices for all categories");
-
-            // Find products with price drops in the last 30 minutes
-            const priceDrops = await BigBasketProduct.find({
-                priceDroppedAt: { $gte: new Date(Date.now() - HALF_HOUR) },
-                discount: { $gte: 40 },
-                notified: { $exists: true, $eq: false }
-            }).sort({ discount: -1 }).lean();
-
-            if (priceDrops.length > 0) {
-                console.log(`BB: Found ${priceDrops.length} products with price drops in the last hour`);
-                await Promise.all([
-                    sendEmailWithDroppedProducts(priceDrops),
-                    sendTelegramMessage(priceDrops)
-                ]);
-            }
-
-            // Mark these products as notified
-            const productIds = priceDrops.map(product => product.productId);
-            await BigBasketProduct.updateMany(
-                { productId: { $in: productIds } },
-                { $set: { notified: true } }
-            );
 
         } catch (error) {
             console.error('BB: Failed to track prices:', error);
