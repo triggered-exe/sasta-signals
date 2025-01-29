@@ -15,3 +15,32 @@ export const chunk = (array, size) => {
     }
     return chunks;
   };
+
+  // Helper function to build MongoDB sort criteria based on user preference
+export const buildSortCriteria = (sortOrder) => {
+  const criteria = {};
+  if (sortOrder === "price") criteria.price = 1;
+  else if (sortOrder === "price_desc") criteria.price = -1;
+  else if (sortOrder === "discount") criteria.discount = -1;
+  return criteria;
+};
+
+// Helper function to build MongoDB match criteria for filtering products
+export const buildMatchCriteria = (priceDropped, notUpdated) => {
+  const criteria = { inStock: true };
+  if (priceDropped === "true") {
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      criteria.priceDroppedAt = {
+          $exists: true,
+          $type: "date",
+          $gte: oneHourAgo
+      };
+  }
+  if (notUpdated === "true") {
+      return {
+          ...criteria,
+          updatedAt: { $gt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000) }
+      };
+  }
+  return criteria;
+};

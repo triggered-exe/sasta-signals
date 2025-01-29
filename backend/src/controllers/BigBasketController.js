@@ -1,6 +1,6 @@
-import { AppError } from '../utils/errorHandling.js';
+
 import { createPage, cleanup, hasStoredLocation, getContextStats, storeContext } from '../utils/crawlerSetup.js';
-import { isNightTimeIST } from '../utils/priceTracking.js';
+import { isNightTimeIST, buildSortCriteria, buildMatchCriteria } from '../utils/priceTracking.js';
 import axios from 'axios';
 import { BigBasketProduct } from '../models/BigBasketProduct.js';
 import { PAGE_SIZE, HALF_HOUR } from "../utils/constants.js";
@@ -324,10 +324,15 @@ const processProducts = async (products, category) => {
                 if (currentPrice < existingProduct.price) {
                     productData.priceDroppedAt = now;
                     productData.priceDropNotificationSent = false;
-                    droppedProducts.push({
-                        ...productData,
-                        previousPrice: existingProduct.price
-                    });
+                    const currentDiscount = productData.discount;
+                    const prevDiscount = existingProduct.discount;
+                    // The current discount should be greater than or equal to 20% more than the previous discount
+                    if (currentDiscount >= prevDiscount - 20) {
+                        droppedProducts.push({
+                            ...productData,
+                            previousPrice: existingProduct.price
+                        });
+                    }
                 } else {
                     // Keep existing priceDroppedAt and notification status if price increased
                     if (existingProduct.priceDroppedAt) {
@@ -665,34 +670,6 @@ export const startTracking = async (req, res, next) => {
     }
 };
 
-// Helper function to build MongoDB sort criteria based on user preference
-const buildSortCriteria = (sortOrder) => {
-    const criteria = {};
-    if (sortOrder === "price") criteria.price = 1;
-    else if (sortOrder === "price_desc") criteria.price = -1;
-    else if (sortOrder === "discount") criteria.discount = -1;
-    return criteria;
-};
-
-// Helper function to build MongoDB match criteria for filtering products
-const buildMatchCriteria = (priceDropped, notUpdated) => {
-    const criteria = { inStock: true };
-    if (priceDropped === "true") {
-        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-        criteria.priceDroppedAt = {
-            $exists: true,
-            $type: "date",
-            $gte: oneHourAgo
-        };
-    }
-    if (notUpdated === "true") {
-        return {
-            ...criteria,
-            updatedAt: { $gt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000) }
-        };
-    }
-    return criteria;
-};
 
 export const getProducts = async (req, res, next) => {
     try {

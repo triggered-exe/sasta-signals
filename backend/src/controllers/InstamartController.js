@@ -3,7 +3,7 @@ import { AppError } from "../utils/errorHandling.js";
 import { InstamartProduct } from "../models/InstamartProduct.js";
 import { HALF_HOUR, ONE_HOUR, PAGE_SIZE } from "../utils/constants.js";
 import { Resend } from "resend";
-import { isNightTimeIST, chunk } from "../utils/priceTracking.js";
+import { isNightTimeIST, chunk, buildSortCriteria, buildMatchCriteria } from "../utils/priceTracking.js";
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID;
 
@@ -162,7 +162,7 @@ const processCategoriesChunk = async (categoryChunk, storeId, cookie) => {
                   }
                 );
 
-                const { totalItems = 0, widgets = [], hasMore = false, offset: offsetResponse = 0, pageNo: pageNoResponse = 0} = response.data?.data || {};
+                const { totalItems = 0, widgets = [], hasMore = false, offset: offsetResponse = 0, pageNo: pageNoResponse = 0 } = response.data?.data || {};
 
                 // Check if the response is empty and rate limit is hit
                 if (!response.data.data) {
@@ -216,7 +216,8 @@ const processCategoriesChunk = async (categoryChunk, storeId, cookie) => {
               console.log(`IM: Processed ${updatedCount} products in ${subCategory.name}`);
             }
           } catch (error) {
-            console.error(`IM: Error processing subcategory ${subCategory.name}:`, error);
+            console.error(`IM: Error processing subcategory ${subCategory.name}:`, error.response);
+            await new Promise(resolve => setTimeout(resolve, 1 * 60 * 1000));
             // Continue with next subcategory even if one fails
             continue;
           }
@@ -324,36 +325,6 @@ export const getProducts = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
-
-// Helper function to build MongoDB sort criteria based on user preference
-const buildSortCriteria = (sortOrder) => {
-  const criteria = {};
-  if (sortOrder === "price") criteria.price = 1;
-  else if (sortOrder === "price_desc") criteria.price = -1;
-  else if (sortOrder === "discount") criteria.discount = -1;
-  return criteria;
-};
-
-// Helper function to build MongoDB match criteria for filtering products
-const buildMatchCriteria = (priceDropped, notUpdated) => {
-  const criteria = { inStock: true };
-  if (priceDropped === "true") {
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    criteria.priceDroppedAt = {
-      $exists: true,
-      $type: "date",
-      $gte: oneHourAgo,
-    };
-  }
-  console.log(new Date(Date.now() - 1 * 24 * 60 * 60 * 1000), "notUpdated");
-  if (notUpdated === "true") {
-    return {
-      ...criteria,
-      updatedAt: { $gt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000) },
-    };
-  }
-  return criteria;
 };
 
 // Fetches all product categories from Instamart API
@@ -541,19 +512,20 @@ const processProducts = async (products, category, subcategory) => {
           if (currentPrice < previousPrice) {
             priceDroppedAt = new Date();
             priceDropNotificationSent = false;
-            // Add the complete product data to droppedProducts
-            droppedProducts.push({
-              productId: variation.product_id,
-              productName: variation.product_name,
-              price: currentPrice,
-              previousPrice,
-              discount: Math.floor(
-                ((variation.price?.discount_value) /
-                  variation.price?.mrp) *
-                100
-              ),
-              variationId: variation.id
-            });
+            currentDiscount = Math.floor(((variation.price?.discount_value) / variation.price?.mrp) * 100);
+            previousDiscount = existingProduct.discount;
+            // The current discount should be greater than or equal to 20% more than the previous discount
+            if (currentDiscount >= previousDiscount - 20) {
+              // Add the complete product data to droppedProducts
+              droppedProducts.push({
+                productId: variation.product_id,
+                productName: variation.product_name,
+                price: currentPrice,
+                previousPrice,
+                discount: currentDiscount,
+                variationId: variation.id
+              });
+            }
           }
         }
 
@@ -608,7 +580,7 @@ const processProducts = async (products, category, subcategory) => {
     if (bulkOperations.length > 0) {
       await InstamartProduct.bulkWrite(bulkOperations, { ordered: false });
       console.log(`IM: Updated ${bulkOperations.length} variations in ${subcategory.name}`);
-    }else{
+    } else {
       console.log("IM: No variations to update in", subcategory.name);
     }
 
