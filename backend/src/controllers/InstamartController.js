@@ -519,8 +519,8 @@ const processProducts = async (products, category, subcategory) => {
           if (currentPrice < previousPrice) {
             priceDroppedAt = new Date();
             priceDropNotificationSent = false;
-            currentDiscount = Math.floor(((variation.price?.discount_value) / variation.price?.mrp) * 100);
-            previousDiscount = existingProduct.discount;
+            const currentDiscount = Math.floor(((variation.price?.discount_value) / variation.price?.mrp) * 100) || 0;
+            const previousDiscount = existingProduct.discount || 0;
             // The current discount should be greater than or equal to 20% more than the previous discount
             if (currentDiscount >= previousDiscount - 20) {
               // Add the complete product data to droppedProducts
