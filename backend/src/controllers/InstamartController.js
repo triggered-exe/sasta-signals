@@ -309,13 +309,20 @@ export const getProducts = async (req, res, next) => {
           productId: 1,
           productName: 1,
           price: 1,
+          mrp: 1,
           discount: 1,
-          variations: 1,
-          subcategoryName: 1,
+          quantity: 1,
+          unit: 1,
+          weight: 1,
           imageUrl: 1,
+          inStock: 1,
           priceDroppedAt: 1,
-        },
-      },
+          categoryName: 1,
+          subcategoryName: 1,
+          variationId: 1,
+          storePrice: 1
+        }
+      }
     ]);
 
     res.status(200).json({

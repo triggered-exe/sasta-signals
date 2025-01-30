@@ -9,7 +9,7 @@ export default function PriceTracker() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(20); // Page size
   const [sortOrder, setSortOrder] = useState("discount"); // Default sorting by discount
-  const [priceDropped, setPriceDropped] = useState(false); // Toggle for recently updated products
+  const [priceDropped, setPriceDropped] = useState(true); // Toggle for recently updated products
   const [notUpdated, setNotUpdated] = useState(false); // Add this line
   const [totalPages, setTotalPages] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -44,19 +44,6 @@ export default function PriceTracker() {
   useEffect(() => {
     fetchProducts(currentPage, sortOrder, priceDropped, notUpdated);
   }, [currentPage, sortOrder, priceDropped, notUpdated]);
-
-  // Pagination handlers
-  const handleNextPage = () => {
-    if (currentPage < totalPages) {
-      setCurrentPage(currentPage + 1);
-    }
-  };
-
-  const handlePreviousPage = () => {
-    if (currentPage > 1) {
-      setCurrentPage(currentPage - 1);
-    }
-  };
 
   // Sorting handler
   const handleSortChange = (e) => {
@@ -169,7 +156,7 @@ export default function PriceTracker() {
                   rel="noopener noreferrer"
                 >
                   <img
-                    src={product.imageUrl || `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,h_272,w_252/${product.variations?.[0]?.images?.[0]}`}
+                    src={product.imageUrl || 'https://via.placeholder.com/252x272'}
                     alt={product.productName}
                     className="w-full h-full object-cover"
                   />
@@ -188,12 +175,19 @@ export default function PriceTracker() {
               </div>
               <div className="p-2">
                 <div className="flex flex-wrap gap-1">
-                  {product.variations.map((variation) => (
-                    <div key={variation.id} className="text-xs bg-gray-100 p-1 rounded-md">
-                      <span className="font-medium">{variation.quantity} {variation.unit_of_measure}</span>
-                      <span className="ml-1">₹{variation.offer_price || variation.store_price}</span>
-                    </div>
-                  ))}
+                  <div className="text-xs bg-gray-100 p-1 rounded-md">
+                    <span className="font-medium">
+                      {product.quantity} {product.unit}
+                    </span>
+                    <span className="ml-1">
+                      ₹{product.price}
+                    </span>
+                    {product.mrp > product.price && (
+                      <span className="ml-1 text-gray-500 line-through">
+                        ₹{product.mrp}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

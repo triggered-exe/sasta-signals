@@ -10,8 +10,8 @@ export default function ZeptoPage() {
     const [error, setError] = useState(null);
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(0);
-    const [sortOrder, setSortOrder] = useState("price");
-    const [priceDropped, setPriceDropped] = useState(false);
+    const [sortOrder, setSortOrder] = useState("discount");
+    const [priceDropped, setPriceDropped] = useState(true);
     const [notUpdated, setNotUpdated] = useState(false);
     const [place, setPlace] = useState("500081"); // Default place/pincode
 
