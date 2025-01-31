@@ -629,7 +629,7 @@ const processProducts = async (products, category, subcategory) => {
                     const currentDiscount = productData.discount;
                     const previousDiscount = existingProduct.discount;
                     // The current discount should be greater than or equal to 20% more than the previous discount
-                    if (currentDiscount >= previousDiscount - 20) {
+                    if (currentDiscount >= previousDiscount) {
                         droppedProducts.push({
                             ...productData,
                             previousPrice: existingProduct.price
