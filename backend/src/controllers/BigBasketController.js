@@ -291,7 +291,7 @@ const processProducts = async (products, category) => {
         for (const product of products) {
             if (product.availability?.avail_status !== '001') continue;
 
-            const currentPrice = product.pricing?.discount?.prim_price?.sp || 0;
+            const currentPrice = Number(product.pricing?.discount?.prim_price?.sp) || 0;
             const existingProduct = existingProductsMap.get(product.id);
 
             const productData = {
@@ -305,7 +305,7 @@ const processProducts = async (products, category) => {
                 productName: product.desc,
                 mrp: product.pricing?.discount?.mrp || 0,
                 price: currentPrice,
-                discount: Math.floor(((product.pricing?.discount?.mrp || 0) - currentPrice) / (product.pricing?.discount?.mrp || 1) * 100),
+                discount: Math.floor((currentPrice) / (product.pricing?.discount?.mrp || 1) * 100),
                 weight: product.w,
                 brand: product.brand?.name,
                 url: `https://www.bigbasket.com${product.absolute_url}`,
@@ -320,19 +320,16 @@ const processProducts = async (products, category) => {
 
             if (existingProduct) {
                 productData.previousPrice = existingProduct.price;
+                const currentDiscount = productData.discount;
+                const prevDiscount = existingProduct.discount || 0;
                 // Only set priceDroppedAt and add to droppedProducts if price decreased
-                if (currentPrice < existingProduct.price) {
+                if (currentDiscount - prevDiscount >= 10) {
                     productData.priceDroppedAt = now;
                     productData.priceDropNotificationSent = false;
-                    const currentDiscount = productData.discount;
-                    const prevDiscount = existingProduct.discount || 0;
-                    // The current discount should be greater than or equal to 20% more than the previous discount
-                    if (currentDiscount >= prevDiscount) {
-                        droppedProducts.push({
-                            ...productData,
-                            previousPrice: existingProduct.price
-                        });
-                    }
+                    droppedProducts.push({
+                        ...productData,
+                        previousPrice: existingProduct.price
+                    });
                 } else {
                     // Keep existing priceDroppedAt and notification status if price increased
                     if (existingProduct.priceDroppedAt) {
@@ -523,10 +520,10 @@ const sendEmailWithDroppedProducts = async (sortedProducts) => {
                 <h2>Recently Dropped Products on BigBasket (Part ${i + 1}/${chunks.length})</h2>
                 <div style="font-family: Arial, sans-serif;">
                     ${chunks[i]
-                        .map(
-                            (product) => {
-                                const prevDiscount = Math.floor(((product.mrp - product.previousPrice) / product.mrp) * 100);
-                                return `
+                    .map(
+                        (product) => {
+                            const prevDiscount = Math.floor(((product.mrp - product.previousPrice) / product.mrp) * 100);
+                            return `
                                 <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #eee; border-radius: 8px;">
                                     <a href="${product.url}"  
                                        style="text-decoration: none; color: inherit; display: block;">
@@ -553,9 +550,9 @@ const sendEmailWithDroppedProducts = async (sortedProducts) => {
                                     </a>
                                 </div>
                             `
-                            }
-                        )
-                        .join("")}
+                        }
+                    )
+                    .join("")}
                 </div>
             `;
 

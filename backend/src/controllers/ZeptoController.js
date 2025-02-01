@@ -622,19 +622,17 @@ const processProducts = async (products, category, subcategory) => {
 
             if (existingProduct) {
                 productData.previousPrice = existingProduct.price;
-                // Only set priceDroppedAt and add to droppedProducts if price decreased
-                if (currentPrice < existingProduct.price) {
+                const currentDiscount = productData.discount;
+                const previousDiscount = existingProduct.discount || 0;
+                // The current discount should be greater than or equal to 20% more than the previous discount
+                if (currentDiscount - previousDiscount >= 10) {
                     productData.priceDroppedAt = now;
                     productData.priceDropNotificationSent = false;
-                    const currentDiscount = productData.discount;
-                    const previousDiscount = existingProduct.discount;
-                    // The current discount should be greater than or equal to 20% more than the previous discount
-                    if (currentDiscount >= previousDiscount) {
-                        droppedProducts.push({
-                            ...productData,
-                            previousPrice: existingProduct.price
-                        });
-                    }
+
+                    droppedProducts.push({
+                        ...productData,
+                        previousPrice: existingProduct.price
+                    });
                 } else {
                     // Keep existing priceDroppedAt and notification status if price increased
                     if (existingProduct.priceDroppedAt) {
