@@ -1,4 +1,3 @@
-
 import { createPage, cleanup, hasStoredLocation, getContextStats, storeContext } from '../utils/crawlerSetup.js';
 import { isNightTimeIST, buildSortCriteria, buildMatchCriteria } from '../utils/priceTracking.js';
 import axios from 'axios';
@@ -305,7 +304,9 @@ const processProducts = async (products, category) => {
                 productName: product.desc,
                 mrp: product.pricing?.discount?.mrp || 0,
                 price: currentPrice,
-                discount: Math.floor((currentPrice) / (product.pricing?.discount?.mrp || 1) * 100),
+                discount: Math.floor(
+                    ((product.pricing?.discount?.mrp - currentPrice) / (product.pricing?.discount?.mrp || 1)) * 100
+                ),
                 weight: product.w,
                 brand: product.brand?.name,
                 url: `https://www.bigbasket.com${product.absolute_url}`,
