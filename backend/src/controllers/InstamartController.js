@@ -515,13 +515,12 @@ const processProducts = async (products, category, subcategory) => {
 
         if (existingProduct) {
           previousPrice = existingProduct.price;
-          if (currentPrice < previousPrice) {
-            priceDroppedAt = new Date();
-            priceDropNotificationSent = false;
+
             const currentDiscount = Math.floor(((variation.price?.discount_value) / variation.price?.mrp) * 100) || 0;
             const previousDiscount = existingProduct.discount || 0;
             // The current discount should be greater than or equal to 20% more than the previous discount
             if (currentDiscount - previousDiscount >= 10) {
+            priceDroppedAt = new Date();
               // Add the complete product data to droppedProducts
               droppedProducts.push({
                 productId: variation.product_id,
@@ -531,7 +530,6 @@ const processProducts = async (products, category, subcategory) => {
                 discount: currentDiscount,
                 variationId: variation.id
               });
-            }
           }
         }
 
@@ -550,7 +548,6 @@ const processProducts = async (products, category, subcategory) => {
           price: currentPrice,
           previousPrice,
           priceDroppedAt,
-          priceDropNotificationSent,
           mrp: variation.price?.mrp || 0,
           storePrice: variation.price?.store_price || 0,
           discount: Math.floor(
@@ -651,13 +648,6 @@ const sendEmailWithDroppedProducts = async (droppedProducts) => {
         subject: "🔥 Price Drops Alert - Instamart Products",
         html: emailContent,
       });
-
-      // Mark these products as notified
-      const variationIds = products.map(p => p.variationId);
-      await InstamartProduct.updateMany(
-        { variationId: { $in: variationIds } },
-        { $set: { priceDropNotificationSent: true } }
-      );
     }
 
     console.log("IM: Email notifications sent and products marked as notified");
