@@ -10,6 +10,8 @@ import { trackProductPrices } from './src/controllers/InstamartController.js'; /
 import bigbasketRoutes from './src/routes/api/bigbasket/bigbasket.js';
 import { startTrackingHandler } from './src/controllers/BigBasketController.js';
 import { startTrackingHandler as zeptoStartTrackingHandler } from './src/controllers/ZeptoController.js';
+import { startTrackingHandler as flipkartStartTrackingHandler } from './src/controllers/FlipkartGroceryController.js';
+import flipkartGroceryRouter from './src/routes/api/flipkartGrocery/flipkartGrocery.js';
 
 import zeptoRouter from './src/routes/api/zepto/zepto.js';
 
@@ -39,13 +41,16 @@ app.use('/api/bigbasket', bigbasketRoutes);
 
 app.use('/api/zepto', zeptoRouter);
 
+app.use('/api/flipkartGrocery', flipkartGroceryRouter);
+
 // Global error handler
 app.use(errorHandler);
 
 // Start the server and initialize price tracking
 app.listen(port, () => {
   console.log(`Server is running on port - ${port}`);
-  trackProductPrices(); // Start the price tracking when server starts
-  startTrackingHandler(); // For BigBasket?
-  zeptoStartTrackingHandler(); // For Zepto
+  // trackProductPrices(); // Start the price tracking when server starts
+  // startTrackingHandler(); // For BigBasket?
+  // zeptoStartTrackingHandler(); // For Zepto
+  flipkartStartTrackingHandler();
 });
