@@ -11,7 +11,7 @@ const TELEGRAM_CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID;
 
 // Initialize Resend client
 const resend = new Resend(process.env.RESEND_API_KEY);
-
+const placesData = {};
 // Global variables
 let FLIPKART_HEADERS = {
     'Accept': '*/*',
@@ -227,14 +227,18 @@ export const startTracking = async (req, res, next) => {
 
 export const startTrackingHandler = async () => {
     try {
-        await fetchCategories();
-        console.log('FK: Browser and contexts cleaned up successfully');
+        const categories = await fetchCategories(500064);
+        console.log('FK: Categories received, processing...')
+
     } catch (error) {
         console.error('FK: Error cleaning up browser and contexts:', error);
     }
 };
 
 export const fetchCategories = async (pincode) => {
+    if(placesData[pincode]) {
+        return placesData[pincode].categories;
+    }
     try {
         const response = await axios.post(
             'https://1.rome.api.flipkart.com/api/4/page/fetch',
@@ -358,6 +362,7 @@ export const fetchCategories = async (pincode) => {
         });
         const categories = Array.from(categoriesSet);
         console.log("categories", categories);
+        placesData[pincode].categories = categories;
         return categories;
 
     } catch (error) {
