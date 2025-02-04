@@ -348,7 +348,7 @@ export const fetchCategories = async (pincode) => {
             }
         }));
 
-        console.log("categoriesTree", JSON.stringify(categoriesTree, null, 2));
+        // console.log("categoriesTree", JSON.stringify(categoriesTree, null, 2));
 
 
         //  Extract categories from categoriesTree
@@ -362,7 +362,9 @@ export const fetchCategories = async (pincode) => {
         });
         const categories = Array.from(categoriesSet);
         console.log("categories", categories);
-        placesData[pincode].categories = categories;
+        placesData[pincode] = {
+            categories: categories
+        }
         return categories;
 
     } catch (error) {
