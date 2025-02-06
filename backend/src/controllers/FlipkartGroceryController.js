@@ -14,10 +14,26 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 const placesData = {};
 // Global variables
 let FLIPKART_HEADERS = {
-    'Accept': '*/*',
-    'Accept-Language': 'en-US,en;q=0.9',
+    cookie: 'at=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IjFkOTYzYzUwLTM0YjctNDA1OC1iMTNmLWY2NDhiODFjYTBkYSJ9.eyJleHAiOjE3NDAyMTMwNjgsImlhdCI6MTczODQ4NTA2OCwiaXNzIjoia2V2bGFyIiwianRpIjoiNjVhYzlmZmYtZGJmOC00MjJjLTlmNzctYWRiODIwZGE1MDJiIiwidHlwZSI6IkFUIiwia2V2SWQiOiJWSTU1QzQwRDM0NDVFNDQwQUZBQTJDNjI2NzRGNTE5MUMzIiwidElkIjoibWFwaSIsInZzIjoiTE8iLCJ6IjoiQ0giLCJtIjp0cnVlLCJnZW4iOjN9.fYpElJzcnNt-TFxAHukl5-sUdiznTKLrcn_t7_zn-QY; rt=null; vd=VI55C40D3445E440AFAA2C62674F5191C3-1738485068915-8.1738860133.1738860133.152168214; S=d1t12P3t%2FNT8kPzxFPz8%2FWj9TP4OHtzDHMvxxTg4npl8VfxsrKXQwofeCx0%2Fqd3R8C%2FtFX%2F96haPcokMeNQoUCwPzwA%3D%3D; SN=VI55C40D3445E440AFAA2C62674F5191C3.TOK2E3DA78236B04CA3A68BDA9E9DC16FD8.1738860133016.LO; ud=1.Fi97cbXq2dHNohHvhwt5IUZRcPmZYebObneAheGaCJ3g02P62K9sJjtYlBSR2tr6941NomYKs7HD7xsOtvNoAwCTOEyGYRJtjmkCGVNhlL4xsAkGbvKTW5NaEdOOOlwUwcBJ_qhSsq-YUANQurcTuGnwnsxOHfAkk0ccsPJvcqMFdT22kb5enwW8a00e692zGuYqxLZ2FQb9YFugKyU8_A',
+    Accept: '*/*',
+    'Accept-Language': 'en-US,en;q=0.5',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+    'Content-Type': 'application/json',
+    DNT: '1',
+    Origin: 'https://www.flipkart.com',
+    Pragma: 'no-cache',
+    Referer: 'https://www.flipkart.com/',
+    'Sec-Fetch-Dest': 'empty',
+    'Sec-Fetch-Mode': 'cors',
+    'Sec-Fetch-Site': 'same-site',
+    'Sec-GPC': '1',
+    'User-Agent': 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Mobile Safari/537.36',
     'X-User-Agent': 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Mobile Safari/537.36 FKUA/msite/0.0.3/msite/Mobile',
-    'Cookie': `T=TI173848501700200106455755444717511883658442928860883491777837300798; at=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IjFkOTYzYzUwLTM0YjctNDA1OC1iMTNmLWY2NDhiODFjYTBkYSJ9.eyJleHAiOjE3NDAyMTMwMTcsImlhdCI6MTczODQ4NTAxNywiaXNzIjoia2V2bGFyIiwianRpIjoiZmJmMjZiYWQtNzc2Yy00Y2Y5LThiNDAtYzU1Y2QxZjczNDkwIiwidHlwZSI6IkFUIiwiZElkIjoiVEkxNzM4NDg1MDE3MDAyMDAxMDY0NTU3NTU0NDQ3MTc1MTE4ODM2NTg0NDI5Mjg4NjA4ODM0OTE3Nzc4MzczMDA3OTgiLCJrZXZJZCI6IlZJQzFBRjhGMzJGQzA4NEU4NjgxMDA2QTlEOUVFOTMzNTgiLCJ0SWQiOiJtYXBpIiwidnMiOiJMTyIsInoiOiJDSCIsIm0iOnRydWUsImdlbiI6M30.rqMmO42yMvoVlIUBNWQrLNSK9vLYHPW3fQmoB-cVdHE; K-ACTION=null; vw=769; dpr=2; AMCVS_17EB401053DAF4840A490D4C%40AdobeOrg=1; s_sq=flipkart-mob-web%3D%2526pid%253Dclp%25253A%252520Grocery%2526pidt%253D1%2526oid%253Dfunctionpo%252528%252529%25257B%25257D%2526oidt%253D2%2526ot%253DDIV; ud=7.ob55YpFv-Bf3TXHcfJwTmITLH6eoN0Q7NeWjazvSV42hbnF7wG57n9V9Za6Wr3Nxuq7IPmx4HntBmpWjShjguBhUmnS9kcU-zgzllxF9MCdqSTrMELWrp3FnXYzibYFOIck0l2jUx9t32J72KmfGFJ_87zf2Fjiko3hMyCdWrU5oGsmp7XwPvmuX_9zSTvDQGeIF9Za51y3KNtae5ez6eg; vd=VIC1AF8F32FC084E8681006A9D9EE93358-1738485018266-1.1738485240.1738485018.154769218; gpv_pn=Your%20smart%20basket%20page%3AGrocery%20Default%20-%20Kilos%20%2724; gpv_pn_t=GROCERY%3Aclp; rt=null; vh=1168; AMCV_17EB401053DAF4840A490D4C%40AdobeOrg=-227196251%7CMCIDTS%7C20121%7CMCMID%7C15161824613499806178582985216688110544%7CMCAID%7CNONE%7CMCOPTOUT-1738492498s%7CNONE; S=d1t14Vz8/Pz8/Pz8hTAkRP0Y/MVejrp+iJqDrG2s3ricrC8IoIS4cru7O8dl+ciinvABsoabm3UhKcheo2PlnF8upiQ==; SN=VIC1AF8F32FC084E8681006A9D9EE93358.TOKF0588ECDBFAD43379C8FEAD426A108AB.1738485299101.LO`,  // Replace xxxx with actual values
+    flipkart_secure: 'true',
+    'sec-ch-ua': '"Not A(Brand";v="8", "Chromium";v="132", "Brave";v="132"',
+    'sec-ch-ua-mobile': '?1',
+    'sec-ch-ua-platform': '"Android"'
 }
 // Global variables
 let isTrackingActive = false;
@@ -230,13 +246,123 @@ export const startTrackingHandler = async () => {
         const categories = await fetchCategories(500064);
         console.log('FK: Categories received, processing...')
 
+        // Process each category sequentially
+        // for (const category of categories) {
+        //     await processCategoriesChunk(category, 500064, FLIPKART_HEADERS);
+        // }
+        // for testing doing first category
+        const products = await processCategoriesChunk(categories[0], 500064, FLIPKART_HEADERS);
+
     } catch (error) {
         console.error('FK: Error cleaning up browser and contexts:', error);
     }
 };
 
+const processCategoriesChunk = async (category, pincode, headers) => {
+    try {
+        console.log("FK: Processing category:", category);
+        category = "https://www.flipkart.com" + category;
+        let page = 1;
+        let hasMoreProducts = true;
+        let allProducts = [];
+
+        while (hasMoreProducts) {
+            const productsResponse = await axios.post(
+                `https://2.rome.api.flipkart.com/api/4/page/fetch`,
+                {
+                    "pageUri": category,
+                    "pageContext": {
+                        "trackingContext": {
+                            "context": {
+                                "eVar51": "neo/merchandising",
+                                "eVar61": "creative_card"
+                            }
+                        },
+                        "pageNumber": page,
+                        "networkSpeed": 0
+                    },
+                    "requestContext": {
+                        "type": "BROWSE_PAGE",
+                        "ssid": "zddoiwtils000000",
+                        "sqid": "aad8be2b-06bd-4008-983a-8e7713357ebb"
+                    },
+                    "locationContext": {
+                        "pincode": pincode,
+                        "changed": false
+                    }
+                },
+                {
+                    headers: FLIPKART_HEADERS,
+                    params: {
+                        cacheFirst: false
+                    }
+                }
+            );
+
+            const slots = productsResponse.data?.RESPONSE?.slots || [];
+            const productWidgets = slots
+                .map(slot => slot.widget)
+                .filter(widget => widget?.type === "PRODUCT_SUMMARY_EXTENDED");
+
+            let pageProducts = [];
+
+            productWidgets.forEach(widget => {
+                if (widget.data?.products) {
+                    Object.values(widget.data.products).forEach(product => {
+                        console.log("product", product);
+                        if (product.productInfo?.value?.productSwatch?.products) {
+                            Object.entries(product.productInfo?.value?.productSwatch?.products).forEach(([productId, productDetails]) => {
+                                console.log("productDetails", productDetails);
+                                const productData = {
+                                    productId: productId,
+                                    name: productDetails.titles?.title || '',
+                                    brand: productDetails.titles?.superTitle || '',
+                                    weight: productDetails.titles?.subtitle || '',
+                                    imageUrl: productDetails.images?.[0]?.url?.replace('{@width}', '512').replace('{@height}', '512').replace('{@quality}', '70') || '',
+                                    url: "https://www.flipkart.com" + productDetails.productUrl || '',
+                                    inStock: productDetails.available,
+                                    mrp: productDetails.pricing?.prices?.find(p => p.priceType === 'MRP')?.value || 0,
+                                    price: productDetails.pricing?.finalPrice?.value || 0,
+                                };
+                                productData.discount = Math.floor(((productData.mrp - productData.price) / productData.mrp) * 100);
+                                pageProducts.push(productData);
+                            });
+                        }
+                    });
+                }
+            });
+
+            if (pageProducts.length === 0) {
+                hasMoreProducts = false;
+            } else {
+                allProducts = [...allProducts, ...pageProducts];
+                console.log(`FK: Found ${pageProducts.length} products on page ${page}`);
+                page++;
+            }
+        }
+
+        if (allProducts.length > 0) {
+            // filter duplicate products
+            const uniqueProductsMap = new Map();
+            allProducts.forEach(product => {
+                uniqueProductsMap.set(product.productId, product);
+            });
+            const uniqueProducts = Array.from(uniqueProductsMap.values());
+            // Get category name from URL
+            const categoryName = category.split('/')[2] || 'unknown';
+            // await processProducts(allProducts, { name: categoryName });
+            console.log(`FK: Processed ${allProducts.length} products for category ${categoryName}`);
+            return uniqueProducts;
+        }
+
+    } catch (error) {
+        console.error('FK: Error processing category chunk:', error?.response?.data || error);
+        throw error;
+    }
+};
+
 export const fetchCategories = async (pincode) => {
-    if(placesData[pincode]) {
+    if (placesData[pincode]) {
         return placesData[pincode].categories;
     }
     try {
@@ -329,7 +455,7 @@ export const fetchCategories = async (pincode) => {
                 );
 
                 const slots = categoriesTreeResponse.data?.RESPONSE?.slots;
-                
+
                 // Find the category tree slot
                 const categoryTreeSlot = slots.find(slot => slot.widget?.type === "CATEGORY_TREE");
                 const substores = categoryTreeSlot?.widget?.data?.store?.value?.substores || [];
@@ -355,7 +481,7 @@ export const fetchCategories = async (pincode) => {
         const categoriesSet = new Set();
         categoriesTree.forEach(category => {
             category.substores.forEach(substore => {
-                if(substore?.action?.originalUrl) {
+                if (substore?.action?.originalUrl) {
                     categoriesSet.add(substore.action.originalUrl);
                 }
             });
