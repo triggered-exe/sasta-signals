@@ -384,27 +384,6 @@ export const fetchCategories = async (pincode) => {
         return placesData[pincode].categories;
     }
     try {
-        // Test network and IP information
-        console.log('FK: Testing connection...');
-        
-        try {
-            // Check our IP address
-            const ipResponse = await axios.get('https://api.ipify.org?format=json');
-            console.log('FK: Server IP:', ipResponse.data.ip);
-            
-            // Test connection to Flipkart
-            const testResponse = await axios.get('https://www.flipkart.com', {
-                timeout: 5000,
-                validateStatus: () => true
-            });
-            console.log('FK: Flipkart connection test:', {
-                status: testResponse.status,
-                headers: testResponse.headers
-            });
-        } catch (e) {
-            console.error('FK: Connection test failed:', e.message);
-        }
-
         const response = await axios.post(
             'https://1.rome.api.flipkart.com/api/4/page/fetch',
             {
