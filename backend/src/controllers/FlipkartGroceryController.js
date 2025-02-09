@@ -271,7 +271,7 @@ export const startTrackingHandler = async () => {
             }
 
             console.log("FK: Tracking completed for categoreis: starting new in 5 min")
-            // 
+            await new Promise(resolve => setTimeout(resolve, 5 * 60 * 1000));
 
         } catch (error) {
             console.error('FK: Error in tracking handler:', error);

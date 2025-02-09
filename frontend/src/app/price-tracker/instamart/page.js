@@ -2,12 +2,12 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { FaSpinner } from 'react-icons/fa';
+import { PAGE_SIZE } from "@/utils/constants";
 
 export default function PriceTracker() {
   const [products, setProducts] = useState([]);
   const [error, setError] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize] = useState(20); // Page size
   const [sortOrder, setSortOrder] = useState("discount"); // Default sorting by discount
   const [priceDropped, setPriceDropped] = useState(true); // Toggle for recently updated products
   const [notUpdated, setNotUpdated] = useState(false); // Add this line
@@ -22,7 +22,7 @@ export default function PriceTracker() {
       const response = await axios.get(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/instamart/products`, {
         params: {
           page,
-          pageSize,
+          PAGE_SIZE,
           sortOrder: orderBy,
           priceDropped, // Pass the priceDropped flag to the backend
           notUpdated, // Add this parameter
