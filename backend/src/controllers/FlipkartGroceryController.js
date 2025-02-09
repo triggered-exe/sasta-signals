@@ -91,13 +91,13 @@ export const getProducts = async (req, res, next) => {
     }
 };
 
-const processProducts = async (products, category, subcategory) => {
+const processProducts = async (products, category) => {
     try {
         const bulkOps = [];
         const now = new Date();
         const productIds = products
-            .filter(p => p.stock_status === "in_stock")
-            .map(p => p.product_id);
+            .filter(p => p.inStock)
+            .map(p => p.productId);
 
         // Get existing products from DB
         const existingProducts = await FlipkartGroceryProduct.find({
@@ -112,36 +112,29 @@ const processProducts = async (products, category, subcategory) => {
 
         // Process each product
         for (const product of products) {
-            if (product.stock_status !== "in_stock") continue;
+            if (!product.inStock) continue;
 
-            const currentPrice = Number(product.pricing.final_price) || 0;
-            const existingProduct = existingProductsMap.get(product.product_id);
+            const currentPrice = product.price;
+            const existingProduct = existingProductsMap.get(product.productId);
 
             const productData = {
-                productId: product.product_id,
+                ...product,
                 categoryName: category.name,
-                subcategoryName: subcategory?.name,
-                productName: product.name,
-                price: currentPrice,
-                mrp: Number(product.pricing.mrp) || 0,
-                discount: Math.floor(
-                    ((product.pricing.mrp - currentPrice) / product.pricing.mrp) * 100
-                ),
-                weight: product.weight,
-                brand: product.brand,
-                imageUrl: product.image_url,
-                url: `https://www.flipkart.com${product.product_url}`,
-                inStock: product.stock_status === "in_stock",
                 updatedAt: now
             };
 
             if (existingProduct) {
+                if (existingProduct.price === currentPrice) {
+                    continue; // Skip if price hasn't changed
+                }
+
                 productData.previousPrice = existingProduct.price;
                 const currentDiscount = productData.discount;
                 const previousDiscount = existingProduct.discount || 0;
 
                 if (currentDiscount - previousDiscount >= 10) {
                     productData.priceDroppedAt = now;
+                    productData.notified = false;
                     droppedProducts.push({
                         ...productData,
                         previousPrice: existingProduct.price
@@ -150,12 +143,13 @@ const processProducts = async (products, category, subcategory) => {
                     if (existingProduct.priceDroppedAt) {
                         productData.priceDroppedAt = existingProduct.priceDroppedAt;
                     }
+                    productData.notified = true;
                 }
             }
 
             bulkOps.push({
                 updateOne: {
-                    filter: { productId: product.product_id },
+                    filter: { productId: product.productId },
                     update: { $set: productData },
                     upsert: true
                 }
@@ -242,19 +236,47 @@ export const startTracking = async (req, res, next) => {
 };
 
 export const startTrackingHandler = async () => {
-    try {
-        const categories = await fetchCategories(500064);
-        console.log('FK: Categories received, processing...')
+    // Prevent multiple tracking instances
+    if (isTrackingActive) {
+        console.log("FK : Tracking is already active");
+        return;
+    }
 
-        // Process each category sequentially
-        // for (const category of categories) {
-        //     await processCategoriesChunk(category, 500064, FLIPKART_HEADERS);
-        // }
-        // for testing doing first category
-        const products = await processCategoriesChunk(categories[0], 500064, FLIPKART_HEADERS);
+    isTrackingActive = true;
+    while (true) {
+        // Skip if it's night time (12 AM to 6 AM IST)
+        if (isNightTimeIST()) {
+            console.log("FK : Skipping price tracking during night hours");
+            // Wait for 5 minutes before checking night time status again
+            await new Promise(resolve => setTimeout(resolve, 5 * 60 * 1000));
+            continue;
+        }
+        try {
+            const categories = await fetchCategories(500064);
+            console.log('FK: Categories received, processing...')
 
-    } catch (error) {
-        console.error('FK: Error cleaning up browser and contexts:', error);
+            // Process each category sequentially
+            for (const category of categories) {
+                try {
+                    const products = await processCategoriesChunk(category, 500064, FLIPKART_HEADERS);
+                    if (products && products.length > 0) {
+                        await processProducts(products, { name: getCategoryNameFromUrl(category) });
+                    }
+                    // Add a small delayprocessProducts between categories
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                } catch (error) {
+                    console.error(`FK: Error processing category ${category}:`, error);
+                    continue; // Continue with next category even if one fails
+                }
+            }
+
+            console.log("FK: Tracking completed for categoreis: starting new in 5 min")
+            // 
+
+        } catch (error) {
+            console.error('FK: Error in tracking handler:', error);
+            throw error;
+        }
     }
 };
 
@@ -309,13 +331,11 @@ const processCategoriesChunk = async (category, pincode, headers) => {
             productWidgets.forEach(widget => {
                 if (widget.data?.products) {
                     Object.values(widget.data.products).forEach(product => {
-                        console.log("product", product);
                         if (product.productInfo?.value?.productSwatch?.products) {
                             Object.entries(product.productInfo?.value?.productSwatch?.products).forEach(([productId, productDetails]) => {
-                                console.log("productDetails", productDetails);
                                 const productData = {
                                     productId: productId,
-                                    name: productDetails.titles?.title || '',
+                                    productName: productDetails.titles?.title || '',
                                     brand: productDetails.titles?.superTitle || '',
                                     weight: productDetails.titles?.subtitle || '',
                                     imageUrl: productDetails.images?.[0]?.url?.replace('{@width}', '512').replace('{@height}', '512').replace('{@quality}', '70') || '',
@@ -336,7 +356,6 @@ const processCategoriesChunk = async (category, pincode, headers) => {
                 hasMoreProducts = false;
             } else {
                 allProducts = [...allProducts, ...pageProducts];
-                console.log(`FK: Found ${pageProducts.length} products on page ${page}`);
                 page++;
             }
         }
@@ -348,10 +367,7 @@ const processCategoriesChunk = async (category, pincode, headers) => {
                 uniqueProductsMap.set(product.productId, product);
             });
             const uniqueProducts = Array.from(uniqueProductsMap.values());
-            // Get category name from URL
-            const categoryName = category.split('/')[2] || 'unknown';
-            // await processProducts(allProducts, { name: categoryName });
-            console.log(`FK: Processed ${allProducts.length} products for category ${categoryName}`);
+            console.log(`FK: Found ${allProducts.length} products for category ${category}`);
             return uniqueProducts;
         }
 
@@ -397,12 +413,11 @@ export const fetchCategories = async (pincode) => {
             throw new AppError('No data received from Flipkart API', 500);
         }
 
-        console.log(response.data);
+        // console.log(response.data);
         const slots = response.data.RESPONSE.slots;
         const widgets = slots.map(slot => slot.widget);
 
         const renderableComponents = widgets.map(widget => widget.data?.renderableComponents).filter(Boolean).flat();
-        console.log("renderableComponents", renderableComponents);
 
         const deDuplicate = new Map();
 
@@ -419,7 +434,7 @@ export const fetchCategories = async (pincode) => {
             }
             return null;
         }).filter(Boolean);
-        console.log("categories", ParentCategories);
+        // console.log("categories", ParentCategories);
 
         const categoriesTree = await Promise.all(ParentCategories.map(async category => {
             try {
@@ -487,7 +502,7 @@ export const fetchCategories = async (pincode) => {
             });
         });
         const categories = Array.from(categoriesSet);
-        console.log("categories", categories);
+        // console.log("categories", categories);
         placesData[pincode] = {
             categories: categories
         }
@@ -497,4 +512,9 @@ export const fetchCategories = async (pincode) => {
         console.error('FK: Error fetching categories:', error?.response?.data || error);
         throw new AppError('Failed to fetch Flipkart categories', 500);
     }
+};
+
+const getCategoryNameFromUrl = (url) => {
+    const parts = url.split('/');
+    return parts[2] || 'unknown';
 };
