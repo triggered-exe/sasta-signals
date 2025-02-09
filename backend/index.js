@@ -52,7 +52,7 @@ app.use(errorHandler);
 app.listen(port, () => {
   console.log(`Server is running on port - ${port}`);
   trackProductPrices(); // Start the price tracking when server starts
-  startTrackingHandler(); // For BigBasket?
-  zeptoStartTrackingHandler(); // For Zepto
+  // startTrackingHandler(); // For BigBasket?
+  // zeptoStartTrackingHandler(); // For Zepto
   flipkartStartTrackingHandler(); // For Flipkart
 });
