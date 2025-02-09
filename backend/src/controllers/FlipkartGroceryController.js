@@ -388,6 +388,7 @@ export const fetchCategories = async (pincode) => {
             'https://1.rome.api.flipkart.com/api/4/page/fetch',
             {
                 pageUri: "/catab-store?marketplaceGROCERY",
+
                 pageContext: {
                     trackingContext: {
                         context: {
