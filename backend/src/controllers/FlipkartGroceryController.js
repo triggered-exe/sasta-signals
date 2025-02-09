@@ -252,8 +252,10 @@ export const startTrackingHandler = async () => {
             continue;
         }
         try {
-            const categories = await fetchCategories(500064);
+            // const categories = await fetchCategories(500064);
+            const categories = ["/grocery/staples/dals-pulses/pr?sid=73z,bpe,3uv&marketplace=GROCERY"]
             console.log('FK: Categories received, processing...')
+
 
             // Process each category sequentially
             for (const category of categories) {
