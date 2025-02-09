@@ -275,10 +275,12 @@ export const startTrackingHandler = async () => {
 
         } catch (error) {
             console.error('FK: Error in tracking handler:', error);
-            throw error;
+            // wait for 5 minutes before retrying
+            await new Promise(resolve => setTimeout(resolve, 5 * 60 * 1000));
         }
     }
 };
+
 
 const processCategoriesChunk = async (category, pincode, headers) => {
     try {
