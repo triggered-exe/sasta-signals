@@ -509,7 +509,7 @@ export const fetchCategories = async (pincode) => {
         return categories;
 
     } catch (error) {
-        console.error('FK: Error fetching categories:', error?.response?.data || error);
+        console.error('FK: Error fetching categories:', error);
         throw new AppError('Failed to fetch Flipkart categories', 500);
     }
 };
