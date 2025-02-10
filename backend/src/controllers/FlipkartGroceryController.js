@@ -412,7 +412,7 @@ export const fetchCategories = async (pincode) => {
         );
 
         if (!response.data) {
-            throw new AppError('No data received from Flipkart API', 500);
+            throw new AppError('No data received from Flipkart API ', 500);
         }
 
         // console.log(response.data);
