@@ -13,7 +13,7 @@ import { startTrackingHandler as zeptoStartTrackingHandler } from './src/control
 import { startTrackingHandler as flipkartStartTrackingHandler } from './src/controllers/FlipkartGroceryController.js';
 import flipkartGroceryRouter from './src/routes/api/flipkartGrocery/flipkartGrocery.js';
 import { searchAllProductsUsingCrawler } from './src/controllers/FlipkartGroceryController.js';
-
+import amazonFreshRouter from './src/routes/api/amazonFresh/amazonFresh.js';
 
 import zeptoRouter from './src/routes/api/zepto/zepto.js';
 
@@ -45,15 +45,17 @@ app.use('/api/zepto', zeptoRouter);
 
 app.use('/api/flipkart-grocery', flipkartGroceryRouter);
 
+app.use('/api/amazon-fresh', amazonFreshRouter);
+
 // Global error handler
 app.use(errorHandler);
 
 // Start the server and initialize price tracking
 app.listen(port, () => {
   console.log(`Server is running on port - ${port}`);
-  trackProductPrices(); // Start the price tracking when server starts
-  startTrackingHandler(); // For BigBasket?
-  zeptoStartTrackingHandler(); // For Zepto
-  searchAllProductsUsingCrawler();
+  // trackProductPrices(); // Start the price tracking when server starts
+  // startTrackingHandler(); // For BigBasket?
+  // zeptoStartTrackingHandler(); // For Zepto
+  // searchAllProductsUsingCrawler();
   // flipkartStartTrackingHandler(); // For Flipkart
 });
