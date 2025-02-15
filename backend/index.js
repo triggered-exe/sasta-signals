@@ -12,7 +12,7 @@ import { startTrackingHandler } from './src/controllers/BigBasketController.js';
 import { startTrackingHandler as zeptoStartTrackingHandler } from './src/controllers/ZeptoController.js';
 import { startTrackingHandler as flipkartStartTrackingHandler } from './src/controllers/FlipkartGroceryController.js';
 import flipkartGroceryRouter from './src/routes/api/flipkartGrocery/flipkartGrocery.js';
-
+import { searchAllProductsUsingCrawler } from './src/controllers/FlipkartGroceryController.js';
 
 
 import zeptoRouter from './src/routes/api/zepto/zepto.js';
@@ -55,4 +55,5 @@ app.listen(port, () => {
   // startTrackingHandler(); // For BigBasket?
   // zeptoStartTrackingHandler(); // For Zepto
   // flipkartStartTrackingHandler(); // For Flipkart
+  searchAllProductsUsingCrawler();
 });

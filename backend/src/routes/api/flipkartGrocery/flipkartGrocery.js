@@ -3,6 +3,7 @@ import {
     getProducts, 
     startTracking, 
     searchProductsUsingCrawler,
+    startCrawlerSearchHandler,
 } from '../../../controllers/FlipkartGroceryController.js';
 
 const router = express.Router();
@@ -15,5 +16,6 @@ router.post('/track', startTracking);
 
 router.post('/search', searchProductsUsingCrawler);
 
+router.post('/start-crawler-search', startCrawlerSearchHandler);
 
 export default router; 

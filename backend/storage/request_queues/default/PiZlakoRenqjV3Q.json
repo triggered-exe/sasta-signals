@@ -1,9 +1,0 @@
-{
-	"id": "PiZlakoRenqjV3Q",
-	"json": "{\"id\":\"PiZlakoRenqjV3Q\",\"url\":\"https://www.bigbasket.com/\",\"loadedUrl\":\"https://www.bigbasket.com/\",\"uniqueKey\":\"https://www.bigbasket.com\",\"method\":\"GET\",\"noRetry\":false,\"retryCount\":0,\"errorMessages\":[],\"headers\":{},\"userData\":{\"__crawlee\":{\"state\":4}},\"handledAt\":\"2025-01-05T05:47:09.066Z\"}",
-	"method": "GET",
-	"orderNo": null,
-	"retryCount": 0,
-	"uniqueKey": "https://www.bigbasket.com",
-	"url": "https://www.bigbasket.com/"
-}
