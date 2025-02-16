@@ -16,6 +16,6 @@ router.post('/track', startTracking);
 
 router.post('/search', searchProductsUsingCrawler);
 
-router.post('/start-crawler-search', startCrawlerSearchHandler);
+router.post('/start-crawler', startCrawlerSearchHandler);
 
 export default router; 

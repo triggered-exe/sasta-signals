@@ -315,7 +315,7 @@ const processProducts = async (products, category) => {
             };
 
             // Only process if price has changed
-            if (existingProduct && existingProduct.price === currentPrice) {
+            if (existingProduct && existingProduct.price === currentPrice && productData.inStock === existingProduct.inStock) {
                 continue;
             }
 

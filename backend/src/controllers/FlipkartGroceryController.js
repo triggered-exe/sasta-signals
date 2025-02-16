@@ -90,7 +90,9 @@ export const getProducts = async (req, res, next) => {
 const processProducts = async (products, category) => {
   try {
     const bulkOps = [];
+    const droppedProducts = [];
     const now = new Date();
+
     const productIds = products.filter((p) => p.inStock).map((p) => p.productId);
 
     // Get existing products from DB
@@ -100,12 +102,9 @@ const processProducts = async (products, category) => {
 
     // Create a map for faster lookups
     const existingProductsMap = new Map(existingProducts.map((p) => [p.productId, p]));
-    const droppedProducts = [];
 
     // Process each product
     for (const product of products) {
-      if (!product.inStock) continue;
-
       const currentPrice = product.price;
       const existingProduct = existingProductsMap.get(product.productId);
 
@@ -124,12 +123,14 @@ const processProducts = async (products, category) => {
         const currentDiscount = productData.discount;
         const previousDiscount = existingProduct.discount || 0;
 
-        if (currentDiscount - previousDiscount >= 10) {
+        if (currentDiscount > previousDiscount) {
           productData.priceDroppedAt = now;
-          droppedProducts.push({
-            ...productData,
-            previousPrice: existingProduct.price,
-          });
+          if (currentDiscount - previousDiscount >= 10) {
+            droppedProducts.push({
+              ...productData,
+              previousPrice: existingProduct.price,
+            });
+          }
         } else {
           if (existingProduct.priceDroppedAt) {
             productData.priceDroppedAt = existingProduct.priceDroppedAt;
@@ -174,7 +175,7 @@ const sendTelegramMessage = async (droppedProducts) => {
       return;
     }
 
-    const filteredProducts = droppedProducts.filter((product) => product.discount > 59).sort((a, b) => b.discount - a.discount);
+    const filteredProducts = droppedProducts.filter((product) => product.discount >= 50).sort((a, b) => b.discount - a.discount);
 
     if (filteredProducts.length === 0) return;
 

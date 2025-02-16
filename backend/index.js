@@ -14,7 +14,7 @@ import { startTrackingHandler as flipkartStartTrackingHandler } from './src/cont
 import flipkartGroceryRouter from './src/routes/api/flipkartGrocery/flipkartGrocery.js';
 import { searchAllProductsUsingCrawler } from './src/controllers/FlipkartGroceryController.js';
 import amazonFreshRouter from './src/routes/api/amazonFresh/amazonFresh.js';
-
+import { startTrackingHandler as amazonFreshStartTrackingHandler } from './src/controllers/AmazonFreshController.js';
 import zeptoRouter from './src/routes/api/zepto/zepto.js';
 
 // Load environment variables from .env file
@@ -57,5 +57,5 @@ app.listen(port, () => {
   startTrackingHandler(); // For BigBasket?
   zeptoStartTrackingHandler(); // For Zepto
    searchAllProductsUsingCrawler(); // For Flipkart
-
+  amazonFreshStartTrackingHandler(); // For Amazon Fresh
 });

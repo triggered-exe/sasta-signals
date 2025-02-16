@@ -32,17 +32,10 @@ const amazonFreshProductSchema = new mongoose.Schema({
         type: Boolean,
         default: true,
     },
-    outOfStockMessage: String,
     lastInStock: Date,
     lastChecked: Date,
     priceDroppedAt: Date,
     previousPrice: Number,
-    priceHistory: [{
-        price: Number,
-        mrp: Number,
-        discount: Number,
-        timestamp: Date,
-    }],
     updatedAt: {
         type: Date,
         default: Date.now,
@@ -51,4 +44,4 @@ const amazonFreshProductSchema = new mongoose.Schema({
     subcategoryName: String,
 });
 
-export const AmazonFreshProduct = mongoose.model("AmazonFreshProduct", amazonFreshProductSchema); 
+export const AmazonFreshProduct = mongoose.model("amazon_fresh_products", amazonFreshProductSchema); 
