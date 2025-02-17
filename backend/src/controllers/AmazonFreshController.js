@@ -215,7 +215,7 @@ const searchAndExtractProducts = async (page, query, maxPages = 10) => {
   try {
     console.log(`AF: Searching for "${query}"`);
 
-    // Navigate to search page
+    // Navigate to search  page
     const searchUrl = `https://www.amazon.in/s?k=${encodeURIComponent(query)}&i=nowstore`;
     await page.goto(searchUrl, { waitUntil: "domcontentloaded" });
 
