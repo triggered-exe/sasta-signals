@@ -445,7 +445,7 @@ export const startTrackingHandler = async () => {
             taskChunk.map(async (query, index) => {
               console.log(`AF: Processing ${query}`);
               try {
-                const products = await searchAndExtractProducts(pages[index], query);
+                const products = await searchAndExtractProducts(pages[index], query, 15);
                 const processedCount = await processProducts(products, query);
                 return processedCount;
               } catch (error) {
