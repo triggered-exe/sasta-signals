@@ -4,7 +4,7 @@ import axios from "axios";
 import { FaSpinner } from 'react-icons/fa';
 import { PAGE_SIZE } from "@/utils/constants";
 
-export default function ZeptoPage() {
+export default function FlipkartGroceryPriceTracker() {
     const [products, setProducts] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -13,14 +13,13 @@ export default function ZeptoPage() {
     const [sortOrder, setSortOrder] = useState("discount");
     const [priceDropped, setPriceDropped] = useState(true);
     const [notUpdated, setNotUpdated] = useState(false);
-    const [place, setPlace] = useState("500081"); // Default place/pincode
 
     const fetchProducts = async () => {
         try {
             setLoading(true);
             setError(null);
 
-            const response = await axios.get(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/zepto/products`, {
+            const response = await axios.get(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/flipkart-grocery/products`, {
                 params: {
                     page: currentPage,
                     pageSize: PAGE_SIZE,
@@ -91,24 +90,11 @@ export default function ZeptoPage() {
         setCurrentPage(1);
     };
 
-    const handlePlaceChange = (e) => {
-        setPlace(e.target.value);
-    };
-
     return (
-        <div className="container mx-auto p-6 bg-gray-100 min-h-screen">
+        <div className="container mx-auto p-6 bg-gray-100">
             {/* Header Section */}
             <div className="flex flex-col sm:flex-row justify-between items-center mb-8 bg-white p-6 rounded-lg shadow-md">
-                <h2 className="text-3xl font-bold text-gray-800 mb-4 sm:mb-0">Zepto Price Tracker</h2>
-                <div className="flex items-center space-x-4">
-                    <input
-                        type="text"
-                        value={place}
-                        onChange={handlePlaceChange}
-                        placeholder="Enter Pincode"
-                        className="p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                </div>
+                <h2 className="text-3xl font-bold text-gray-800 mb-4 sm:mb-0">Flipkart Grocery Price Tracker</h2>
             </div>
 
             {/* Error Display */}
@@ -127,7 +113,7 @@ export default function ZeptoPage() {
                         </label>
                         <select
                             id="sortOrder"
-                            className="p-2 border rounded-md bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-150 ease-in-out hover:bg-gray-100"
+                            className="p-2 border rounded-md bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
                             value={sortOrder}
                             onChange={handleSortChange}
                         >
@@ -142,20 +128,20 @@ export default function ZeptoPage() {
                             id="priceDropped"
                             checked={priceDropped}
                             onChange={handlePriceDroppedChange}
-                            className="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+                            className="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                         />
-                        <label htmlFor="priceDropped" className="font-semibold text-gray-700 cursor-pointer select-none">
+                        <label htmlFor="priceDropped" className="font-semibold text-gray-700">
                             Recently Dropped
                         </label>
-                        
+
                         <input
                             type="checkbox"
                             id="notUpdated"
                             checked={notUpdated}
                             onChange={handleNotUpdatedChange}
-                            className="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer ml-4"
+                            className="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 ml-4"
                         />
-                        <label htmlFor="notUpdated" className="font-semibold text-gray-700 cursor-pointer select-none">
+                        <label htmlFor="notUpdated" className="font-semibold text-gray-700">
                             Not Updated (2+ Days)
                         </label>
                     </div>
@@ -171,7 +157,7 @@ export default function ZeptoPage() {
                     </div>
                 ) : products.length > 0 ? (
                     products.map((product) => (
-                        <div key={product.productId} className="bg-white rounded-lg shadow-md overflow-hidden">
+                        <div key={product._id} className="bg-white rounded-lg shadow-md overflow-hidden">
                             <div className="relative aspect-square">
                                 <a
                                     href={product.url}
@@ -198,12 +184,11 @@ export default function ZeptoPage() {
                             </div>
                             <div className="p-2">
                                 <div className="flex flex-wrap gap-1">
-                                    <div className="text-xs bg-gray-100 p-1 rounded-md">
-                                        <span className="font-medium">{product.weight}</span>
-                                        {product.mrp > product.price && (
-                                            <span className="ml-1 line-through">₹{product.mrp}</span>
-                                        )}
-                                    </div>
+                                    {product.mrp > product.price && (
+                                        <div className="text-xs bg-gray-100 p-1 rounded-md">
+                                            <span className="line-through">₹{product.mrp}</span>
+                                        </div>
+                                    )}
                                     {product.brand && (
                                         <div className="text-xs bg-gray-100 p-1 rounded-md">
                                             <span className="font-medium">{product.brand}</span>
@@ -222,14 +207,13 @@ export default function ZeptoPage() {
 
             {/* Pagination Controls */}
             {totalPages > 1 && (
-                <div className="fixed bottom-0 left-0 right-0 shadow-md p-4">
+                <div className="fixed bottom-0 left-0 right-0 bg-white shadow-md p-4">
                     <div className="flex justify-center items-center space-x-2">
                         <button
                             onClick={() => setCurrentPage(1)}
                             disabled={currentPage === 1}
-                            className={`px-3 py-1 bg-blue-500 text-white rounded-md transition-colors ${
-                                currentPage === 1 ? "opacity-50 cursor-not-allowed" : "hover:bg-blue-600"
-                            }`}
+                            className={`px-3 py-1 bg-blue-500 text-white rounded-md ${currentPage === 1 ? "opacity-50 cursor-not-allowed" : "hover:bg-blue-600"
+                                }`}
                         >
                             First
                         </button>
@@ -237,11 +221,10 @@ export default function ZeptoPage() {
                             <button
                                 key={pageNum}
                                 onClick={() => setCurrentPage(pageNum)}
-                                className={`px-3 py-1 rounded-md transition-colors ${
-                                    currentPage === pageNum
+                                className={`px-3 py-1 rounded-md ${currentPage === pageNum
                                         ? "bg-blue-600 text-white"
                                         : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                                }`}
+                                    }`}
                             >
                                 {pageNum}
                             </button>
@@ -249,9 +232,8 @@ export default function ZeptoPage() {
                         <button
                             onClick={() => setCurrentPage(totalPages)}
                             disabled={currentPage === totalPages}
-                            className={`px-3 py-1 bg-blue-500 text-white rounded-md transition-colors ${
-                                currentPage === totalPages ? "opacity-50 cursor-not-allowed" : "hover:bg-blue-600"
-                            }`}
+                            className={`px-3 py-1 bg-blue-500 text-white rounded-md ${currentPage === totalPages ? "opacity-50 cursor-not-allowed" : "hover:bg-blue-600"
+                                }`}
                         >
                             Last
                         </button>
@@ -260,4 +242,4 @@ export default function ZeptoPage() {
             )}
         </div>
     );
-}
+} 
