@@ -52,7 +52,7 @@ export default function Pagination({
     if (totalPages <= 1) return null;
 
     return (
-        <div className="flex justify-center mt-2 mb-1">
+        <div className="flex justify-center m-2">
             <MUIPagination
                 count={totalPages}
                 page={currentPage}

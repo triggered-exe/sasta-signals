@@ -64,7 +64,7 @@ export default function AppLayout({ children, selectedWebsite, setSelectedWebsit
                 />
 
                 <main className={`flex-1 transition-all duration-300 ${isMenuExpanded ? 'ml-[250px]' : 'ml-[70px]'}`}>
-                    <div className="w-full p-4 transition-all duration-300 bg-white/70 dark:bg-gray-900/50 text-gray-800 dark:text-white shadow-sm rounded-lg m-2">
+                    <div className="w-full p-4 transition-all duration-300 bg-white/70 dark:bg-gray-900/50 text-gray-800 dark:text-white shadow-sm rounded-lg">
                         {children}
                     </div>
                 </main>
