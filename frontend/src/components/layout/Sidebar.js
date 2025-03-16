@@ -31,10 +31,10 @@ export default function Sidebar({
     return (
         <div
             ref={slideoutRef}
-            className={`fixed top-16 h-[calc(100vh-64px)] transition-all duration-300 ease-in-out 
+            className={`fixed top-16 h-[calc(100vh-64px)] transition-all duration-300 
                 ${isMenuExpanded ? 'w-[250px]' : 'w-[70px]'} 
                 bg-white dark:bg-gray-800 text-gray-800 dark:text-white
-                z-40 border-r border-gray-200 dark:border-gray-700`}
+                z-50 border-r border-gray-200 dark:border-gray-700`}
         >
             {/* Expand/collapse toggle button */}
             <div className="border-b border-gray-200 dark:border-gray-700 py-3 px-4 flex items-center justify-between">

@@ -52,7 +52,7 @@ export default function Pagination({
     if (totalPages <= 1) return null;
 
     return (
-        <div className="flex justify-center m-2">
+        <div className="flex justify-center mt-2 mb-1">
             <MUIPagination
                 count={totalPages}
                 page={currentPage}
@@ -60,12 +60,17 @@ export default function Pagination({
                 variant="outlined"
                 shape="rounded"
                 size="medium"
+                siblingCount={window.innerWidth < 640 ? 0 : 1}
+                boundaryCount={window.innerWidth < 640 ? 1 : 2}
                 className="[&_.MuiPaginationItem-root]:text-gray-900 dark:[&_.MuiPaginationItem-root]:text-gray-200 
                           [&_.MuiPaginationItem-root]:border-gray-300 dark:[&_.MuiPaginationItem-root]:border-gray-600 
                           [&_.Mui-selected]:bg-blue-500 dark:[&_.Mui-selected]:bg-blue-600 
                           [&_.Mui-selected]:text-white dark:[&_.Mui-selected]:text-white 
                           [&_.Mui-selected:hover]:bg-blue-600 dark:[&_.Mui-selected:hover]:bg-blue-700
-                          [&_.MuiPaginationItem-root:hover]:bg-gray-100 dark:[&_.MuiPaginationItem-root:hover]:bg-gray-700"
+                          [&_.MuiPaginationItem-root:hover]:bg-gray-100 dark:[&_.MuiPaginationItem-root:hover]:bg-gray-700
+                          [&_.MuiPaginationItem-root]:text-sm sm:[&_.MuiPaginationItem-root]:text-base
+                          [&_.MuiPaginationItem-root]:min-w-[32px] sm:[&_.MuiPaginationItem-root]:min-w-[40px]
+                          [&_.MuiPaginationItem-root]:h-8 sm:[&_.MuiPaginationItem-root]:h-10"
             />
         </div>
     );
