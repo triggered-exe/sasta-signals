@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useEffect } from "react";
 import { FaChevronRight, FaShoppingBasket, FaArrowRight, FaArrowLeft, FaMoon, FaSun } from 'react-icons/fa';
 import { SiSwiggy, SiAmazon, SiFlipkart, SiBigbasket } from 'react-icons/si';
 import { GiShoppingBag } from 'react-icons/gi';
@@ -21,7 +21,33 @@ export default function Sidebar({
     selectedWebsite,
     setSelectedWebsite
 }) {
-    const slideoutRef = useRef(null);
+    const sidebarRef = useRef(null);
+
+    useEffect(() => {
+        // Handle clicks outside the sidebar
+        const handleClickOutside = (event) => {
+            if (sidebarRef.current && !sidebarRef.current.contains(event.target) && isMenuExpanded) {
+                toggleMenuExpansion();
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [isMenuExpanded, toggleMenuExpansion]);
+
+    const handleMouseEnter = () => {
+        if (!isMenuExpanded) {
+            toggleMenuExpansion();
+        }
+    };
+
+    const handleMouseLeave = () => {
+        if (isMenuExpanded) {
+            toggleMenuExpansion();
+        }
+    };
 
     // Handle website selection
     const handleWebsiteClick = (websiteName) => {
@@ -30,7 +56,9 @@ export default function Sidebar({
 
     return (
         <div
-            ref={slideoutRef}
+            ref={sidebarRef}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
             className={`fixed top-16 h-[calc(100vh-64px)] transition-all duration-300 
                 ${isMenuExpanded ? 'w-[250px]' : 'w-[70px]'} 
                 bg-white dark:bg-gray-800 text-gray-800 dark:text-white
