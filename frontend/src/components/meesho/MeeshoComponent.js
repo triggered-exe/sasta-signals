@@ -2,15 +2,12 @@ import React, { useState, useCallback } from 'react';
 import MeeshoProducts from './MeeshoProducts';
 import axios from 'axios';
 
-const MeeshoComponent = ({
-  setIsLoading,
-  setError,
-  searchQuery,
-  setSearchQuery,
-  isLoading, // Ensure this prop is passed to control the loader visibility
-}) => {
+const MeeshoComponent = () => {
   const [sortOption, setSortOption] = useState('special');
   const [products, setProducts] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   const handleSearchSubmit = async (e) => {
     e.preventDefault();
@@ -23,7 +20,7 @@ const MeeshoComponent = ({
 
     try {
       const response = await axios.get(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/meesho/search`, {
-        params: { 
+        params: {
           query: searchQuery.trim(),
           page: 1,
           limit: 50,
@@ -63,17 +60,17 @@ const MeeshoComponent = ({
     }
 
     const normalDiscount = ((originalPrice - offerPrice) / originalPrice) * 100;
-    const specialDiscount = specialOfferPrice !== null 
-      ? ((originalPrice - specialOfferPrice) / originalPrice) * 100 
+    const specialDiscount = specialOfferPrice !== null
+      ? ((originalPrice - specialOfferPrice) / originalPrice) * 100
       : 0;
 
     // Calculate difference only when there's a special offer
-    const difference = specialOfferPrice !== null 
+    const difference = specialOfferPrice !== null
       ? Math.round(specialDiscount - normalDiscount)
       : -999; // Use a very low number for products without special offers
 
-    return { 
-      normalDiscount: Math.round(normalDiscount), 
+    return {
+      normalDiscount: Math.round(normalDiscount),
       specialDiscount: Math.round(specialDiscount),
       specialPrice: specialOfferPrice,
       difference
@@ -127,9 +124,9 @@ const MeeshoComponent = ({
           />
           <div className="flex items-center whitespace-nowrap">
             <label htmlFor="sortOption" className="mr-2">Sort by:</label>
-            <select 
+            <select
               id="sortOption"
-              value={sortOption} 
+              value={sortOption}
               onChange={handleSortChange}
               className="p-2 border rounded"
             >
