@@ -55,7 +55,7 @@ app.listen(port, () => {
   console.log(`Server is running on port - ${port}`);
   // trackProductPrices(); // For Instamart
   // zeptoStartTrackingHandler(); // For Zepto
-  // startTrackingHandler(); // For BigBasket
+  startTrackingHandler(); // For BigBasket
   // searchAllProductsUsingCrawler(); // For Flipkart
- amazonFreshStartTrackingHandler(); // For Amazon Fresh
+//  amazonFreshStartTrackingHandler(); // For Amazon Fresh
 });
