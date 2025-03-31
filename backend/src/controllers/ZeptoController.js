@@ -4,13 +4,8 @@ import { isNightTimeIST, buildSortCriteria, buildMatchCriteria } from '../utils/
 import axios from 'axios';
 import { ZeptoProduct } from '../models/ZeptoProduct.js';
 import { PAGE_SIZE, HALF_HOUR } from "../utils/constants.js";
-import { Resend } from 'resend';
+import { sendPriceDropNotifications } from "../services/NotificationService.js";
 
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const TELEGRAM_CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID;
-
-// Initialize Resend client
-const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Global variables
 let isTrackingActive = false;
@@ -97,9 +92,9 @@ const checkLocationAvailabilityAndGetStoreId = async (latitude, longitude) => {
                 version: 'v2'
             },
             headers: {
-                'app_version': '12.32.2',
+                'app_version': '24.10.5',
                 'platform': 'WEB',
-                'compatible_components': 'CONVENIENCE_FEE,RAIN_FEE,EXTERNAL_COUPONS,STANDSTILL,BUNDLE,MULTI_SELLER_ENABLED,PIP_V1,ROLLUPS,SCHEDULED_DELIVERY,SAMPLING_ENABLED,ETA_NORMAL_WITH_149_DELIVERY,ETA_NORMAL_WITH_199_DELIVERY,HOMEPAGE_V2,NEW_ETA_BANNER,VERTICAL_FEED_PRODUCT_GRID,AUTOSUGGESTION_PAGE_ENABLED,AUTOSUGGESTION_PIP,AUTOSUGGESTION_AD_PIP,BOTTOM_NAV_FULL_ICON,COUPON_WIDGET_CART_REVAMP,DELIVERY_UPSELLING_WIDGET,MARKETPLACE_CATEGORY_GRID,SUPERSTORE_V1,PROMO_CASH:0,NEW_FEE_STRUCTURE,NEW_BILL_INFO,RE_PROMISE_ETA_ORDER_SCREEN_ENABLED,SUPERSTORE_V1,MANUALLY_APPLIED_DELIVERY_FEE_RECEIVABLE,MARKETPLACE_REPLACEMENT,ZEPTO_PASS,ZEPTO_PASS:1,ZEPTO_PASS:2,ZEPTO_PASS_RENEWAL,CART_REDESIGN_ENABLED,SUPERSTORE_V1,SHIPMENT_WIDGETIZATION_ENABLED,TABBED_CAROUSEL_V2,24X7_ENABLED_V1,PROMO_CASH:0'
+                'compatible_components': 'CONVENIENCE_FEE,RAIN_FEE,EXTERNAL_COUPONS,STANDSTILL,BUNDLE,MULTI_SELLER_ENABLED,PIP_V1,ROLLUPS,SCHEDULED_DELIVERY,SAMPLING_ENABLED,ETA_NORMAL_WITH_149_DELIVERY,ETA_NORMAL_WITH_199_DELIVERY,HOMEPAGE_V2,NEW_ETA_BANNER,VERTICAL_FEED_PRODUCT_GRID,AUTOSUGGESTION_PAGE_ENABLED,AUTOSUGGESTION_PIP,AUTOSUGGESTION_AD_PIP,BOTTOM_NAV_FULL_ICON,COUPON_WIDGET_CART_REVAMP,DELIVERY_UPSELLING_WIDGET,MARKETPLACE_CATEGORY_GRID,NO_PLATFORM_CHECK_ENABLED_V2,SUPER_SAVER:1,SUPERSTORE_V1,PROMO_CASH:0,24X7_ENABLED_V1,TABBED_CAROUSEL_V2,HP_V4_FEED,WIDGET_BASED_ETA,NEW_FEE_STRUCTURE,NEW_BILL_INFO,RE_PROMISE_ETA_ORDER_SCREEN_ENABLED,SUPERSTORE_V1,MANUALLY_APPLIED_DELIVERY_FEE_RECEIVABLE,MARKETPLACE_REPLACEMENT,ZEPTO_PASS,ZEPTO_PASS:1,ZEPTO_PASS:2,ZEPTO_PASS_RENEWAL,CART_REDESIGN_ENABLED,SHIPMENT_WIDGETIZATION_ENABLED,TABBED_CAROUSEL_V2,24X7_ENABLED_V1,PROMO_CASH:0,HOMEPAGE_V2,SUPER_SAVER:1,NO_PLATFORM_CHECK_ENABLED_V2,HP_V4_FEED,GIFT_CARD,SCLP_ADD_MONEY,GIFTING_ENABLED,OFSE,WIDGET_BASED_ETA,NEW_ETA_BANNER,'
             }
         });
 
@@ -153,8 +148,8 @@ const searchProductsFromZeptoHelper = async (query, storeId) => {
                         'accept': 'application/json, text/plain, */*',
                         'accept-language': 'en-US,en;q=0.8',
                         'app_sub_platform': 'WEB',
-                        'app_version': '12.32.2',
-                        'appversion': '12.32.2',
+                        'app_version': '24.10.5',
+                        'appversion': '24.10.5',
                         'content-type': 'application/json',
                         'device_id': deviceId,
                         'deviceid': deviceId,
@@ -231,60 +226,6 @@ const searchProductsFromZeptoHelper = async (query, storeId) => {
         throw error;
     }
 };
-
-export const getProducts = async (req, res, next) => {
-    try {
-        const {
-            page = "1",
-            pageSize = PAGE_SIZE.toString(),
-            sortOrder = "price",
-            priceDropped = "false",
-            notUpdated = "false"
-        } = req.query;
-
-        const skip = (parseInt(page) - 1) * parseInt(pageSize);
-        const sortCriteria = buildSortCriteria(sortOrder);
-        const matchCriteria = buildMatchCriteria(priceDropped, notUpdated);
-
-        const totalProducts = await ZeptoProduct.countDocuments(matchCriteria);
-        const products = await ZeptoProduct.aggregate([
-            { $match: matchCriteria },
-            { $sort: sortCriteria },
-            { $skip: skip },
-            { $limit: parseInt(pageSize) },
-            {
-                $project: {
-                    productId: 1,
-                    productName: 1,
-                    price: 1,
-                    mrp: 1,
-                    discount: 1,
-                    weight: 1,
-                    brand: 1,
-                    imageUrl: 1,
-                    url: 1,
-                    priceDroppedAt: 1,
-                    categoryName: 1,
-                    subcategoryName: 1,
-                    eta: 1,
-                    inStock: 1
-                }
-            }
-        ]);
-
-        res.status(200).json({
-            data: products,
-            totalPages: Math.ceil(totalProducts / parseInt(pageSize)),
-            currentPage: parseInt(page),
-            pageSize: parseInt(pageSize),
-            total: totalProducts
-        });
-
-    } catch (error) {
-        next(error instanceof AppError ? error : AppError.internalError('Failed to fetch Zepto products'));
-    }
-};
-
 
 export const getCategoriesHandler = async (req, res, next) => {
     try {
@@ -466,7 +407,7 @@ const trackPrices = async (placeName = "500081") => {
 
                 try {
                     // Send notifications
-                    await sendPriceDropNotifications(priceDrops);
+                    await sendPriceDropNotifications(priceDrops, "Zepto");
 
                     // Mark these products as notified
                     const productIds = priceDrops.map(product => product.productId);
@@ -523,6 +464,7 @@ const processChunk = async (chunk, storeId) => {
                         },
                         headers: {
                             'accept': 'application/json, text/plain, */*',
+                            'request-signature': '860ea4ea95348d44eaa5848ba9b58929678a6d601e9e8d27fe292d794f1faba5',
                             'storeid': storeId
                         }
                     });
@@ -552,7 +494,7 @@ const processChunk = async (chunk, storeId) => {
                         const waitTime = retryCount * 60 * 1000;
                         console.log(`Zepto: Waiting ${waitTime / 1000} seconds before retry ${retryCount}/${MAX_RETRIES}`);
                         await new Promise(resolve => setTimeout(resolve, waitTime));
-                        continue;
+                        continue; // Retry the same request
                     }
 
                     console.error(`Zepto: Error fetching products for subcategory ${subcategory.name}:`, error?.response?.data || error);
@@ -627,7 +569,6 @@ const processProducts = async (products, category, subcategory) => {
                 // The current discount should be greater than or equal to 20% more than the previous discount
                 if (currentDiscount - previousDiscount >= 10) {
                     productData.priceDroppedAt = now;
-                    productData.priceDropNotificationSent = false;
 
                     droppedProducts.push({
                         ...productData,
@@ -638,7 +579,6 @@ const processProducts = async (products, category, subcategory) => {
                     if (existingProduct.priceDroppedAt) {
                         productData.priceDroppedAt = existingProduct.priceDroppedAt;
                     }
-                    productData.priceDropNotificationSent = true;
                 }
             }
 
@@ -654,11 +594,13 @@ const processProducts = async (products, category, subcategory) => {
         if (droppedProducts.length > 0) {
             console.log(`Zepto: Found ${droppedProducts.length} dropped products in ${category.name}`);
             try {
-                await sendTelegramMessage(droppedProducts);
+                await sendPriceDropNotifications(droppedProducts, "Zepto");
             } catch (error) {
-                console.error('Zepto: Error sending Telegram notification:', error);
+                console.error('Zepto: Error sending notifications:', error);
                 // Don't throw the error to continue processing
             }
+        } else {
+            console.log(`Zepto: No dropped products in ${category.name} out of ${products.length} products`);
         }
 
         if (bulkOps.length > 0) {
@@ -670,161 +612,5 @@ const processProducts = async (products, category, subcategory) => {
     } catch (error) {
         console.error('Zepto: Error processing products:', error);
         return { processedCount: 0 };
-    }
-};
-
-const sendTelegramMessage = async (droppedProducts) => {
-    try {
-        if (!droppedProducts || droppedProducts.length === 0) {
-            console.log("Zepto: No dropped products to send Telegram message for");
-            return;
-        }
-
-        // Filter products with discount > 59% and sort by highest discount
-        const filteredProducts = droppedProducts
-            .filter((product) => product.discount > 59)
-            .sort((a, b) => b.discount - a.discount);
-
-        if (filteredProducts.length === 0) {
-            return;
-        }
-
-        // Split into chunks of 15 products each
-        const chunks = [];
-        for (let i = 0; i < filteredProducts.length; i += 15) {
-            chunks.push(filteredProducts.slice(i, i + 15));
-        }
-
-        console.log(`Zepto: Sending Telegram messages for ${filteredProducts.length} products`);
-
-        // Send each chunk as a separate message
-        for (let i = 0; i < chunks.length; i++) {
-            const messageText =
-                `🔥 <b>Zepto Price Drops</b>\n\n` +
-                chunks[i].map((product) => {
-                    const priceDrop = product.previousPrice - product.price;
-                    return `<b>${product.productName}</b>\n` +
-                        `💰 Current: ₹${product.price}\n` +
-                        `📊 Previous: ₹${product.previousPrice}\n` +
-                        `📉 Drop: ₹${priceDrop.toFixed(2)} (${product.discount}% off)\n` +
-                        `🔗 <a href="${product.url}">View on Zepto</a>\n`;
-                }).join("\n");
-
-            await axios.post(
-                `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
-                {
-                    chat_id: TELEGRAM_CHANNEL_ID,
-                    text: messageText,
-                    parse_mode: "HTML",
-                    disable_web_page_preview: true,
-                }
-            );
-
-            // Add a small delay between messages
-            if (i < chunks.length - 1) {
-                await new Promise((resolve) => setTimeout(resolve, 1000));
-            }
-        }
-
-        console.log(`Zepto: Sent notifications for ${filteredProducts.length} products`);
-    } catch (error) {
-        console.error("Zepto: Error sending Telegram message:", error?.response?.data || error);
-        throw error;
-    }
-};
-
-// Sends email notification for products with price drops
-const sendEmailWithDroppedProducts = async (sortedProducts) => {
-    try {
-        // Skip sending email if no dropped products
-        if (!sortedProducts || sortedProducts.length === 0) {
-            console.log("Zepto: No dropped products to send email for");
-            return;
-        }
-
-        console.log(`Zepto: Attempting to send email for ${sortedProducts.length} dropped products`);
-
-        // Split products into chunks of 50 each
-        const chunks = [];
-        for (let i = 0; i < sortedProducts.length; i += 50) {
-            chunks.push(sortedProducts.slice(i, i + 50));
-        }
-
-        // Send email for each chunk
-        for (let i = 0; i < chunks.length; i++) {
-            const emailContent = `
-                <h2>Recently Dropped Products on Zepto (Part ${i + 1}/${chunks.length})</h2>
-                <div style="font-family: Arial, sans-serif;">
-                    ${chunks[i]
-                    .map(
-                        (product) => {
-                            const prevDiscount = Math.floor(((product.mrp - product.previousPrice) / product.mrp) * 100);
-                            return `
-                                <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #eee; border-radius: 8px;">
-                                    <a href="${product.url}"  
-                                       style="text-decoration: none; color: inherit; display: block;">
-                                        <div style="display: flex; align-items: center;">
-                                            <img src="${product.imageUrl}" 
-                                                 alt="${product.productName}" 
-                                                 style="width: 100px; height: 100px; object-fit: cover; border-radius: 4px; margin-right: 15px;">
-                                            <div>
-                                                <h3 style="margin: 0 0 8px 0;">${product.productName}</h3>
-                                                <p style="margin: 4px 0; color: #2f80ed;">
-                                                    Current: ₹${product.price} (${product.discount}% off)
-                                                </p>
-                                                <p style="margin: 4px 0; color: #666;">
-                                                    Previous: ₹${product.previousPrice} (${prevDiscount}% off)
-                                                </p>
-                                                <p style="margin: 4px 0; text-decoration: line-through; color: #666;">
-                                                    MRP: ₹${product.mrp}
-                                                </p>
-                                                <p style="margin: 4px 0; color: #219653;">
-                                                    Price Drop: ₹${(product.previousPrice - product.price).toFixed(2)}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </a>
-                                </div>
-                            `
-                        }
-                    )
-                    .join("")}
-                </div>
-            `;
-
-            // Verify Resend API key is set
-            if (!process.env.RESEND_API_KEY) {
-                throw new Error("RESEND_API_KEY is not configured");
-            }
-
-            const response = await resend.emails.send({
-                from: "onboarding@resend.dev",
-                to: "harishanker.500apps@gmail.com",
-                subject: `🔥 Price Drops Alert - Zepto (Part ${i + 1}/${chunks.length}, ${chunks[i].length} products)`,
-                html: emailContent,
-            });
-
-            console.log(`Zepto: Email part ${i + 1}/${chunks.length} sent successfully`, response);
-
-            // Add a small delay between emails to avoid rate limiting
-            if (i < chunks.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-        }
-    } catch (error) {
-        console.error("Zepto: Error sending email:", error?.response?.data || error);
-        throw error;
-    }
-};
-
-const sendPriceDropNotifications = async (droppedProducts) => {
-    try {
-        // Send both email and Telegram notifications
-        await Promise.all([
-            sendEmailWithDroppedProducts(droppedProducts),
-            sendTelegramMessage(droppedProducts)
-        ]);
-    } catch (error) {
-        console.error('Error in sendPriceDropNotifications:', error);
     }
 };

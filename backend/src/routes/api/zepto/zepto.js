@@ -9,10 +9,8 @@ router.get('/', (req, res) => {
     });
 });
 
-router.get('/', (req,res) => res.send('Zepto API is running') )
 router.get('/search', ZeptoController.searchProducts);
 router.get('/categories', ZeptoController.getCategoriesHandler);
-router.get('/products', ZeptoController.getProducts);
 router.post('/start-tracking', ZeptoController.startTracking);
 
 export default router; 

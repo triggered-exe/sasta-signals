@@ -15,6 +15,7 @@ const instamartProductSchema = new mongoose.Schema({
   productName: String,
   displayName: String,
   description: String,
+  url: String,
   inStock: Boolean,
   imageUrl: String,
   

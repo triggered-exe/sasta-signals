@@ -3,9 +3,8 @@ import { AppError } from "../utils/errorHandling.js";
 import { InstamartProduct } from "../models/InstamartProduct.js";
 import { HALF_HOUR, ONE_HOUR, PAGE_SIZE } from "../utils/constants.js";
 import { Resend } from "resend";
-import { isNightTimeIST, chunk, buildSortCriteria, buildMatchCriteria } from "../utils/priceTracking.js";
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const TELEGRAM_CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID;
+import { isNightTimeIST, chunk } from "../utils/priceTracking.js";
+import { sendPriceDropNotifications } from "../services/NotificationService.js";
 
 const placesData = {};
 const CATEGORY_CHUNK_SIZE = 3;
@@ -110,7 +109,7 @@ export const startTrackingHandler = async () => {
 };
 
 // Process categories linearly instead of in parallel
-const processCategoriesChunk = async (categoryChunk, storeId, cookie) => {
+const processCategoriesChunk = async (categoryChunk, storeId, cookie, address="500064") => {
   try {
     // Process each category sequentially
     for (const category of categoryChunk) {
@@ -212,7 +211,7 @@ const processCategoriesChunk = async (categoryChunk, storeId, cookie) => {
             // After processing products in each subcategory
             if (allProducts.length > 0) {
               console.log("IM: Processing products for subcategory", subCategory.name, "length", allProducts.length);
-              const updatedCount = await processProducts(allProducts, category, subCategory);
+              const updatedCount = await processProducts(allProducts, category, subCategory, address);
               console.log(`IM: Processed ${updatedCount} products in ${subCategory.name}`);
             }
           } catch (error) {
@@ -281,56 +280,6 @@ export const trackProductPrices = async () => {
       // Wait before retrying after error
       await new Promise(resolve => setTimeout(resolve, 5 * 60 * 1000));
     }
-  }
-};
-
-// Controller to fetch products with pagination and filtering
-export const getProducts = async (req, res, next) => {
-  try {
-    const {
-      page = "1",
-      pageSize = PAGE_SIZE.toString(),
-      sortOrder = "price",
-      priceDropped = "false",
-      notUpdated = "false",
-    } = req.query;
-
-    const skip = (parseInt(page) - 1) * parseInt(pageSize);
-    const sortCriteria = buildSortCriteria(sortOrder);
-    const matchCriteria = buildMatchCriteria(priceDropped, notUpdated);
-    const totalProducts = await InstamartProduct.countDocuments(matchCriteria);
-    const products = await InstamartProduct.aggregate([
-      { $match: matchCriteria },
-      { $sort: sortCriteria },
-      { $skip: skip },
-      { $limit: parseInt(pageSize) },
-      {
-        $project: {
-          productId: 1,
-          productName: 1,
-          price: 1,
-          mrp: 1,
-          discount: 1,
-          quantity: 1,
-          unit: 1,
-          weight: 1,
-          imageUrl: 1,
-          inStock: 1,
-          priceDroppedAt: 1,
-          categoryName: 1,
-          subcategoryName: 1,
-          variationId: 1,
-          storePrice: 1
-        }
-      }
-    ]);
-
-    res.status(200).json({
-      data: products,
-      totalPages: Math.ceil(totalProducts / parseInt(pageSize)),
-    });
-  } catch (error) {
-    next(error);
   }
 };
 
@@ -475,7 +424,7 @@ const fetchProductCategories = async (address = "500064") => {
 };
 
 // Process multiple products and their variations in bulk
-const processProducts = async (products, category, subcategory) => {
+const processProducts = async (products, category, subcategory, address="500064") => {
   try {
     // Flatten all variations into a single array
     const allVariations = products.flatMap(product =>
@@ -558,6 +507,7 @@ const processProducts = async (products, category, subcategory) => {
           quantity: variation.quantity,
           unit: variation.unit_of_measure,
           weight: variation.weight_in_grams,
+          url: `https://www.swiggy.com/instamart/item/${variation.product_id}?storeId=${placesData[address].storeId}`,
         };
 
         return {
@@ -573,9 +523,9 @@ const processProducts = async (products, category, subcategory) => {
     if (droppedProducts.length > 0) {
       console.log(`IM: Found ${droppedProducts.length} dropped products in ${subcategory.name}`);
       try {
-        await sendTelegramMessage(droppedProducts);
+        await sendPriceDropNotifications(droppedProducts, "Instamart");
       } catch (error) {
-        console.error('IM: Error sending Telegram notification:', error);
+        console.error('IM: Error sending notifications:', error);
         // Don't throw the error to continue processing
       }
     }
@@ -591,126 +541,6 @@ const processProducts = async (products, category, subcategory) => {
   } catch (error) {
     console.error('IM: Error processing products:', error);
     return 0;
-  }
-};
-
-// Sends email notification for products with price drops
-const sendEmailWithDroppedProducts = async (droppedProducts) => {
-  try {
-    // Skip sending email if no dropped products
-    if (!droppedProducts || droppedProducts.length === 0) {
-      console.log("IM: No dropped products to send email for");
-      return;
-    }
-
-    // Chunk products into groups of 10
-    const productChunks = chunk(droppedProducts, 10);
-    console.log(`IM: Sending email for ${droppedProducts.length} products in ${productChunks.length} chunks`);
-
-    for (const products of productChunks) {
-      const emailContent = `
-        <h2>Recently Dropped Products</h2>
-        <div style="font-family: Arial, sans-serif;">
-          ${products
-          .map(
-            (product) => `
-            <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #eee; border-radius: 8px;">
-              <a href="https://www.swiggy.com/stores/instamart/item/${product.productId}"  
-                 style="text-decoration: none; color: inherit; display: block;">
-                <div style="display: flex; align-items: center;">
-                  <img src="${product.imageUrl}" 
-                       alt="${product.productName}" 
-                       style="width: 100px; height: 100px; object-fit: cover; border-radius: 4px; margin-right: 15px;">
-                  <div>
-                    <h3 style="margin: 0 0 8px 0;">${product.productName}</h3>
-                    <p style="margin: 4px 0; color: #2f80ed;">
-                      Current Price: ₹${product.price}
-                      <span style="text-decoration: line-through; color: #666; margin-left: 8px;">
-                        ₹${product.previousPrice}
-                      </span>
-                    </p>
-                    <p style="margin: 4px 0; color: #219653;">
-                      Price Drop: ₹${(product.previousPrice - product.price).toFixed(2)} (${product.discount}% off)
-                    </p>
-                  </div>
-                </div>
-              </a>
-            </div>
-          `
-          )
-          .join("")}
-        </div>
-      `;
-
-      await resend.emails.send({
-        from: "onboarding@resend.dev",
-        to: "harishanker.500apps@gmail.com",
-        subject: "🔥 Price Drops Alert - Instamart Products",
-        html: emailContent,
-      });
-    }
-
-    console.log("IM: Email notifications sent and products marked as notified");
-  } catch (error) {
-    console.error("IM: Error sending email:", error);
-  }
-};
-
-// Sends Telegram notification for products with price drops
-const sendTelegramMessage = async (droppedProducts) => {
-  try {
-    if (!droppedProducts || droppedProducts.length === 0) {
-      console.log("IM: No dropped products to send Telegram message for");
-      return;
-    }
-
-    // Filter products with discount > 59% and sort by highest discount
-    const filteredProducts = droppedProducts
-      .filter((product) => product.discount > 59)
-      .sort((a, b) => b.discount - a.discount);
-
-    if (filteredProducts.length === 0) {
-      return;
-    }
-
-    // Chunk products into groups of 10
-    const productChunks = chunk(filteredProducts, 10);
-    console.log(`IM: Sending Telegram messages for ${filteredProducts.length} products`);
-
-    for (let i = 0; i < productChunks.length; i++) {
-      const products = productChunks[i];
-      const messageText = `🔥 <b>Instamart Price Drops</b>\n\n` +
-        products.map((product) => {
-          const priceDrop = product.previousPrice - product.price;
-          return (
-            `<b>${product.productName}</b>\n` +
-            `💰 Current: ₹${product.price}\n` +
-            `📊 Previous: ₹${product.previousPrice}\n` +
-            `📉 Drop: ₹${priceDrop.toFixed(2)} (${product.discount}% off)\n` +
-            `🔗 <a href="https://www.swiggy.com/stores/instamart/item/${product.productId}">View on Instamart</a>\n`
-          );
-        }).join("\n");
-
-      await axios.post(
-        `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
-        {
-          chat_id: TELEGRAM_CHANNEL_ID,
-          text: messageText,
-          parse_mode: "HTML",
-          disable_web_page_preview: true,
-        }
-      );
-
-      // Add delay between chunks
-      if (i < productChunks.length - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      }
-    }
-
-    console.log(`IM: Sent notifications for ${filteredProducts.length} products`);
-  } catch (error) {
-    console.error("IM: Error sending Telegram message:", error?.response?.data || error);
-    throw error; // Rethrow to handle in the calling function
   }
 };
 

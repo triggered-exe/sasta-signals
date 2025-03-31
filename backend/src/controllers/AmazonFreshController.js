@@ -1,14 +1,10 @@
-import { firefox } from "playwright";
 import { AppError } from "../utils/errorHandling.js";
 import { AmazonFreshProduct } from "../models/AmazonFreshProduct.js";
-import { HALF_HOUR, ONE_HOUR, PAGE_SIZE } from "../utils/constants.js";
+import { PAGE_SIZE } from "../utils/constants.js";
 import { isNightTimeIST, chunk, buildSortCriteria, buildMatchCriteria } from "../utils/priceTracking.js";
 import contextManager from "../utils/contextManager.js";
 import { productQueries } from "../utils/productQueries.js";
-import axios from "axios";
-
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const TELEGRAM_CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID;
+import { sendPriceDropNotifications } from "../services/NotificationService.js";
 
 // Set location for pincode
 const setPincodeLocation = async (pincode) => {
@@ -324,7 +320,7 @@ const processProducts = async (products, categoryName) => {
     if (droppedProducts.length > 0) {
       console.log(`AF: Found ${droppedProducts.length} dropped products from ${categoryName}`);
       try {
-        await sendTelegramMessage(droppedProducts);
+        await sendPriceDropNotifications(droppedProducts, "Amazon Fresh");
       } catch (error) {
         console.error("AF: Error sending Telegram notification:", error);
       }
@@ -339,47 +335,6 @@ const processProducts = async (products, categoryName) => {
     return bulkOps.length;
   } catch (error) {
     console.error("AF: Error processing products:", error);
-    throw error;
-  }
-};
-
-// Helper function to send Telegram notifications
-const sendTelegramMessage = async (droppedProducts) => {
-  try {
-    const filteredProducts = droppedProducts.filter((product) => product.discount >= 50).sort((a, b) => b.discount - a.discount);
-
-    if (filteredProducts.length === 0) return;
-    console.log(`AF: Sending Telegram messages for ${filteredProducts.length} products`);
-
-    const chunks = chunk(filteredProducts, 15);
-    for (let i = 0; i < chunks.length; i++) {
-      const messageText =
-        `🔥 <b>Amazon Fresh Price Drops</b>\n\n` +
-        chunks[i]
-          .map((product) => {
-            const priceDrop = product.previousPrice - product.price;
-            return (
-              `<b>${product.productName}</b>\n` +
-              `💰 Current: ₹${product.price}\n` +
-              `📊 Previous: ₹${product.previousPrice}\n` +
-              `📉 Drop: ₹${priceDrop.toFixed(2)} (${product.discount}% off)\n` +
-              `🔗 <a href="${product.url}">View on Amazon Fresh</a>\n`
-            );
-          })
-          .join("\n");
-
-      await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-        chat_id: TELEGRAM_CHANNEL_ID,
-        text: messageText,
-        parse_mode: "HTML",
-        disable_web_page_preview: true,
-      });
-
-      // Add delay between messages
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    }
-  } catch (error) {
-    console.error("AF: Error sending Telegram message:", error);
     throw error;
   }
 };

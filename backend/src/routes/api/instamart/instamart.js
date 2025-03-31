@@ -6,6 +6,6 @@ const router = express.Router();
 router.get("/store-data", InstamartController.getStoreData);
 router.post("/subcategory-products", InstamartController.getSubcategoryProducts);
 router.post("/track-prices", InstamartController.trackPrices);
-router.get("/products", InstamartController.getProducts);
+router.post("/search", InstamartController.search);
 
 export default router;
