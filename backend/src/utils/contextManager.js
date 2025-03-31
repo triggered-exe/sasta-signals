@@ -4,7 +4,7 @@ class ContextManager {
   constructor() {
     this.browser = null;
     this.contextMap = new Map(); // Map to store contexts by pincode
-    this.MAX_CONTEXTS = 5;
+    this.MAX_CONTEXTS = 3; // Reduced from 5 to 3 for memory efficiency - critical for t1.micro instances
   }
 
   async initBrowser() {
@@ -13,41 +13,101 @@ class ContextManager {
       this.browser = await firefox.launch({
         headless: process.env.ENVIRONMENT === "development" ? false : true,
         args: [
+          // Core arguments for security and compatibility
           "--disable-web-security",
           "--disable-features=IsolateOrigins,site-per-process",
+
+          // Memory optimization arguments for low-RAM VMs
+          "--disable-dev-shm-usage", // Prevents browser from running out of memory in containers
+          "--no-sandbox", // Reduces memory overhead but slightly reduces security
+          "--disable-setuid-sandbox", // Works with no-sandbox for compatibility
+
+          // Disable memory-intensive features
+          "--disable-gpu", // Saves significant memory on VMs
+          "--disable-software-rasterizer", // Reduces rendering memory usage
+          "--disable-extensions", // Extensions consume extra memory
+
+          // More memory optimizations for resource-constrained environments
+          "--disable-default-apps",
+          "--disable-translate",
+          "--disable-sync",
+          "--disable-background-networking",
+
+          // Performance optimizations
+          "--metrics-recording-only",
+          "--disable-background-timer-throttling",
+          "--disable-backgrounding-occluded-windows",
+
+          // Additional memory-saving flags
+          "--disable-breakpad", // Crash reporting uses memory
+          "--disable-component-extensions-with-background-pages",
+          "--disable-features=TranslateUI,BlinkGenPropertyTrees",
+          "--disable-ipc-flooding-protection",
+
+          // Network and rendering optimizations
+          "--enable-features=NetworkService,NetworkServiceInProcess",
+          "--force-color-profile=srgb",
+          "--hide-scrollbars",
+          "--ignore-gpu-blacklist",
+          "--mute-audio",
+
+          // Startup optimizations
+          "--no-default-browser-check",
+          "--no-first-run",
+          "--password-store=basic",
+          "--use-gl=swiftshader", // Software rendering that uses less memory
+          "--use-mock-keychain",
+          "--window-size=1920,1080",
         ],
       });
     }
     return this.browser;
   }
 
-  // Get or create context for a pincode
+  // Get or create context for a pincode with improved error handling
   async getContext(pincode) {
     try {
       // Return existing context if available
       if (this.contextMap.has(pincode)) {
-        console.log(`Using cached context for pincode: ${pincode}`);
-        return this.contextMap.get(pincode).context;
+        const contextData = this.contextMap.get(pincode);
+        // Check if context is still valid before using it - prevents the "Target closed" error
+        try {
+          await contextData.context.pages();
+          console.log(`Using cached context for pincode: ${pincode}`);
+          return contextData.context;
+        } catch (error) {
+          // If context is invalid, clean it up and create a new one
+          console.log(
+            `Context for pincode ${pincode} is invalid, creating new one`
+          );
+          await this.cleanupPincode(pincode);
+        }
       }
 
-      // Clean up old contexts if needed
+      // Memory management: limit concurrent contexts
       if (this.contextMap.size >= this.MAX_CONTEXTS) {
         const oldestPincode = Array.from(this.contextMap.keys())[0];
-        const oldestData = this.contextMap.get(oldestPincode);
-        await oldestData.context.close();
-        this.contextMap.delete(oldestPincode);
-        console.log(`Cleaned up context for pincode: ${oldestPincode}`);
+        await this.cleanupPincode(oldestPincode);
       }
 
-      // Create new context
+      // Create new context with reduced memory footprint
       const browser = await this.initBrowser();
-      const context = await browser.newContext();
+      const context = await browser.newContext({
+        viewport: { width: 1280, height: 720 }, // Smaller viewport uses less memory
+        deviceScaleFactor: 1,
+        isMobile: false,
+        hasTouch: false,
+        javaScriptEnabled: true,
+        bypassCSP: true,
+        ignoreHTTPSErrors: true,
+      });
 
-      // Store context with metadata
+      // Store context with metadata including tracking when it was last used
       this.contextMap.set(pincode, {
         context,
-        websites: new Set(), // Track which websites are set up
+        websites: new Set(),
         createdAt: new Date(),
+        lastUsed: new Date(), // Track last usage for better cleanup decisions
       });
 
       console.log(`Created new context for pincode: ${pincode}`);
@@ -58,10 +118,18 @@ class ContextManager {
     }
   }
 
+  // Update last used time for a context
+  updateLastUsed(pincode) {
+    if (this.contextMap.has(pincode)) {
+      this.contextMap.get(pincode).lastUsed = new Date();
+    }
+  }
+
   // Mark a website as set up for a pincode
   markWebsiteAsSet(pincode, website) {
     if (this.contextMap.has(pincode)) {
       this.contextMap.get(pincode).websites.add(website);
+      this.updateLastUsed(pincode);
       console.log(`Marked ${website} as set up for pincode: ${pincode}`);
     }
   }
@@ -85,9 +153,13 @@ class ContextManager {
   async cleanupPincode(pincode) {
     if (this.contextMap.has(pincode)) {
       const data = this.contextMap.get(pincode);
-      await data.context.close();
-      this.contextMap.delete(pincode);
-      console.log(`Closed context for pincode: ${pincode}`);
+      try {
+        await data.context.close();
+        this.contextMap.delete(pincode);
+        console.log(`Closed context for pincode: ${pincode}`);
+      } catch (error) {
+        console.error(`Error closing context for pincode ${pincode}:`, error);
+      }
     }
   }
 
@@ -95,8 +167,7 @@ class ContextManager {
   async cleanup() {
     try {
       for (const [pincode, data] of this.contextMap.entries()) {
-        await data.context.close();
-        console.log(`Closed context for pincode: ${pincode}`);
+        await this.cleanupPincode(pincode);
       }
       this.contextMap.clear();
 
