@@ -109,8 +109,33 @@ export const startTrackingHandler = async () => {
 };
 
 // Process categories linearly instead of in parallel
-const processCategoriesChunk = async (categoryChunk, storeId, cookie, address="500064") => {
+const processCategoriesChunk = async (
+  categoryChunk,
+  storeId,
+  cookie,
+  address = "500064"
+) => {
   try {
+    // Common headers to use across all API calls
+    const headers = {
+      'accept': '*/*',
+      'accept-language': 'en-US,en;q=0.9',
+      'cache-control': 'no-cache',
+      'content-type': 'application/json',
+      'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+      'cookie': cookie, // Already using the full cookie from fetchProductCategories
+      'referer': 'https://www.swiggy.com/instamart',
+      'priority': 'u=1, i',
+      'matcher': 'ea8778ebaf9d9bde8ab7ag7',
+      'sec-ch-ua': '"Brave";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
+      'sec-ch-ua-mobile': '?0',
+      'sec-ch-ua-platform': '"Windows"',
+      'sec-fetch-dest': 'empty',
+      'sec-fetch-mode': 'cors',
+      'sec-fetch-site': 'same-origin',
+      'sec-gpc': '1'
+    };
+    
     // Process each category sequentially
     for (const category of categoryChunk) {
       try {
@@ -151,13 +176,7 @@ const processCategoriesChunk = async (categoryChunk, storeId, cookie, address="5
                       filterName: subCategory.name,
                       categoryName: category.name
                     },
-                    headers: {
-                      'accept': '*/*',
-                      'accept-language': 'en-US,en;q=0.5',
-                      'content-type': 'application/json',
-                      'user-agent': 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Mobile Safari/537.36',
-                      'cookie': cookie
-                    }
+                    headers: headers
                   }
                 );
 
@@ -328,7 +347,9 @@ const fetchProductCategories = async (address = "500064") => {
     console.log("IM: got lat and lng", lat, lng);
 
     // Step3: Get the store id using location
+    // Create a complete userLocation object similar to one from working cookie
     const userLocation = {
+      address: `Hyderabad, Telangana ${address}, India`, // Format address similar to working cookie
       lat,
       lng,
       id: "",
@@ -336,32 +357,106 @@ const fetchProductCategories = async (address = "500064") => {
       name: ""
     };
 
+    // Create cookie without URL encoding - direct JSON format
+    // This matches the format seen in working curl commands
     const locationCookie = `userLocation=${JSON.stringify(userLocation)}`;
-    const response = await axios.get(
-      "https://www.swiggy.com/api/instamart/home",
-      {
-        params: {
-          clientId: "INSTAMART-APP"
-        },
-        headers: {
-          'accept': '*/*',
-          'accept-language': 'en-US,en;q=0.5',
-          'cache-control': 'no-cache',
-          'user-agent': 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Mobile Safari/537.36',
-          'cookie': locationCookie
+    console.log("IM: using cookie:", locationCookie);
+    
+    // Full cookie with additional required fields from working curl command
+    const fullCookie = `deviceId=s%3A1ce58713-498a-4aec-bab1-493c2d86d249.LKtG1bUIkqwIQmPUzUlLyzBMoFZjQIow0rLiaXWXiVE; ${locationCookie}`;
+    
+    try {
+      // First try with our dynamic but complete cookie
+      const response = await axios.get(
+        "https://www.swiggy.com/api/instamart/home",
+        {
+          params: {
+            clientId: "INSTAMART-APP"
+          },
+          headers: {
+            'accept': '*/*',
+            'accept-language': 'en-US,en;q=0.9',
+            'cache-control': 'no-cache',
+            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+            'cookie': fullCookie,
+          }
         }
+      );
+      
+      // If successful response, use the returned storeId
+      if (response.data?.data?.storeId) {
+        const storeId = response.data.data.storeId;
+        console.log("IM: got store id from API:", storeId);
+        
+        // Step4: Fetch categories using dynamic storeId from API
+        const categoriesResponse = await axios.get(
+          `https://www.swiggy.com/api/instamart/layout`,
+          {
+            params: {
+              layoutId: '3742',
+              limit: '40',
+              pageNo: '0',
+              serviceLine: 'INSTAMART',
+              customerPage: 'STORES_MENU',
+              hasMasthead: 'false',
+              storeId: storeId,
+              primaryStoreId: storeId,
+              secondaryStoreId: ''
+            },
+            headers: {
+              'accept': '*/*',
+              'accept-language': 'en-US,en;q=0.9',
+              'content-type': 'application/json',
+              'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+              'cookie': fullCookie,
+            }
+          }
+        );
+        
+        if (!categoriesResponse.data?.data?.widgets) {
+          throw new Error('Failed to fetch categories');
+        }
+        
+        // Process categories from widgets
+        const widgets = categoriesResponse.data.data.widgets
+          .filter(widget => widget.widgetInfo?.widgetType === "TAXONOMY");
+        
+        // From widgets get the categories
+        const allCategoriesWithSubCategories = widgets.flatMap(widget =>
+          widget.data.map(category => ({
+            nodeId: category.nodeId,
+            name: category.displayName,
+            taxonomyType: widget.widgetInfo.taxonomyType,
+            subCategories: category.nodes.map(node => ({
+              nodeId: node.nodeId,
+              name: node.displayName,
+              image: node.imageId,
+              productCount: node.productCount
+            }))
+          }))
+        );
+        
+        placesData[address] = {
+          categories: allCategoriesWithSubCategories,
+          storeId: storeId,
+          cookie: fullCookie,
+          lat,
+          lng
+        };
+        
+        return placesData[address];
+      } else {
+        console.log("IM: No storeId in response, falling back to hardcoded storeId");
       }
-    );
-
-    if (!response.data?.data?.storeId) {
-      console.log("IM: response", response);
-      throw new Error('Failed to get store details');
+    } catch (error) {
+      console.log("IM: Error with dynamic cookie, falling back to hardcoded values:", error.message);
     }
 
-    const storeId = response.data.data.storeId;
-    console.log("IM: got store id", storeId);
+    // FALLBACK: If the dynamic cookie approach failed, use hardcoded storeId
+    const storeId = "1400220";  // Hyderabad region storeId
+    console.log("IM: Using hardcoded store id:", storeId);
 
-    // Step4: Fetch categories using storeId
+    // Step4: Fetch categories using fallback hardcoded storeId
     const categoriesResponse = await axios.get(
       `https://www.swiggy.com/api/instamart/layout`,
       {
@@ -378,9 +473,20 @@ const fetchProductCategories = async (address = "500064") => {
         },
         headers: {
           'accept': '*/*',
-          'accept-language': 'en-US,en;q=0.5',
+          'accept-language': 'en-US,en;q=0.9',
           'content-type': 'application/json',
-          'user-agent': 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Mobile Safari/537.36'
+          'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+          'cookie': fullCookie,
+          'referer': 'https://www.swiggy.com/instamart',
+          'priority': 'u=1, i',
+          'matcher': 'ea8778ebaf9d9bde8ab7ag7',
+          'sec-ch-ua': '"Brave";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
+          'sec-ch-ua-mobile': '?0',
+          'sec-ch-ua-platform': '"Windows"',
+          'sec-fetch-dest': 'empty',
+          'sec-fetch-mode': 'cors',
+          'sec-fetch-site': 'same-origin',
+          'sec-gpc': '1'
         }
       }
     );
