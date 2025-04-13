@@ -58,26 +58,39 @@ const getPlaceIdFromPlace = async (place) => {
         if (placesData[place]) {
             return placesData[place];
         }
-        const response = await axios.get(`https://api.zeptonow.com/api/v1/maps/place/autocomplete?place_name=${place}`)
+        const response = await axios.get(`https://api.zeptonow.com/api/v1/maps/place/autocomplete?place_name=${place}`, {
+            headers: {
+                'accept': 'application/json, text/plain, */*',
+                'accept-language': 'en-US,en;q=0.8',
+                'request-signature': 'bbb6655ddcd3e7f751e75de9d78b9e8a3ae33be0797940725818b033b3e69094',
+            }
+        })
         const placeId = response.data?.predictions[0]?.place_id;
         if (!placeId) {
             console.log("Zepto: response", response.data);
-            throw AppError.badRequest("Place not found");
+            throw AppError.badRequest("Zepto: Place not found");
         }
         placesData[place] = placeId;
         return placeId;
     } catch (error) {
         console.log("Zepto: error", error);
-        throw AppError.badRequest("Place not found");
+        throw AppError.badRequest("Zepto: Place not found");
     }
 }
 
 const getLatitudeAndLongitudeFromPlaceId = async (placeId) => {
-    const response = await axios.get(`https://api.zeptonow.com/api/v1/maps/place/details?place_id=${placeId}`)
+    const response = await axios.get(`https://api.zeptonow.com/api/v1/maps/place/details?place_id=${placeId}`,
+        {
+            headers: {
+                'accept': 'application/json, text/plain, */*',
+            'accept-language': 'en-US,en;q=0.8',
+            'request-signature': 'bbb6655ddcd3e7f751e75de9d78b9e8a3ae33be0797940725818b033b3e69094',
+        }
+    })
     const location = response.data?.result?.geometry?.location;
     if (!location) {
         console.log("Zepto: response", response.data);
-        throw AppError.badRequest("Location not found");
+        throw AppError.badRequest("Zepto: Location not found");
     }
     return { latitude: location?.lat, longitude: location?.lng };
 }
@@ -94,6 +107,7 @@ const checkLocationAvailabilityAndGetStoreId = async (latitude, longitude) => {
             headers: {
                 'app_version': '24.10.5',
                 'platform': 'WEB',
+                "request-signature": "bbb6655ddcd3e7f751e75de9d78b9e8a3ae33be0797940725818b033b3e69094",
                 'compatible_components': 'CONVENIENCE_FEE,RAIN_FEE,EXTERNAL_COUPONS,STANDSTILL,BUNDLE,MULTI_SELLER_ENABLED,PIP_V1,ROLLUPS,SCHEDULED_DELIVERY,SAMPLING_ENABLED,ETA_NORMAL_WITH_149_DELIVERY,ETA_NORMAL_WITH_199_DELIVERY,HOMEPAGE_V2,NEW_ETA_BANNER,VERTICAL_FEED_PRODUCT_GRID,AUTOSUGGESTION_PAGE_ENABLED,AUTOSUGGESTION_PIP,AUTOSUGGESTION_AD_PIP,BOTTOM_NAV_FULL_ICON,COUPON_WIDGET_CART_REVAMP,DELIVERY_UPSELLING_WIDGET,MARKETPLACE_CATEGORY_GRID,NO_PLATFORM_CHECK_ENABLED_V2,SUPER_SAVER:1,SUPERSTORE_V1,PROMO_CASH:0,24X7_ENABLED_V1,TABBED_CAROUSEL_V2,HP_V4_FEED,WIDGET_BASED_ETA,NEW_FEE_STRUCTURE,NEW_BILL_INFO,RE_PROMISE_ETA_ORDER_SCREEN_ENABLED,SUPERSTORE_V1,MANUALLY_APPLIED_DELIVERY_FEE_RECEIVABLE,MARKETPLACE_REPLACEMENT,ZEPTO_PASS,ZEPTO_PASS:1,ZEPTO_PASS:2,ZEPTO_PASS_RENEWAL,CART_REDESIGN_ENABLED,SHIPMENT_WIDGETIZATION_ENABLED,TABBED_CAROUSEL_V2,24X7_ENABLED_V1,PROMO_CASH:0,HOMEPAGE_V2,SUPER_SAVER:1,NO_PLATFORM_CHECK_ENABLED_V2,HP_V4_FEED,GIFT_CARD,SCLP_ADD_MONEY,GIFTING_ENABLED,OFSE,WIDGET_BASED_ETA,NEW_ETA_BANNER,'
             }
         });
@@ -240,23 +254,44 @@ export const getCategoriesHandler = async (req, res, next) => {
 
 const fetchCategories = async (placeName = "500081") => {
     try {
+        // Return cached data if available
         if (placesData[placeName] && placesData[placeName].categories) {
             return placesData[placeName].categories;
         }
+
         // Step1: Get the storeId
         const storeId = await getStoreId(placeName);
+        const { latitude, longitude } = placesData[placeName] || { latitude: 17.4561171, longitude: 78.3757135 };
+        
+        // Fetch categories from API
         const response = await axios.get(
-            `https://api.zeptonow.com/api/v2/category/grid`,
+            'https://api.zeptonow.com/api/v2/get_page',
             {
                 params: {
-                    store_id: storeId,
-                    version: 'v2',
-                    show_new_eta_banner: true
+                    page_size: 10,
+                    latitude,
+                    longitude,
+                    page_type: 'PAGE_IN_PAGE',
+                    version: 'v1',
+                    layout_id: 9277,
+                    scope: 'pip'
                 },
                 headers: {
                     'accept': 'application/json, text/plain, */*',
-                    'compatible_components': 'CONVENIENCE_FEE,RAIN_FEE,EXTERNAL_COUPONS,STANDSTILL,BUNDLE,MULTI_SELLER_ENABLED,PIP_V1,ROLLUPS,SCHEDULED_DELIVERY,SAMPLING_ENABLED,ETA_NORMAL_WITH_149_DELIVERY,ETA_NORMAL_WITH_199_DELIVERY,HOMEPAGE_V2,NEW_ETA_BANNER,VERTICAL_FEED_PRODUCT_GRID,AUTOSUGGESTION_PAGE_ENABLED,AUTOSUGGESTION_PIP,AUTOSUGGESTION_AD_PIP,BOTTOM_NAV_FULL_ICON,COUPON_WIDGET_CART_REVAMP,DELIVERY_UPSELLING_WIDGET,MARKETPLACE_CATEGORY_GRID,SUPERSTORE_V1,PROMO_CASH:0,NEW_FEE_STRUCTURE,NEW_BILL_INFO,RE_PROMISE_ETA_ORDER_SCREEN_ENABLED,SUPERSTORE_V1,MANUALLY_APPLIED_DELIVERY_FEE_RECEIVABLE,MARKETPLACE_REPLACEMENT,ZEPTO_PASS,ZEPTO_PASS:1,ZEPTO_PASS:2,ZEPTO_PASS_RENEWAL,CART_REDESIGN_ENABLED,SUPERSTORE_V1,SHIPMENT_WIDGETIZATION_ENABLED,TABBED_CAROUSEL_V2,24X7_ENABLED_V1,PROMO_CASH:0',
-                    'source': 'DIRECT',
+                    'accept-language': 'en-US,en;q=0.7',
+                    'app_sub_platform': 'WEB',
+                    'app_version': '12.64.7',
+                    'appversion': '12.64.7',
+                    'auth_revamp_flow': 'v2',
+                    'compatible_components': ',NEW_FEE_STRUCTURE,NEW_BILL_INFO,RE_PROMISE_ETA_ORDER_SCREEN_ENABLED,SUPERSTORE_V1,MANUALLY_APPLIED_DELIVERY_FEE_RECEIVABLE,MARKETPLACE_REPLACEMENT,ZEPTO_PASS,ZEPTO_PASS:1,ZEPTO_PASS:2,ZEPTO_PASS_RENEWAL,CART_REDESIGN_ENABLED,SHIPMENT_WIDGETIZATION_ENABLED,TABBED_CAROUSEL_V2,24X7_ENABLED_V1,PROMO_CASH:0,HOMEPAGE_V2,SUPER_SAVER:1,NO_PLATFORM_CHECK_ENABLED_V2,HP_V4_FEED,GIFT_CARD,SCLP_ADD_MONEY,GIFTING_ENABLED,OFSE,WIDGET_BASED_ETA,NEW_ETA_BANNER,',
+                    'device_id': '43947ad0-3a84-4ba2-9542-e0d2cf84659a',
+                    'deviceid': '43947ad0-3a84-4ba2-9542-e0d2cf84659a',
+                    'marketplace_type': 'ZEPTO_NOW',
+                    'platform': 'WEB',
+                    'request-signature': '750446e0e26bdc566c76f67e3fc73286a36dbffaa16c114ba106a55a9c681ff3',
+                    'request_id': `${Math.random().toString(36).substring(2, 15)}-${Math.random().toString(36).substring(2, 15)}-${Math.random().toString(36).substring(2, 15)}-${Math.random().toString(36).substring(2, 15)}`,
+                    'session_id': `${Math.random().toString(36).substring(2, 15)}-${Math.random().toString(36).substring(2, 15)}-${Math.random().toString(36).substring(2, 15)}-${Math.random().toString(36).substring(2, 15)}`,
+                    'sessionid': `${Math.random().toString(36).substring(2, 15)}-${Math.random().toString(36).substring(2, 15)}-${Math.random().toString(36).substring(2, 15)}-${Math.random().toString(36).substring(2, 15)}`,
                     'store_id': storeId,
                     'storeid': storeId
                 }
@@ -267,69 +302,68 @@ const fetchCategories = async (placeName = "500081") => {
             throw AppError.badRequest("Failed to fetch categories");
         }
 
-        // Process and format the categories
-        const categoryGroups = response.data?.categoryGridResponseList?.map(group => ({
-            parentCategory: group.parentCategoryName,
-            title: group.viewMeta?.titleV2?.[0]?.text || '',
-            categories: group.categories?.map(category => ({
-                id: category.id,
-                name: category.name,
-                image: category.imageWithNameV2?.path ? `https://cdn.zeptonow.com/${category.imageWithNameV2.path}` : '',
-                enlargedImage: category.enlargedImageV3?.path ? `https://cdn.zeptonow.com/${category.enlargedImageV3.path}` : '',
-                priority: category.priority || 0,
-                productCount: category.productCount || 0,
-                isActive: category.isActive || false,
-                deeplinkUrl: category.deeplinkUrl || '',
-                subCategories: []
-            })) || []
-        })) || [];
+        // Process the data from the API response
+        const widgets = response.data?.pageLayout?.widgets || [];
+        const categoryWidgets = widgets.filter(widget => widget.campaignName === "Category grid");
+        
+        if (!categoryWidgets.length) {
+            console.log("Zepto: No category widgets found in response");
+            return [];
+        }
 
-        // Step3: Get the subcategories for each category
-        for (const categoryGroup of categoryGroups) {
-            for (const category of categoryGroup.categories) {
-                try {
-                    const subcategoriesResponse = await axios.get('https://api.zeptonow.com/api/v1/category', {
-                        params: {
-                            category_id: category.id,
-                            store_id: storeId
-                        },
-                        headers: {
-                            'accept': 'application/json, text/plain, */*'
-                        }
-                    });
-
-                    // Process subcategories
-                    category.subCategories = subcategoriesResponse.data?.availableSubcategories?.map(subcat => ({
+        // Create flat array of categories
+        const categories = [];
+        const processedCategoryIds = new Set();
+        
+        for (const widget of categoryWidgets) {
+            const items = widget.data?.items || [];
+            for (const item of items) {
+                if (!item.availableSubcategories?.length) continue;
+                
+                // Get parent category from first subcategory
+                const firstSubcat = item.availableSubcategories[0];
+                const parentCategory = firstSubcat.category;
+                
+                if (!parentCategory?.id) continue;
+                
+                // Skip if already processed this category
+                if (processedCategoryIds.has(parentCategory.id)) continue;
+                processedCategoryIds.add(parentCategory.id);
+                
+                // Create category with subcategories
+                const category = {
+                    id: parentCategory.id,
+                    name: parentCategory.name,
+                    image: parentCategory.image?.path ? `https://cdn.zeptonow.com/${parentCategory.image.path}` : '',
+                    priority: parentCategory.priority || 0,
+                    productCount: 0,
+                    isActive: true,
+                    subCategories: item.availableSubcategories.map(subcat => ({
                         id: subcat.id,
                         name: subcat.name,
                         image: subcat.imageV2?.path ? `https://cdn.zeptonow.com/${subcat.imageV2.path}` : '',
                         priority: subcat.priority || 0,
                         unlisted: subcat.unlisted || false,
-                        displaySecondaryImage: subcat.displaySecondaryImage || false,
-                        facebookSubcategory: subcat.facebookSubcategory || '',
-                        googleSubcategory: subcat.googleSubcategory || '',
-                        priceGuardrailThreshold: subcat.priceGuardrailThreshold || 0,
-                        discountApplicable: subcat.discountApplicable || false,
-                        mrpSpMismatchAllowed: subcat.mrpSpMismatchAllowed || false
-                    })) || [];
-
-                    // Add a small delay to avoid rate limiting
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                } catch (error) {
-                    console.error(`Error fetching subcategories for category ${category.name}:`, error?.response?.data || error);
-                    // Continue with other categories even if one fails
-                    continue;
-                }
+                        displaySecondaryImage: subcat.displaySecondaryImage || false
+                    }))
+                };
+                
+                categories.push(category);
             }
         }
 
+        console.log(`Zepto: Extracted ${categories.length} categories with their subcategories`);
+
+        // Cache the results
         placesData[placeName] = {
-            categories: categoryGroups,
-            storeId: storeId
-        }
-        return categoryGroups;
+            ...placesData[placeName],
+            categories,
+            storeId
+        };
+        
+        return categories;
     } catch (error) {
-        console.error('Error fetching categories:', error?.response?.data || error);
+        console.error('Zepto: Error fetching categories:', error?.response?.data || error);
         throw AppError.internalError('Failed to fetch categories');
     }
 };
@@ -365,7 +399,7 @@ const trackPrices = async (placeName = "500081") => {
 
             console.log("Zepto: Starting new tracking cycle at:", new Date().toISOString());
 
-            // Step1: Get the categories
+            // Step1: Get the categories (now returns a flat array)
             const categories = await fetchCategories(placeName);
             const storeId = placesData[placeName].storeId;
 
@@ -377,17 +411,12 @@ const trackPrices = async (placeName = "500081") => {
             }
 
             // Randomize the categories
-            const randomizedCategories = categories.sort(() => Math.random() - 0.5);
-
-            // Flatten categories from all groups into a single array
-            const allCategories = categories.reduce((acc, group) => {
-                return acc.concat(group.categories);
-            }, []);
+            const randomizedCategories = [...categories].sort(() => Math.random() - 0.5);
 
             // Process categories in chunks
-            for (let i = 0; i < allCategories.length; i += CATEGORY_CHUNK_SIZE) {
-                const chunk = allCategories.slice(i, i + CATEGORY_CHUNK_SIZE);
-                console.log(`Zepto: Processing chunk ${i / CATEGORY_CHUNK_SIZE + 1} of ${Math.ceil(allCategories.length / CATEGORY_CHUNK_SIZE)}`);
+            for (let i = 0; i < randomizedCategories.length; i += CATEGORY_CHUNK_SIZE) {
+                const chunk = randomizedCategories.slice(i, i + CATEGORY_CHUNK_SIZE);
+                console.log(`Zepto: Processing chunk ${i / CATEGORY_CHUNK_SIZE + 1} of ${Math.ceil(randomizedCategories.length / CATEGORY_CHUNK_SIZE)}`);
 
                 // Process the chunk
                 await processChunk(chunk, storeId);
@@ -435,6 +464,18 @@ const trackPrices = async (placeName = "500081") => {
 };
 
 const processChunk = async (chunk, storeId) => {
+    // Signature pool from working curl examples for different pages
+    const signaturePool = [
+        'd1ed6f69224fd8209aed3b395e57564c9391ad319c44b5680d36b00ee316f08f',  // Page 1
+        '27cf91aaf227c9736ed51a2b5b76671b4fb41ecd6b9e03d3a45e93de308f4c63',  // Page 2
+        '0f1e0d9bcf4f39c8e0a82eea4b040eabad62d06a1f33c19441fb330f479475b0',  // Page 3
+        '750446e0e26bdc566c76f67e3fc73286a36dbffaa16c114ba106a55a9c681ff3',  // Page 4
+        'bbb6655ddcd3e7f751e75de9d78b9e8a3ae33be0797940725818b033b3e69094'   // Page 5 (fallback)
+    ];
+    
+    // Maximum pages to fetch per subcategory to prevent endless loops
+    const MAX_PAGES = 10;
+    
     for (const category of chunk) {
         console.log(`Zepto: Processing category: ${category.name}`);
 
@@ -451,36 +492,94 @@ const processChunk = async (chunk, storeId) => {
             let allSubcategoryProducts = [];
             let retryCount = 0;
             const MAX_RETRIES = 3;
-
+            let emptyResponsesCount = 0;
+            
             // Collect all products for this subcategory
-            while (hasMoreProducts) {
+            while (hasMoreProducts && pageNumber <= MAX_PAGES) {
                 try {
+                    // Generate new session and request IDs for each request
+                    const sessionId = `${Math.random().toString(36).substring(2, 15)}-${Math.random().toString(36).substring(2, 15)}-${Math.random().toString(36).substring(2, 15)}-${Math.random().toString(36).substring(2, 15)}`;
+                    const requestId = `${Math.random().toString(36).substring(2, 15)}-${Math.random().toString(36).substring(2, 15)}-${Math.random().toString(36).substring(2, 15)}-${Math.random().toString(36).substring(2, 15)}`;
+                    const deviceId = '5a602fda-7658-4f4c-8243-4c4936ba6794';
+                    
+                    // Select signature based on page number
+                    const signature = signaturePool[Math.min(pageNumber - 1, signaturePool.length - 1)];
+                    
+                    console.log(`Zepto: Fetching page ${pageNumber} for ${subcategory.name} with signature: ${signature.substring(0, 10)}...`);
+                    
                     const response = await axios.get('https://api.zeptonow.com/api/v2/store-products-by-store-subcategory-id', {
                         params: {
                             store_id: storeId,
                             subcategory_id: subcategory.id,
                             page_number: pageNumber,
-                            user_session_id: ''
+                            user_session_id: sessionId,
+                            boosted_pv_ids: ''
                         },
                         headers: {
                             'accept': 'application/json, text/plain, */*',
-                            'request-signature': '860ea4ea95348d44eaa5848ba9b58929678a6d601e9e8d27fe292d794f1faba5',
-                            'storeid': storeId
+                            'accept-language': 'en-US,en;q=0.9',
+                            'app_sub_platform': 'WEB',
+                            'app_version': '12.64.7',
+                            'appversion': '12.64.7',
+                            'auth_revamp_flow': 'v2',
+                            'compatible_components': 'CONVENIENCE_FEE,RAIN_FEE,EXTERNAL_COUPONS,STANDSTILL,BUNDLE,MULTI_SELLER_ENABLED,PIP_V1,ROLLUPS,SCHEDULED_DELIVERY,SAMPLING_ENABLED,NEW_FEE_STRUCTURE,NEW_BILL_INFO,RE_PROMISE_ETA_ORDER_SCREEN_ENABLED,SUPERSTORE_V1,MANUALLY_APPLIED_DELIVERY_FEE_RECEIVABLE,MARKETPLACE_REPLACEMENT,ZEPTO_PASS,ZEPTO_PASS:1,ZEPTO_PASS:2,ZEPTO_PASS_RENEWAL,CART_REDESIGN_ENABLED,SHIPMENT_WIDGETIZATION_ENABLED,TABBED_CAROUSEL_V2,24X7_ENABLED_V1,PROMO_CASH:0,HOMEPAGE_V2,SUPER_SAVER:1,NO_PLATFORM_CHECK_ENABLED_V2,HP_V4_FEED,GIFT_CARD,SCLP_ADD_MONEY,GIFTING_ENABLED,OFSE,WIDGET_BASED_ETA,NEW_ETA_BANNER,',
+                            'device_id': deviceId,
+                            'deviceid': deviceId,
+                            'marketplace_type': 'ZEPTO_NOW',
+                            'platform': 'WEB',
+                            'request-signature': signature,
+                            'request_id': requestId,
+                            'requestid': requestId,
+                            'session_id': sessionId,
+                            'sessionid': sessionId,
+                            'source': 'DIRECT',
+                            'store_etas': `{"${storeId}":-1}`,
+                            'store_id': storeId,
+                            'store_ids': storeId,
+                            'storeid': storeId,
+                            'tenant': 'ZEPTO',
+                            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+                            'x-timezone': 'Asia/Calcutta'
                         }
                     });
 
                     const storeProducts = response.data?.storeProducts || [];
+                    
+                    // Log detailed response info for debugging
+                    console.log(`Zepto: Page ${pageNumber} for ${subcategory.name} - Status: ${response.status}, Products: ${storeProducts.length}, EndOfList: ${response.data?.endOfList}`);
+
+                    if (storeProducts.length === 0) {
+                        emptyResponsesCount++;
+                        // If we get 2 consecutive empty responses, assume we're done
+                        if (emptyResponsesCount >= 2) {
+                            console.log(`Zepto: Received ${emptyResponsesCount} consecutive empty responses, stopping pagination for ${subcategory.name}`);
+                            hasMoreProducts = false;
+                            break;
+                        }
+                    } else {
+                        emptyResponsesCount = 0; // Reset empty responses counter
+                    }
+
                     hasMoreProducts = !response.data?.endOfList;
-                    // Sometimes the endOfList is false but the products are empty
-                    if (hasMoreProducts) {
-                        hasMoreProducts = storeProducts.length > 0;
+                    
+                    // If endOfList is false but no products returned, check if we should continue
+                    if (hasMoreProducts && storeProducts.length === 0) {
+                        console.log(`Zepto: Page ${pageNumber} for ${subcategory.name} returned 0 products but endOfList=false, continuing...`);
                     }
 
                     allSubcategoryProducts = allSubcategoryProducts.concat(storeProducts);
                     pageNumber++;
                     retryCount = 0; // Reset retry count on successful request
+                    
+                    // Add a delay between requests to avoid rate limiting
+                    await new Promise(resolve => setTimeout(resolve, 1500));
                 } catch (error) {
-                    if (error.response?.status === 429) {
+                    const status = error.response?.status;
+                    const data = error.response?.data;
+                    
+                    console.error(`Zepto: Error fetching page ${pageNumber} for ${subcategory.name}: Status=${status}, Message=${error.message}`);
+                    
+                    if (status === 429) {
                         console.log(`Zepto: Rate limited for subcategory ${subcategory.name}, waiting before retry...`);
                         retryCount++;
 
@@ -490,15 +589,50 @@ const processChunk = async (chunk, storeId) => {
                             break;
                         }
 
-                        // Wait for progressively longer times between retries (1m, 2m, 3m)
-                        const waitTime = retryCount * 60 * 1000;
+                        // Wait for progressively longer times between retries (30s, 45s, 60s)
+                        const waitTime = (30 + (retryCount - 1) * 15) * 1000;
                         console.log(`Zepto: Waiting ${waitTime / 1000} seconds before retry ${retryCount}/${MAX_RETRIES}`);
                         await new Promise(resolve => setTimeout(resolve, waitTime));
                         continue; // Retry the same request
+                    } else if (status === 403 || status === 401) {
+                        console.log(`Zepto: Authentication error (${status}) for subcategory ${subcategory.name}, trying alternative approach...`);
+                        
+                        // Try a different API endpoint as fallback
+                        try {
+                            console.log(`Zepto: Attempting fallback API for subcategory ${subcategory.name}`);
+                            const fallbackResponse = await axios.get(`https://api.zeptonow.com/api/v1/subcategory/products`, {
+                                params: {
+                                    subcategory_id: subcategory.id,
+                                    store_id: storeId,
+                                    page: pageNumber
+                                },
+                                headers: {
+                                    'accept': 'application/json, text/plain, */*',
+                                    'request-signature': signaturePool[4], // Use a different signature
+                                    'device_id': `${Math.random().toString(36).substring(2, 15)}-${Math.random().toString(36).substring(2, 15)}-${Math.random().toString(36).substring(2, 15)}-${Math.random().toString(36).substring(2, 15)}`,
+                                    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'
+                                }
+                            });
+                            
+                            const fallbackProducts = fallbackResponse.data?.products || [];
+                            console.log(`Zepto: Fallback API returned ${fallbackProducts.length} products for subcategory ${subcategory.name}`);
+                            
+                            if (fallbackProducts.length > 0) {
+                                allSubcategoryProducts = allSubcategoryProducts.concat(fallbackProducts);
+                            } else {
+                                hasMoreProducts = false; // Stop if fallback returns no products
+                            }
+                        } catch (fallbackError) {
+                            console.error(`Zepto: Fallback API also failed for subcategory ${subcategory.name}:`, fallbackError.message);
+                            hasMoreProducts = false;
+                        }
+                        
+                        break; // Move to next subcategory after trying fallback
+                    } else {
+                        // For other errors, log and move on
+                        console.error(`Zepto: Error details for ${subcategory.name}:`, data || error);
+                        hasMoreProducts = false;
                     }
-
-                    console.error(`Zepto: Error fetching products for subcategory ${subcategory.name}:`, error?.response?.data || error);
-                    hasMoreProducts = false;
                 }
             }
 
@@ -507,6 +641,8 @@ const processChunk = async (chunk, storeId) => {
                 console.log(`Zepto: Processing ${allSubcategoryProducts.length} total products for subcategory ${subcategory.name}`);
                 const { processedCount } = await processProducts(allSubcategoryProducts, category, subcategory);
                 console.log(`Zepto: Completed processing subcategory ${subcategory.name}. Processed ${processedCount} products.`);
+            } else {
+                console.log(`Zepto: No products found for subcategory ${subcategory.name}`);
             }
         }
     }
