@@ -108,6 +108,7 @@ class ContextManager {
         websites: new Set(),
         createdAt: new Date(),
         lastUsed: new Date(), // Track last usage for better cleanup decisions
+        serviceability: {}, // Track which websites are serviceable for this location
       });
 
       console.log(`Created new context for pincode: ${pincode}`);
@@ -125,13 +126,30 @@ class ContextManager {
     }
   }
 
-  // Mark a website as set up for a pincode
-  markWebsiteAsSet(pincode, website) {
+  // Mark a website as serviceable or not for a pincode
+  async markServiceability(pincode, website, isServiceable) {
     if (this.contextMap.has(pincode)) {
-      this.contextMap.get(pincode).websites.add(website);
+      this.contextMap.get(pincode).serviceability[website] = isServiceable;
       this.updateLastUsed(pincode);
-      console.log(`Marked ${website} as set up for pincode: ${pincode}`);
+      await contextManager.cleanupNonServiceableContexts();
+      console.log(`Marked ${website} as ${isServiceable ? 'serviceable' : 'not serviceable'} for pincode: ${pincode}`);
     }
+  }
+
+  // Check if a website is serviceable for a pincode
+  isWebsiteServiceable(pincode, website) {
+    return (
+      this.contextMap.has(pincode) &&
+      this.contextMap.get(pincode).serviceability[website] === true
+    );
+  }
+
+  // Get all serviceable websites for a pincode
+  getServiceableWebsites(pincode) {
+    if (!this.contextMap.has(pincode)) return [];
+
+    const serviceability = this.contextMap.get(pincode).serviceability;
+    return Object.keys(serviceability).filter(website => serviceability[website] === true);
   }
 
   // Check if a website is set up for a pincode
@@ -140,13 +158,6 @@ class ContextManager {
       this.contextMap.has(pincode) &&
       this.contextMap.get(pincode).websites.has(website)
     );
-  }
-
-  // Get all set up websites for a pincode
-  getSetWebsites(pincode) {
-    return this.contextMap.has(pincode)
-      ? Array.from(this.contextMap.get(pincode).websites)
-      : [];
   }
 
   // Cleanup specific pincode
@@ -160,6 +171,34 @@ class ContextManager {
       } catch (error) {
         console.error(`Error closing context for pincode ${pincode}:`, error);
       }
+    }
+  }
+
+  // Cleanup all non-serviceable contexts
+  async cleanupNonServiceableContexts() {
+    try {
+      const pincodesToCleanup = [];
+
+      // Find all pincodes where no website is serviceable
+      for (const [pincode, data] of this.contextMap.entries()) {
+        const serviceability = data.serviceability;
+        const hasAnyServiceable = Object.values(serviceability).some(isServiceable => isServiceable === true);
+
+        if (!hasAnyServiceable) {
+          pincodesToCleanup.push(pincode);
+        }
+      }
+
+      // Cleanup each identified pincode
+      for (const pincode of pincodesToCleanup) {
+        console.log(`Cleaning up non-serviceable context for pincode: ${pincode}`);
+        await this.cleanupPincode(pincode);
+      }
+
+      return pincodesToCleanup.length;
+    } catch (error) {
+      console.error("Error during non-serviceable contexts cleanup:", error);
+      throw error;
     }
   }
 

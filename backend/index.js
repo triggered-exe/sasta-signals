@@ -17,8 +17,10 @@ import amazonFreshRouter from "./src/routes/api/amazonFresh/amazonFresh.js";
 import { startTrackingHandler as amazonFreshStartTrackingHandler } from "./src/controllers/AmazonFreshController.js";
 import zeptoRouter from "./src/routes/api/zepto/zepto.js";
 import productsRouter from "./src/routes/api/products.js"; // Import the new common products route
+import blinkitRouter from "./src/routes/api/blinkit/blinkit.js";
+import { startTrackingHandler as blinkitStartTrackingHandler } from "./src/controllers/BlinkitController.js";
 
-// Load environment variables from .env file
+// Load environment variables from .env file  
 dotenv.config();
 
 // Create an Express application
@@ -43,6 +45,7 @@ app.use("/api/bigbasket", bigbasketRoutes);
 app.use("/api/zepto", zeptoRouter);
 app.use("/api/flipkart-grocery", flipkartGroceryRouter);
 app.use("/api/amazon-fresh", amazonFreshRouter);
+app.use("/api/blinkit", blinkitRouter);
 
 // Common products route that aggregates all platforms
 app.use("/api/products", productsRouter);
@@ -53,9 +56,10 @@ app.use(errorHandler);
 // Start the server and initialize price tracking
 app.listen(port, () => {
   console.log(`Server is running on port - ${port}`);
-  trackProductPrices(); // For Instamart
   // zeptoStartTrackingHandler(); // For Zepto
-  startTrackingHandler(); // For BigBasket
-  searchAllProductsUsingCrawler(); // For Flipkart
-  amazonFreshStartTrackingHandler(); // For Amazon Fresh
+  // trackProductPrices(); // For Instamart
+  // startTrackingHandler(); // For BigBasket
+  // searchAllProductsUsingCrawler(); // For Flipkart
+  // amazonFreshStartTrackingHandler(); // For Amazon Fresh
+  blinkitStartTrackingHandler(); // For Blinkit
 });

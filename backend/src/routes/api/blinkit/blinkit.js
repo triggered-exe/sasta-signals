@@ -2,7 +2,7 @@ import express from 'express';
 import { 
     searchQuery,
     startTracking
-} from '../../../controllers/AmazonFreshController.js';
+} from '../../../controllers/BlinkitController.js';
 
 const router = express.Router();
 
