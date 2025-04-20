@@ -7,11 +7,11 @@ export const websites = [
     apiEndpoint: "/api/products/instamart"
   },
   {
-    name: "Zepto",
-    url: "https://zepto.com",
-    description: "Track prices of Zepto products",
-    image: "https://zepto.com/logo.png",
-    apiEndpoint: "/api/products/zepto"
+    name: "Blinkit",
+    url: "https://blinkit.com",
+    description: "Track prices of Blinkit products",
+    image: "https://blinkit.com/logo.png",
+    apiEndpoint: "/api/products/blinkit"
   },
   {
     name: "BigBasket",
@@ -33,6 +33,13 @@ export const websites = [
     description: "Track prices of Flipkart Grocery products",
     image: "https://flipkart.com/logo.png",
     apiEndpoint: "/api/products/flipkart-grocery"
+  },
+  {
+    name: "Zepto",
+    url: "https://zepto.com",
+    description: "Track prices of Zepto products",
+    image: "https://zepto.com/logo.png",
+    apiEndpoint: "/api/products/zepto"
   },
   {
     name: "Meesho",

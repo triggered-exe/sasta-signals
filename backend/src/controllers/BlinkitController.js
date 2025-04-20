@@ -1,9 +1,9 @@
 import { AppError } from "../utils/errorHandling.js";
 import { BlinkitProduct } from "../models/BlinkitProduct.js";
-import { PAGE_SIZE } from "../utils/constants.js";
-import { isNightTimeIST, chunk, buildSortCriteria, buildMatchCriteria } from "../utils/priceTracking.js";
+import { isNightTimeIST, chunk } from "../utils/priceTracking.js";
 import contextManager from "../utils/contextManager.js";
 import { productQueries } from "../utils/productQueries.js";
+import { processProducts as globalProcessProducts } from "../utils/productProcessor.js";
 import { sendPriceDropNotifications } from "../services/NotificationService.js";
 
 // Set location for Blinkit
@@ -37,7 +37,7 @@ const setLocation = async (location) => {
         await page.waitForSelector(".LocationSearchList__LocationListContainer-sc-93rfr7-0", { timeout: 5000 });
         await page.waitForTimeout(500); // Brief delay for suggestions to load completely
         await page.click(".LocationSearchList__LocationListContainer-sc-93rfr7-0:first-child");
-        await page.waitForTimeout(1000); // Wait for location to be set
+        await page.waitForTimeout(2000); // Wait for location to be set
 
         // Check if location was set successfully
         const notServiceableElement = await page.$(".ns-exclamation");
@@ -76,104 +76,264 @@ const setLocation = async (location) => {
     }
 };
 
-export const getProducts = async (req, res, next) => {
-    try {
-        const {
-            page = "1",
-            pageSize = PAGE_SIZE.toString(),
-            sortOrder = "price",
-            priceDropped = "false",
-            notUpdated = "false",
-        } = req.query;
-
-        const skip = (parseInt(page) - 1) * parseInt(pageSize);
-        const sortCriteria = buildSortCriteria(sortOrder);
-        const matchCriteria = buildMatchCriteria(priceDropped, notUpdated);
-
-        const totalProducts = await BlinkitProduct.countDocuments(matchCriteria);
-        const products = await BlinkitProduct.aggregate([
-            { $match: matchCriteria },
-            { $sort: sortCriteria },
-            { $skip: skip },
-            { $limit: parseInt(pageSize) },
-            {
-                $project: {
-                    productId: 1,
-                    productName: 1,
-                    price: 1,
-                    mrp: 1,
-                    discount: 1,
-                    weight: 1,
-                    brand: 1,
-                    imageUrl: 1,
-                    url: 1,
-                    priceDroppedAt: 1,
-                    categoryName: 1,
-                    subcategoryName: 1,
-                    inStock: 1,
-                },
-            },
-        ]);
-
-        res.status(200).json({
-            data: products,
-            totalPages: Math.ceil(totalProducts / parseInt(pageSize)),
-            currentPage: parseInt(page),
-            pageSize: parseInt(pageSize),
-            total: totalProducts,
-        });
-    } catch (error) {
-        next(error);
-    }
-};
-
-// Function to extract products from current page
+// Function to extract products from current page with scroll pagination
 const extractProductsFromPage = async (page) => {
+    // Initial setup to track product count
+    let previousProductCount = 0;
+    let currentProductCount = 0;
+    let scrollAttempts = 0;
+    const MAX_SCROLL_ATTEMPTS = 10; // Increased maximum scroll attempts to ensure we get all products
+    const MAX_RATE_LIMIT_RETRIES = 2; // Maximum number of retries for rate limit errors
+    let RATE_LIMIT_RETRIES = 0;
+
+    // Scroll until no new products are loaded or max attempts reached
+    while (scrollAttempts < MAX_SCROLL_ATTEMPTS) {
+        // Wait for potential new products to load
+        await page.waitForTimeout(3000);
+
+        // Check if we hit a rate limit error
+        const hasRateLimitError = await page.evaluate(() => {
+            const errorElement = document.querySelector(".error-container-widget");
+            return !!errorElement;
+        });
+
+        if (hasRateLimitError && RATE_LIMIT_RETRIES < MAX_RATE_LIMIT_RETRIES) {
+            RATE_LIMIT_RETRIES++;
+            console.log("BLINKIT: Rate limit detected, waiting for 60 seconds before continuing");
+            // Wait for 1 minute before continuing
+            await page.waitForTimeout(60 * 1000);
+
+            // Try to click the "Try Again" button if it exists
+            await page.evaluate(() => {
+                const tryAgainButton = document.querySelector(".error-container-widget .button");
+                if (tryAgainButton) {
+                    tryAgainButton.click();
+                }
+            });
+
+            // Additional wait after clicking try again
+            await page.waitForTimeout(5000);
+
+            // Reset the scroll attempt counter to try again
+            previousProductCount = 0;
+            continue;
+        }
+
+        // Get current product count
+        currentProductCount = await page.evaluate(() => {
+            const container = document.getElementById("plpContainer");
+            if (!container) return 0;
+
+            // Look for the grid container that holds all product cards
+            // Target the parent container with grid layout
+            let productGrid = container.querySelector(
+                "#plpContainer > div.BffPlpFeedContainer__BlurredContainer-sc-12wcdtn-8.hZbapl > div"
+            );
+            return productGrid ? productGrid.children.length : 0;
+        });
+
+        // If no new products were loaded after scrolling, we've reached the end
+        if (currentProductCount === previousProductCount && scrollAttempts > 0) {
+            break;
+        }
+
+        // Update previous count and scroll down
+        previousProductCount = currentProductCount;
+
+        // Scroll to the bottom of the container
+        await page.evaluate(() => {
+            const container = document.getElementById("plpContainer");
+            if (container) {
+                // Check if its is scrollable
+                if (container.scrollHeight <= container.clientHeight) {
+                    return;
+                }
+                container.scrollTop = container.scrollHeight;
+            }
+        });
+
+        scrollAttempts++;
+    }
+
+    console.log(`BLINKIT: Found ${currentProductCount} products after ${scrollAttempts} scrolls`);
+
+    // Check one more time for rate limiting before extraction
+    const finalRateLimitCheck = await page.evaluate(() => {
+        const errorElement = document.querySelector(".error-container-widget");
+        return !!errorElement;
+    });
+
+    if (finalRateLimitCheck) {
+        console.log("BLINKIT: Rate limit detected before extraction, waiting for 60 seconds");
+        await page.waitForTimeout(60 * 1000);
+
+        // Try to click the "Try Again" button
+        await page.evaluate(() => {
+            const tryAgainButton = document.querySelector(".error-container-widget .button");
+            if (tryAgainButton) {
+                tryAgainButton.click();
+            }
+        });
+
+        // Wait for page to refresh
+        await page.waitForTimeout(5000);
+    }
+
+    // Now slowly scroll back to the top to ensure all images are loaded
+    await page.evaluate((totalProducts) => {
+        return new Promise((resolve) => {
+            const container = document.getElementById("plpContainer");
+            if (!container) {
+                resolve();
+                return;
+            }
+            
+            // Calculate number of steps based on product count (12 products visible per screen)
+            const productsPerScreen = 12;
+            const estimatedScreens = Math.ceil(totalProducts / productsPerScreen);
+            const steps = Math.max(estimatedScreens, 2); // At least 5 steps for smooth scrolling
+            
+            console.log(`Scrolling with ${steps} steps for ${totalProducts} products`);
+            
+            const totalHeight = container.scrollHeight;
+            const viewportHeight = container.clientHeight;
+            let currentPosition = container.scrollTop;
+            
+            const scrollStep = currentPosition / steps;
+            
+            function smoothScrollUp() {
+                if (currentPosition <= 0) {
+                    resolve();
+                    return;
+                }
+                
+                currentPosition = Math.max(currentPosition - scrollStep, 0);
+                container.scrollTop = currentPosition;
+                
+                // Pause at each step to let images load
+                setTimeout(smoothScrollUp, 500); // Increased timeout for better image loading
+            }
+            
+            smoothScrollUp();
+        });
+    }, currentProductCount); // Pass the total product count to the evaluate function
+
+    // Extract all products after scrolling
     return await page.evaluate(() => {
-        const results = document.querySelectorAll(".product-card");
-        console.log("BLINKIT: Found results:", results.length);
+        // Check for rate limit error
+        const errorElement = document.querySelector(".error-container-widget");
+        if (errorElement) {
+            console.log("BLINKIT: Rate limit error still present during extraction");
+            return [];
+        }
+
+        // Get the plpContainer
+        const container = document.getElementById("plpContainer");
+        if (!container) {
+            console.log("BLINKIT: No plpContainer found, cannot extract products");
+            return [];
+        }
+
+        // Try to find the grid container first
+        let productGrid = container.querySelector(
+            "#plpContainer > div.BffPlpFeedContainer__BlurredContainer-sc-12wcdtn-8.hZbapl > div"
+        );
+        if (!productGrid) {
+            // Fallback to any grid container
+            productGrid = container.querySelector('div[style*="display: grid"]');
+        }
+
+        let results = [];
+
+        if (productGrid) {
+            results = Array.from(productGrid.children);
+        }
 
         return Array.from(results)
             .map((el) => {
                 try {
-                    // Get product title and URL
-                    const titleEl = el.querySelector(".product-name");
-                    const productLink = el.querySelector("a.product-link");
+                    // Get product ID from the element if available
+                    const productId = el.querySelector('[tabindex="0"][role="button"]')?.id || el.id;
+                    if (!productId) {
+                        console.log("BLINKIT: Could not find product ID");
+                        return null;
+                    }
 
-                    // Get price elements
-                    const priceEl = el.querySelector(".actual-price");
-                    const mrpEl = el.querySelector(".original-price");
-                    const imageEl = el.querySelector(".product-image img");
+                    // Try to find the product name
+                    let productName = "";
+                    let titleEl = el.querySelector(".tw-font-semibold.tw-line-clamp-2");
+                    if (titleEl) {
+                        productName = titleEl.textContent.trim();
+                    }
 
-                    // Extract product ID from URL or data attribute
-                    const productId =
-                        productLink?.getAttribute("data-product-id") ||
-                        productLink?.href.split("/").pop() ||
-                        `bk-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+                    if (!productName) {
+                        console.log("BLINKIT: Could not find product name");
+                        return null;
+                    }
 
-                    // Extract numeric values with better error handling
-                    const priceText = priceEl?.textContent.trim() || "";
-                    const mrpText = mrpEl?.textContent.trim() || "";
+                    // Construct the product URL using the product name and ID
+                    const slugifiedName = productName
+                        .toLowerCase()
+                        .replace(/[^a-z0-9\s-]/g, "") // Remove special characters
+                        .replace(/\s+/g, "-"); // Replace spaces with hyphens
+
+                    // Construct URL in format: https://blinkit.com/prn/{product-name}/prid/{product-id}
+                    const url = `https://blinkit.com/prn/${slugifiedName}/prid/${productId}`;
+
+                    // Find the product image
+                    let imageUrl = "";
+                    const imageEl = el.querySelector("img");
+                    if (imageEl) {
+                        imageUrl = imageEl.getAttribute("src") || "";
+                    }
+
+                    // Find price elements - try multiple selectors
+                    let priceText = "";
+                    let mrpText = "";
+
+                    // Try new structure first
+                    const priceEl = el.querySelector(
+                        ".tw-font-semibold[style*='color: var(--colors-black-900)']:not(.tw-line-clamp-2)"
+                    );
+                    if (priceEl) {
+                        priceText = priceEl.textContent.trim();
+                    }
+
+                    const mrpEl = el.querySelector(".tw-line-through");
+                    if (mrpEl) {
+                        mrpText = mrpEl.textContent.trim();
+                    }
 
                     // Improved price parsing
                     const parsePrice = (priceStr) => {
-                        // Remove currency symbol and commas, then parse
-                        const numStr = priceStr.replace(/[₹,]/g, "");
+                        if (!priceStr) return 0;
+                        // Extract just the number with the ₹ symbol
+                        const priceMatch = priceStr.match(/₹\s*([\d,]+(\.\d+)?)/);
+                        if (priceMatch && priceMatch[1]) {
+                            // Remove currency symbol and commas, then parse
+                            const numStr = priceMatch[1].replace(/,/g, "");
+                            return parseFloat(numStr);
+                        }
+                        // Fallback: just remove all non-numeric characters except decimal point
+                        const numStr = priceStr.replace(/[^\d.]/g, "");
                         return parseFloat(numStr);
                     };
 
                     const price = parsePrice(priceText);
                     const mrp = parsePrice(mrpText) || price;
 
+                    // Check if product is in stock
+                    const isOutOfStock = el.textContent.toLowerCase().includes("out of stock");
+
                     const data = {
                         productId,
-                        productName: titleEl?.textContent.trim() || "",
-                        url: productLink?.href ? productLink.href : "",
-                        imageUrl: imageEl?.getAttribute("src") || "",
+                        productName,
+                        url,
+                        imageUrl,
                         price,
                         mrp,
                         discount: mrp > price ? Math.floor(((mrp - price) / mrp) * 100) : 0,
-                        inStock: !el.querySelector(".out-of-stock"),
+                        inStock: !isOutOfStock,
                     };
 
                     // Validate the data
@@ -190,15 +350,6 @@ const extractProductsFromPage = async (page) => {
             })
             .filter((product) => product && product.productId && product.productName && product.price > 0);
     });
-};
-
-// Function to get next page URL
-const getNextPageUrl = async (page) => {
-    const nextPageButton = await page.$(".pagination .next");
-    if (nextPageButton) {
-        return await page.evaluate((button) => button.href, nextPageButton);
-    }
-    return null;
 };
 
 // Search endpoint handler
@@ -222,7 +373,7 @@ export const searchQuery = async (req, res, next) => {
 
         page = await context.newPage();
 
-        const allProducts = await searchAndExtractProducts(page, query, 3);
+        const allProducts = await searchAndExtractProducts(page, query);
 
         // Sort by price
         allProducts.sort((a, b) => a.price - b.price);
@@ -243,155 +394,23 @@ export const searchQuery = async (req, res, next) => {
 };
 
 // Function to search and extract products for a query
-const searchAndExtractProducts = async (page, query, maxPages = 10) => {
+// This is a placeholder function, not currently used
+// eslint-disable-next-line no-unused-vars
+const searchAndExtractProducts = async (_, query) => {
     try {
         console.log(`BLINKIT: Searching for "${query}"`);
 
         // Navigate to search page
-        const searchUrl = `https://blinkit.com/search?q=${encodeURIComponent(query)}`;
-        await page.goto(searchUrl, { waitUntil: "domcontentloaded" });
-
-        // Wait for products
-        await page.waitForSelector(".product-card", { timeout: 5000 });
-
-        let allProducts = [];
-        let hasNextPage = true;
-        let currentPage = 1;
-        const MAX_PAGES = maxPages || 10; // Default to 10 if not set
-
-        while (hasNextPage && currentPage <= MAX_PAGES) {
-            // Extract products from current page
-            const products = await extractProductsFromPage(page);
-
-            allProducts = allProducts.concat(products);
-            console.log(`BLINKIT: Found ${products.length} products on page ${currentPage} for ${query}`);
-
-            // Check for next page
-            const nextPageUrl = await getNextPageUrl(page);
-            if (nextPageUrl && currentPage < MAX_PAGES) {
-                await page.goto(nextPageUrl, { waitUntil: "domcontentloaded" });
-                await page.waitForSelector(".product-card", { timeout: 5000 });
-                currentPage++;
-            } else {
-                hasNextPage = false;
-            }
-        }
-        const uniqueProducts = Array.from(new Map(allProducts.map((item) => [item.productId, item])).values());
-        console.log(
-            `BLINKIT: Found ${uniqueProducts.length} unique products out of ${allProducts.length} for ${query}`
-        );
-        return uniqueProducts;
+        return [];
     } catch (error) {
         console.error(`BLINKIT: Error searching for "${query}":`, error);
         return [];
     }
 };
 
-// Function to process and store products
-const processProducts = async (products, categoryName) => {
-    try {
-        const bulkOps = [];
-        const droppedProducts = [];
-        const now = new Date();
-
-        // Get existing products for price comparison
-        const productIds = products.filter((p) => p.inStock).map((p) => p.productId);
-
-        const existingProducts = await BlinkitProduct.find({
-            productId: { $in: productIds },
-        }).lean();
-
-        const existingProductsMap = new Map(existingProducts.map((p) => [p.productId, p]));
-
-        // Process each product
-        for (const product of products) {
-            const existingProduct = existingProductsMap.get(product.productId);
-
-            // Make sure subcategoryName is retained if provided in the product
-            const subcategoryName = product.subcategoryName || "";
-
-            const productData = {
-                ...product,
-                productId: product.productId,
-                productName: product.productName,
-                categoryName: categoryName,
-                subcategoryName: subcategoryName,
-                inStock: product.inStock,
-                mrp: product.mrp,
-                price: product.price,
-                discount: product.discount,
-                imageUrl: product.imageUrl,
-                url: product.url,
-                updatedAt: now,
-            };
-
-            if (existingProduct) {
-                if (existingProduct.price === product.price && product.inStock === existingProduct.inStock) {
-                    continue; // Skip if price hasn't changed
-                }
-
-                // Update price history if price has changed
-                productData.previousPrice = existingProduct.price;
-                const currentDiscount = productData.discount;
-                const previousDiscount = existingProduct.discount || 0;
-
-                if (existingProduct.price > product.price) {
-                    productData.priceDroppedAt = now;
-
-                    // Check if discount increased significantly
-                    if (currentDiscount - previousDiscount >= 10) {
-                        droppedProducts.push({
-                            ...productData,
-                            previousPrice: existingProduct.price,
-                            previousDiscount: previousDiscount,
-                        });
-                    }
-                } else {
-                    // Retain previous priceDroppedAt if exists
-                    if (existingProduct.priceDroppedAt) {
-                        productData.priceDroppedAt = existingProduct.priceDroppedAt;
-                    }
-                }
-            } else {
-                // For new products, set initial priceDroppedAt
-                productData.priceDroppedAt = now;
-            }
-
-            bulkOps.push({
-                updateOne: {
-                    filter: { productId: product.productId },
-                    update: { $set: productData },
-                    upsert: true,
-                },
-            });
-        }
-
-        // Send notifications for price drops
-        if (droppedProducts.length > 0) {
-            console.log(`BLINKIT: Found ${droppedProducts.length} dropped products from ${categoryName}`);
-            try {
-                await sendPriceDropNotifications(droppedProducts, "Blinkit");
-            } catch (error) {
-                console.error("BLINKIT: Error sending notification:", error);
-            }
-        }
-
-        // Perform bulk write operation
-        if (bulkOps.length > 0) {
-            await BlinkitProduct.bulkWrite(bulkOps, { ordered: false });
-            console.log(`BLINKIT: Updated ${bulkOps.length} products from ${categoryName}`);
-        }
-
-        return bulkOps.length;
-    } catch (error) {
-        console.error("BLINKIT: Error processing products:", error);
-        throw error;
-    }
-};
-
 let isTrackingActive = false;
 
-export const startTracking = async (req, res, next) => {
+export const startTracking = async (_, res, next) => {
     try {
         const message = await startTrackingHandler();
         res.status(200).json({ message });
@@ -410,14 +429,13 @@ const fetchCategories = async (context) => {
         await page.goto("https://blinkit.com/categories", { waitUntil: "domcontentloaded", timeout: 15000 });
         await page.waitForSelector(".Category__Temp-sc-1k4awti-1", { timeout: 10000 });
 
-        const { allCategories: categories, debugData } = await page.evaluate(() => {
+        const { allCategories: categories } = await page.evaluate(() => {
             const containers = document.querySelectorAll(".Category__Temp-sc-1k4awti-1");
             const allCategories = [];
-            const debugData = [];
+
             containers.forEach((container) => {
                 const parentCategoryName = container.previousElementSibling?.textContent.trim();
                 const subCategoriesLinks = container.querySelectorAll("a");
-                debugData.push({ parentCategoryName, subCategoriesLinks });
                 if (!parentCategoryName || !subCategoriesLinks) return;
                 const subcategories = Array.from(subCategoriesLinks).map((a) => ({
                     name: a.textContent.trim(),
@@ -428,7 +446,7 @@ const fetchCategories = async (context) => {
                     subcategories,
                 });
             });
-            return { allCategories, debugData };
+            return { allCategories };
         });
         // console.log("categories", categories)
         // console.log("debugData", debugData)
@@ -452,136 +470,200 @@ export const startTrackingHandler = async (location = "bahadurpura police statio
 
     isTrackingActive = true;
 
-    // Run this in a separate thread/process to not block
+    // Start tracking in background
     (async () => {
         while (true) {
             // Skip if it's night time (12 AM to 6 AM IST)
             if (isNightTimeIST()) {
                 console.log("BLINKIT: Skipping price tracking during night hours");
-                // Wait for 5 minutes before checking night time status again
                 await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
                 continue;
             }
 
             try {
-                //   We need to set the browser context for the location or the location query
+                // Set up browser context with location
                 const context = await setLocation(location);
                 if (!context) {
-                    throw new Error("BLINKIT: Failed to set location for Blinkit", location);
+                    throw new Error("BLINKIT: Failed to set location for Blinkit");
                 }
 
                 // Check if the location is serviceable
                 if (!contextManager.isWebsiteServiceable(location, "blinkit")) {
-                    console.log(`BLINKIT: Location ${location} is not serviceable, skipping tracking`);
-                    // Wait for 30 minutes before trying again
-                    await new Promise((resolve) => setTimeout(resolve, 30 * 60 * 1000));
-                    continue;
+                    console.log(`BLINKIT: Location ${location} is not serviceable, stopping tracking`);
+                    break;
                 }
 
                 const startTime = new Date();
                 console.log("BLINKIT: Starting product search at:", startTime.toLocaleString());
 
                 // Fetch all categories and subcategories
-                const allCategories = await fetchCategories(context);
+                let allCategories = await fetchCategories(context);
                 if (allCategories.length === 0) {
                     console.log("BLINKIT: No categories found, retrying in 5 minutes");
                     await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
                     continue;
                 }
 
-                // Filter out parent categories and only process subcategories with valid URLs
-                const subcategories = allCategories.filter((cat) => cat.url);
-                console.log(`BLINKIT: Processing ${subcategories.length} subcategories`);
+                const FILTERING_PARENT_CATEGORY_KEYWORDS = [
+                    "Chicken",
+                    "Toys",
+                    "Baby",
+                    "Pet",
+                    "magazine",
+                    "books",
+                    "eggs",
+                    "stores",
+                    "cards",
+                    "cleaning",
+                    "Cosmetics",
+                ];
 
-                // Process subcategories in parallel batches
-                const CONCURRENT_SEARCHES = 2;
+                const FILTERING_SUBCATEGORY_KEYWORDS = ["eggs", "vegan", "flower", "Meat", "pesticide"];
+
+                // Update filtering logic to exclude categories that match keywords fully or partially
+                allCategories = allCategories.filter((category) => {
+                    const categoryName = category.parentCategoryName.toLowerCase();
+                    // Check if any keyword is contained within the category name
+                    return !FILTERING_PARENT_CATEGORY_KEYWORDS.some((keyword) =>
+                        categoryName.includes(keyword.toLowerCase())
+                    );
+                });
+
+                // Flatten and prepare subcategories for processing
+                const subcategories = allCategories
+                    .flatMap((category) =>
+                        category.subcategories.map((subcategory) => ({
+                            ...subcategory,
+                            parentCategory: category.parentCategoryName,
+                        }))
+                    )
+                    .filter((subcategory) => {
+                        return subcategory.url && !FILTERING_SUBCATEGORY_KEYWORDS.some((keyword) =>
+                            subcategory.name.toLowerCase().includes(keyword.toLowerCase())
+                        );
+                    });
+
+                // Shuffle subcategories to distribute load
+                // const shuffledSubcategories = [...subcategories].sort(() => Math.random() - 0.5);
+                const shuffledSubcategories = subcategories;
+
+                // Create batches for parallel processing
+                const CONCURRENT_SEARCHES = 1;
+                const categoryBatches = chunk(shuffledSubcategories, CONCURRENT_SEARCHES);
+
+                console.log(
+                    `BLINKIT: Processing ${subcategories.length} subcategories in ${categoryBatches.length} batches`
+                );
+
                 let totalProcessedProducts = 0;
 
-                // Process categories in parallel batches
-                const categoryBatches = chunk(subcategories, CONCURRENT_SEARCHES);
-
+                // Process each batch of subcategories
                 for (const [batchIndex, batch] of categoryBatches.entries()) {
                     console.log(`BLINKIT: Processing batch ${batchIndex + 1}/${categoryBatches.length}`);
 
-                    const pages = await Promise.all(batch.map(() => context.newPage()));
+                    // Create browser pages for this batch
+                    const pages = await Promise.all(
+                        batch.map(() =>
+                            context.newPage().catch((error) => {
+                                console.error("BLINKIT: Error creating page:", error.message);
+                                return null;
+                            })
+                        )
+                    );
 
                     try {
-                        // Run subcategory processing in parallel
+                        // Process subcategories in parallel
                         const results = await Promise.all(
                             batch.map(async (subcategory, index) => {
-                                console.log(`BLINKIT: Processing ${subcategory.name} (${subcategory.parentCategory})`);
+                                const page = pages[index];
+                                if (!page) return 0;
+
                                 try {
+                                    console.log(
+                                        `BLINKIT: Processing subcategory: ${subcategory.name} - parent category: (${subcategory.parentCategory})`
+                                    );
+
                                     // Navigate to subcategory page
-                                    await pages[index].goto(subcategory.url, {
+                                    await page.goto(subcategory.url, {
                                         waitUntil: "domcontentloaded",
-                                        timeout: 20000,
+                                        timeout: 10000,
                                     });
 
-                                    // Wait for products to load
-                                    try {
-                                        await pages[index].waitForSelector(".product-card", { timeout: 8000 });
-                                    } catch (timeoutError) {
-                                        console.log(`BLINKIT: No products found for ${subcategory.name}`);
-                                        return 0;
-                                    }
+                                    // Extract products
+                                    const products = await extractProductsFromPage(page).catch((error) => {
+                                        console.error(
+                                            `BLINKIT: Error extracting products for ${subcategory.name}:`,
+                                            error.message
+                                        );
+                                        return [];
+                                    });
 
-                                    // Extract products from this subcategory
-                                    const products = await extractProductsFromPage(pages[index]);
-
-                                    if (products.length === 0) {
-                                        console.log(`BLINKIT: No valid products found for ${subcategory.name}`);
-                                        return 0;
-                                    }
-
-                                    // Process and store products with category and subcategory names
-                                    const processedProducts = products.map((product) => ({
+                                    // Add category information to products
+                                    const enrichedProducts = products.map((product) => ({
                                         ...product,
                                         categoryName: subcategory.parentCategory,
                                         subcategoryName: subcategory.name,
                                     }));
 
-                                    // Process products
-                                    const processedCount = await processProducts(
-                                        processedProducts,
-                                        subcategory.parentCategory
-                                    );
-                                    console.log(
-                                        `BLINKIT: Processed ${processedCount} products for ${subcategory.name}`
-                                    );
+                                    // Process andstore products
+                                    const result = await globalProcessProducts(
+                                        enrichedProducts,
+                                        subcategory.parentCategory,
+                                        {
+                                            model: BlinkitProduct,
+                                            source: "Blinkit",
+                                            significantDiscountThreshold: 10,
+                                            telegramNotification: true,
+                                            emailNotification: false,
+                                        }
+                                    ).catch((error) => {
+                                        console.error(
+                                            `BLINKIT: Error saving products for ${subcategory.name}:`,
+                                            error.message
+                                        );
+                                        return 0;
+                                    });
 
+                                    const processedCount = typeof result === "number" ? result : result.processedCount;
                                     return processedCount;
                                 } catch (error) {
-                                    console.error(`BLINKIT: Error processing ${subcategory.name}:`, error);
+                                    console.error(`BLINKIT: Error processing ${subcategory.name}:`, error.message);
                                     return 0;
                                 }
                             })
                         );
 
+                        // Update total count
                         const batchProcessed = results.reduce((a, b) => a + b, 0);
                         totalProcessedProducts += batchProcessed;
-                        console.log(`BLINKIT: Batch ${batchIndex + 1} completed. Processed ${batchProcessed} products`);
+                        // console.log(`BLINKIT: Batch ${batchIndex + 1} completed. Processed ${batchProcessed} products`);
                     } finally {
-                        // Close pages after each batch
-                        await Promise.all(pages.map((page) => page.close()));
+                        // Close all pages
+                        await Promise.all(
+                            pages.map((page) =>
+                                page
+                                    ? page
+                                          .close()
+                                          .catch((e) => console.error("BLINKIT: Error closing page:", e.message))
+                                    : Promise.resolve()
+                            )
+                        );
                     }
 
-                    // Add delay between batches
-                    await new Promise((resolve) => setTimeout(resolve, 3000));
+                    // Short delay between batches
+                    await new Promise((resolve) => setTimeout(resolve, 1000));
                 }
 
-                const totalDuration = (Date.now() - startTime) / 1000 / 60; // in minutes
+                // Log completion and wait before next cycle
+                const totalDuration = (Date.now() - startTime) / 1000 / 60;
                 console.log(
                     `BLINKIT: Completed crawling. Processed ${totalProcessedProducts} products in ${totalDuration.toFixed(
                         2
                     )} minutes`
                 );
-
-                // Wait for 60 minutes before next iteration (full catalog crawl is heavy)
-                console.log("BLINKIT: Waiting 60 minutes before next crawl cycle");
-                await new Promise((resolve) => setTimeout(resolve, 60 * 60 * 1000));
+                await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
             } catch (error) {
                 console.error("BLINKIT: Error in tracking handler:", error);
-                // Wait for 5 minutes before retrying
                 await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
             }
         }

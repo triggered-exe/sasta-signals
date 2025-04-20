@@ -1,10 +1,11 @@
 import { createPage, cleanup, hasStoredLocation, getContextStats, storeContext } from '../utils/crawlerSetup.js';
-import { isNightTimeIST, buildSortCriteria, buildMatchCriteria } from '../utils/priceTracking.js';
+import { isNightTimeIST } from '../utils/priceTracking.js';
 import axios from 'axios';
 import { BigBasketProduct } from '../models/BigBasketProduct.js';
-import { PAGE_SIZE, HALF_HOUR } from "../utils/constants.js";
+import { HALF_HOUR } from "../utils/constants.js";
 import { bigBasketCategories } from '../utils/bigBasketCategories.js';
 import { Resend } from 'resend';
+import { processProducts as globalProcessProducts } from "../utils/productProcessor.js";
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID;
@@ -269,101 +270,43 @@ export const searchProducts = async (req, res, next) => {
 
 const processProducts = async (products, category) => {
     try {
-        const bulkOps = [];
-        const now = new Date();
-        const productIds = products
-            .filter(p => p.availability?.avail_status === '001')
-            .map(p => p.id);
+        // Transform BigBasket API products to our standard format
+        const transformedProducts = products
+            .filter(product => product.availability?.avail_status === '001')
+            .map(product => {
+                const currentPrice = Number(product.pricing?.discount?.prim_price?.sp) || 0;
+                const mrp = product.pricing?.discount?.mrp || 0;
 
-        // Get existing products from DB
-        const existingProducts = await BigBasketProduct.find({
-            productId: { $in: productIds }
-        }).lean();
-
-        // Create a map for faster lookups
-        const existingProductsMap = new Map(
-            existingProducts.map(p => [p.productId, p])
-        );
-        const droppedProducts = [];
-
-        // Process each product
-        for (const product of products) {
-            if (product.availability?.avail_status !== '001') continue;
-
-            const currentPrice = Number(product.pricing?.discount?.prim_price?.sp) || 0;
-            const existingProduct = existingProductsMap.get(product.id);
-
-            const productData = {
-                categoryName: category.name,
-                categoryId: category.id,
-                subcategoryName: product.category?.mlc_name,
-                subcategoryId: product.category?.mlc_id,
-                productId: product.id,
-                inStock: product.availability?.avail_status === '001',
-                imageUrl: product.images?.[0]?.s,
-                productName: product.desc,
-                mrp: product.pricing?.discount?.mrp || 0,
-                price: currentPrice,
-                discount: Math.floor(
-                    ((product.pricing?.discount?.mrp - currentPrice) / (product.pricing?.discount?.mrp || 1)) * 100
-                ),
-                weight: product.w,
-                brand: product.brand?.name,
-                url: `https://www.bigbasket.com${product.absolute_url}`,
-                eta: product.availability?.medium_eta,
-                updatedAt: now
-            };
-
-            // Only process if price has changed
-            if (existingProduct && existingProduct.price === currentPrice && productData.inStock === existingProduct.inStock) {
-                continue;
-            }
-
-            if (existingProduct) {
-                productData.previousPrice = existingProduct.price;
-                const currentDiscount = productData.discount;
-                const prevDiscount = existingProduct.discount || 0;
-                // Only set priceDroppedAt and add to droppedProducts if price decreased
-                if (currentDiscount - prevDiscount >= 10) {
-                    productData.priceDroppedAt = now;
-                    productData.priceDropNotificationSent = false;
-                    droppedProducts.push({
-                        ...productData,
-                        previousPrice: existingProduct.price
-                    });
-                } else {
-                    // Keep existing priceDroppedAt and notification status if price increased
-                    if (existingProduct.priceDroppedAt) {
-                        productData.priceDroppedAt = existingProduct.priceDroppedAt;
-                    }
-                }
-            }
-
-            bulkOps.push({
-                updateOne: {
-                    filter: { productId: product.id },
-                    update: { $set: productData },
-                    upsert: true
-                }
+                return {
+                    productId: product.id,
+                    productName: product.desc,
+                    categoryName: category.name,
+                    categoryId: category.id,
+                    subcategoryName: product.category?.mlc_name,
+                    subcategoryId: product.category?.mlc_id,
+                    inStock: product.availability?.avail_status === '001',
+                    imageUrl: product.images?.[0]?.s,
+                    mrp: mrp,
+                    price: currentPrice,
+                    discount: Math.floor(
+                        ((mrp - currentPrice) / (mrp || 1)) * 100
+                    ),
+                    weight: product.w,
+                    brand: product.brand?.name,
+                    url: `https://www.bigbasket.com${product.absolute_url}`,
+                    eta: product.availability?.medium_eta
+                };
             });
-        }
 
-        if (droppedProducts.length > 0) {
-            console.log(`BB: Found ${droppedProducts.length} dropped products in ${category.name}`);
-            try {
-                await sendTelegramMessage(droppedProducts);
-            } catch (error) {
-                console.error('BB: Error sending Telegram notification:', error);
-                // Don't throw the error to continue processing
-            }
-        }
+        // Use the global processProducts function with BigBasket-specific options
+        const processedCount = await globalProcessProducts(transformedProducts, category.name, {
+            model: BigBasketProduct,
+            source: "BigBasket",
+            emailNotification: true,
+            telegramNotification: true,
+        });
 
-        if (bulkOps.length > 0) {
-            await BigBasketProduct.bulkWrite(bulkOps, { ordered: false });
-            console.log(`BB: Updated ${bulkOps.length} products in ${category.name}`);
-        }
-
-        return { processedCount: bulkOps.length };
+        return { processedCount };
     } catch (error) {
         console.error('BB: Error processing products:', error);
         return { processedCount: 0 };
@@ -428,7 +371,8 @@ const fetchProductsForCategoryInChunks = async (category, pincode) => {
     try {
         if (allProducts.length > 0) {
             console.log(`BB: Processing ${allProducts.length} total products for category ${category.name}`);
-            const { processedCount } = await processProducts(allProducts, category);
+            const result = await processProducts(allProducts, category);
+            const processedCount = typeof result === 'number' ? result : result.processedCount;
             console.log(`BB: Completed processing category ${category.name}. Processed ${processedCount} products.`);
         }
     } catch (error) {
@@ -499,6 +443,8 @@ const sendTelegramMessage = async (droppedProducts) => {
 };
 
 // Sends email notification for products with price drops
+// This function is kept for future use and can be added to the notification options
+// eslint-disable-next-line no-unused-vars
 const sendEmailWithDroppedProducts = async (sortedProducts) => {
     try {
         // Skip sending email if no dropped products
@@ -526,11 +472,11 @@ const sendEmailWithDroppedProducts = async (sortedProducts) => {
                             const prevDiscount = Math.floor(((product.mrp - product.previousPrice) / product.mrp) * 100);
                             return `
                                 <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #eee; border-radius: 8px;">
-                                    <a href="${product.url}"  
+                                    <a href="${product.url}"
                                        style="text-decoration: none; color: inherit; display: block;">
                                         <div style="display: flex; align-items: center;">
-                                            <img src="${product.imageUrl}" 
-                                                 alt="${product.productName}" 
+                                            <img src="${product.imageUrl}"
+                                                 alt="${product.productName}"
                                                  style="width: 100px; height: 100px; object-fit: cover; border-radius: 4px; margin-right: 15px;">
                                             <div>
                                                 <h3 style="margin: 0 0 8px 0;">${product.productName}</h3>
@@ -658,7 +604,7 @@ export const startTrackingHandler = async () => {
 };
 
 // Route handler for starting the tracking
-export const startTracking = async (req, res, next) => {
+export const startTracking = async (_, res, next) => {
     try {
         const message = await startTrackingHandler();
         res.status(200).json({ message });
@@ -669,59 +615,7 @@ export const startTracking = async (req, res, next) => {
 };
 
 
-export const getProducts = async (req, res, next) => {
-    try {
-        const {
-            page = "1",
-            pageSize = PAGE_SIZE.toString(),
-            sortOrder = "price",  // price if increasing order, price_desc if decreasing order, discount if discount is descending order order
-            priceDropped = "false", // true if price dropped in last hour, false if not
-            notUpdated = "false" // if true, then only products that are not updated in last 24 hours will not be fetched
-        } = req.query;
 
-        const skip = (parseInt(page) - 1) * parseInt(pageSize);
-        const sortCriteria = buildSortCriteria(sortOrder);
-        const matchCriteria = buildMatchCriteria(priceDropped, notUpdated);
-
-        const totalProducts = await BigBasketProduct.countDocuments(matchCriteria);
-        const products = await BigBasketProduct.aggregate([
-            { $match: matchCriteria },
-            { $sort: sortCriteria },
-            { $skip: skip },
-            { $limit: parseInt(pageSize) },
-            {
-                $project: {
-                    productId: 1,
-                    productName: 1,
-                    price: 1,
-                    mrp: 1,
-                    discount: 1,
-                    weight: 1,
-                    brand: 1,
-                    imageUrl: 1,
-                    url: 1,
-                    priceDroppedAt: 1,
-                    categoryName: 1,
-                    subcategoryName: 1,
-                    eta: 1,
-                    inStock: 1
-                }
-            }
-        ]);
-
-        res.status(200).json({
-            data: products,
-            totalPages: Math.ceil(totalProducts / parseInt(pageSize)),
-            currentPage: parseInt(page),
-            pageSize: parseInt(pageSize),
-            total: totalProducts
-        });
-
-    } catch (error) {
-        console.error('BB: Error fetching BigBasket products:', error);
-        next(error instanceof AppError ? error : AppError.internalError('Failed to fetch BigBasket products'));
-    }
-};
 
 export const searchProductsUsingCrawler = async (req, res, next) => {
     let page = null;
@@ -898,7 +792,7 @@ export const searchProductsUsingCrawler = async (req, res, next) => {
 };
 
 // Add cleanup endpoint
-export const cleanupBrowser = async (req, res, next) => {
+export const cleanupBrowser = async (_, res, next) => {
     try {
         await cleanup();
         res.status(200).json({ message: 'Browser and contexts cleaned up successfully' });

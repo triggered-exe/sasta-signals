@@ -8,6 +8,7 @@ import { websites } from '../../config/websites';
 const websiteIcons = {
     "Instamart": <SiSwiggy className="text-xl" />,
     "Zepto": <FaShoppingBasket className="text-xl" />,
+    "Blinkit": <FaShoppingBasket className="text-xl" />,
     "BigBasket": <SiBigbasket className="text-xl" />,
     "Amazon Fresh": <SiAmazon className="text-xl" />,
     "Flipkart Grocery": <SiFlipkart className="text-xl" />,

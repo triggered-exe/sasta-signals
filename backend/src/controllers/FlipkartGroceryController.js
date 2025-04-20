@@ -1,13 +1,11 @@
 import axios from "axios";
 import { AppError } from "../utils/errorHandling.js";
 import { FlipkartGroceryProduct } from "../models/FlipkartGroceryProduct.js";
-import { HALF_HOUR, ONE_HOUR, PAGE_SIZE } from "../utils/constants.js";
+import { HALF_HOUR, ONE_HOUR } from "../utils/constants.js";
 import { Resend } from "resend";
 import {
   isNightTimeIST,
   chunk,
-  buildSortCriteria,
-  buildMatchCriteria,
 } from "../utils/priceTracking.js";
 import { firefox } from "playwright";
 import { productQueries } from "../utils/productQueries.js";
@@ -48,58 +46,7 @@ let FLIPKART_HEADERS = {
 let isTrackingActive = false;
 const CATEGORY_CHUNK_SIZE = 3;
 
-export const getProducts = async (req, res, next) => {
-  try {
-    const {
-      page = "1",
-      pageSize = PAGE_SIZE.toString(),
-      sortOrder = "price",
-      priceDropped = "false",
-      notUpdated = "false",
-    } = req.query;
 
-    const skip = (parseInt(page) - 1) * parseInt(pageSize);
-    const sortCriteria = buildSortCriteria(sortOrder);
-    const matchCriteria = buildMatchCriteria(priceDropped, notUpdated);
-
-    const totalProducts = await FlipkartGroceryProduct.countDocuments(
-      matchCriteria
-    );
-    const products = await FlipkartGroceryProduct.aggregate([
-      { $match: matchCriteria },
-      { $sort: sortCriteria },
-      { $skip: skip },
-      { $limit: parseInt(pageSize) },
-      {
-        $project: {
-          productId: 1,
-          productName: 1,
-          price: 1,
-          mrp: 1,
-          discount: 1,
-          weight: 1,
-          brand: 1,
-          imageUrl: 1,
-          url: 1,
-          priceDroppedAt: 1,
-          categoryName: 1,
-          subcategoryName: 1,
-          inStock: 1,
-        },
-      },
-    ]);
-
-    res.status(200).json({
-      data: products,
-      totalPages: Math.ceil(totalProducts / parseInt(pageSize)),
-      currentPage: parseInt(page),
-      pageSize: parseInt(pageSize),
-      total: totalProducts,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
 
 const processProducts = async (products, category) => {
   try {
@@ -249,7 +196,7 @@ const sendTelegramMessage = async (droppedProducts) => {
   }
 };
 
-export const startTracking = async (req, res, next) => {
+export const startTracking = async (_, res, next) => {
   try {
     const message = await startTrackingHandler();
     res.status(200).json({ message });

@@ -1,10 +1,10 @@
 import { AppError } from "../utils/errorHandling.js";
 import { AmazonFreshProduct } from "../models/AmazonFreshProduct.js";
-import { PAGE_SIZE } from "../utils/constants.js";
-import { isNightTimeIST, chunk, buildSortCriteria, buildMatchCriteria } from "../utils/priceTracking.js";
+import { isNightTimeIST, chunk } from "../utils/priceTracking.js";
 import contextManager from "../utils/contextManager.js";
 import { productQueries } from "../utils/productQueries.js";
 import { sendPriceDropNotifications } from "../services/NotificationService.js";
+import { processProducts as globalProcessProducts } from "../utils/productProcessor.js";
 
 // Set location for pincode
 const setLocation = async (pincode) => {
@@ -53,56 +53,7 @@ const setLocation = async (pincode) => {
     }
 };
 
-export const getProducts = async (req, res, next) => {
-    try {
-        const {
-            page = "1",
-            pageSize = PAGE_SIZE.toString(),
-            sortOrder = "price",
-            priceDropped = "false",
-            notUpdated = "false",
-        } = req.query;
 
-        const skip = (parseInt(page) - 1) * parseInt(pageSize);
-        const sortCriteria = buildSortCriteria(sortOrder);
-        const matchCriteria = buildMatchCriteria(priceDropped, notUpdated);
-
-        const totalProducts = await AmazonFreshProduct.countDocuments(matchCriteria);
-        const products = await AmazonFreshProduct.aggregate([
-            { $match: matchCriteria },
-            { $sort: sortCriteria },
-            { $skip: skip },
-            { $limit: parseInt(pageSize) },
-            {
-                $project: {
-                    productId: 1,
-                    productName: 1,
-                    price: 1,
-                    mrp: 1,
-                    discount: 1,
-                    weight: 1,
-                    brand: 1,
-                    imageUrl: 1,
-                    url: 1,
-                    priceDroppedAt: 1,
-                    categoryName: 1,
-                    subcategoryName: 1,
-                    inStock: 1,
-                },
-            },
-        ]);
-
-        res.status(200).json({
-            data: products,
-            totalPages: Math.ceil(totalProducts / parseInt(pageSize)),
-            currentPage: parseInt(page),
-            pageSize: parseInt(pageSize),
-            total: totalProducts,
-        });
-    } catch (error) {
-        next(error);
-    }
-};
 
 // Function to extract products from current page
 const extractProductsFromPage = async (page) => {
@@ -258,99 +209,9 @@ const searchAndExtractProducts = async (page, query, maxPages = 10) => {
     }
 };
 
-// Function to process and store products
-const processProducts = async (products, categoryName) => {
-    try {
-        const bulkOps = [];
-        const droppedProducts = [];
-        const now = new Date();
-
-        // Get existing products for price comparison
-        const productIds = products.filter((p) => p.inStock).map((p) => p.productId);
-
-        const existingProducts = await AmazonFreshProduct.find({
-            productId: { $in: productIds },
-        }).lean();
-
-        const existingProductsMap = new Map(existingProducts.map((p) => [p.productId, p]));
-
-        // Process each product
-        for (const product of products) {
-            const existingProduct = existingProductsMap.get(product.productId);
-            const productData = {
-                ...product,
-                productId: product.productId,
-                productName: product.productName,
-                categoryName: categoryName,
-                inStock: product.inStock,
-                mrp: product.mrp,
-                price: product.price,
-                discount: product.discount,
-                imageUrl: product.imageUrl,
-                url: product.url,
-                priceDroppedAt: now,
-            };
-
-            if (existingProduct) {
-                if (existingProduct.price === product.price && product.inStock === existingProduct.inStock) {
-                    continue; // Skip if price hasn't changed
-                }
-
-                // Update price history if price has changed
-                productData.previousPrice = existingProduct.price;
-                const currentDiscount = productData.discount;
-                const previousDiscount = existingProduct.discount || 0;
-
-                if (currentDiscount > previousDiscount) {
-                    productData.priceDroppedAt = now;
-                    if (currentDiscount - previousDiscount >= 10) {
-                        droppedProducts.push({
-                            ...productData,
-                            previousPrice: existingProduct.price,
-                        });
-                    }
-                } else {
-                    if (existingProduct.priceDroppedAt) {
-                        productData.priceDroppedAt = existingProduct.priceDroppedAt;
-                    }
-                }
-            }
-
-            bulkOps.push({
-                updateOne: {
-                    filter: { productId: product.productId },
-                    update: { $set: productData },
-                    upsert: true,
-                },
-            });
-        }
-
-        // Send notifications for price drops
-        if (droppedProducts.length > 0) {
-            console.log(`AF: Found ${droppedProducts.length} dropped products from ${categoryName}`);
-            try {
-                await sendPriceDropNotifications(droppedProducts, "Amazon Fresh");
-            } catch (error) {
-                console.error("AF: Error sending Telegram notification:", error);
-            }
-        }
-
-        // Perform bulk write operation
-        if (bulkOps.length > 0) {
-            await AmazonFreshProduct.bulkWrite(bulkOps, { ordered: false });
-            console.log(`AF: Updated ${bulkOps.length} products from ${categoryName}`);
-        }
-
-        return bulkOps.length;
-    } catch (error) {
-        console.error("AF: Error processing products:", error);
-        throw error;
-    }
-};
-
 let isTrackingActive = false;
 
-export const startTracking = async (req, res, next) => {
+export const startTracking = async (_, res, next) => {
     try {
         const message = await startTrackingHandler();
         res.status(200).json({ message });
@@ -410,7 +271,13 @@ export const startTrackingHandler = async () => {
                             console.log(`AF: Processing ${query}`);
                             try {
                                 const products = await searchAndExtractProducts(pages[index], query, 15);
-                                const processedCount = await processProducts(products, query);
+                                const result = await globalProcessProducts(products, query, {
+                                    model: AmazonFreshProduct,
+                                    source: "Amazon Fresh",
+                                    telegramNotification: true,
+                                    emailNotification: false,
+                                });
+                                const processedCount = typeof result === 'number' ? result : result.processedCount;
                                 return processedCount;
                             } catch (error) {
                                 console.error(`AF: Error processing ${query}:`, error);
