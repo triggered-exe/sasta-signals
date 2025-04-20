@@ -103,7 +103,7 @@ export default function PriceTracker({ apiEndpoint }) {
                     <div className="flex flex-wrap gap-1 sm:gap-1.5 md:gap-2">
                         <div className="text-[10px] sm:text-xs bg-gray-100/80 dark:bg-gray-700/80 px-1.5 sm:px-2 md:px-3 py-0.5 sm:py-1 md:py-1.5 rounded-md sm:rounded-lg backdrop-blur-sm">
                             <span className="font-medium dark:text-gray-200">
-                                {product.weight}
+                            {product.unit}  {product.weight}
                             </span>
                             {product.mrp > product.price && (
                                 <span className="ml-1 sm:ml-1.5 text-gray-500 dark:text-gray-400 line-through">

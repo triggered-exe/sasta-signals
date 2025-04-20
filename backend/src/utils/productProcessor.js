@@ -7,12 +7,13 @@ import { sendEmailWithDroppedProducts, sendTelegramMessage } from "../services/N
  * @param {Object} options - Additional options
  * @param {Object} options.model - Mongoose model to use for storing products
  * @param {string} options.source - Source name for notifications (e.g., "Blinkit", "BigBasket")
+ * @param {number} options.significantDiscountThreshold - Minimum discount percentage for notifications
  * @param {Boolean} options.telegramNotification - Whether to send Telegram notifications
  * @param {Boolean} options.emailNotification - Whether to send email notifications
  * @returns {Promise<number>} - Number of products processed
  */
 export const processProducts = async (products, categoryName, options = {}) => {
-    const { model, source = "Unknown", telegramNotification = false, emailNotification = false } = options;
+    const { model, source = "Unknown", significantDiscountThreshold = 10, telegramNotification = false, emailNotification = false } = options;
 
     if (!model) {
         throw new Error("Product model is required for processing products");
@@ -53,6 +54,8 @@ export const processProducts = async (products, categoryName, options = {}) => {
                 price: product.price,
                 discount: product.discount,
                 imageUrl: product.imageUrl,
+                weight: product.weight,
+                unit: product.unit,
                 url: product.url,
                 updatedAt: now,
             };
@@ -69,6 +72,9 @@ export const processProducts = async (products, categoryName, options = {}) => {
 
                 if (existingProduct.price > product.price) {
                     productData.priceDroppedAt = now;
+                    if (currentDiscount - previousDiscount >= significantDiscountThreshold && product.inStock) {
+                        droppedProducts.push(productData);
+                    }
                 } else {
                     // Retain previous priceDroppedAt if exists
                     if (existingProduct.priceDroppedAt) {
@@ -93,12 +99,10 @@ export const processProducts = async (products, categoryName, options = {}) => {
         if (droppedProducts.length > 0) {
             console.log(`${logPrefix} Found ${droppedProducts.length} dropped products from ${categoryName}`);
             try {
-                if (telegramNotification) {
-                    await sendTelegramMessage(droppedProducts, source);
-                }
-                if (emailNotification) {
-                    await sendEmailWithDroppedProducts(droppedProducts, source);
-                }
+                await Promise.all([
+                    telegramNotification && sendTelegramMessage(droppedProducts, source),
+                    emailNotification && sendEmailWithDroppedProducts(droppedProducts, source),
+                ]);
             } catch (error) {
                 console.error(`${logPrefix} Error sending notification:`, error);
             }

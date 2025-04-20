@@ -6,13 +6,12 @@ import "./src/database.js"; // Import the database connection
 import instamartRouter from "./src/routes/api/instamart/instamart.js"; // Import the instamart route
 import meeshoRouter from "./src/routes/api/meesho/meesho.js";
 import axios from "axios";
-import { trackProductPrices } from "./src/controllers/InstamartController.js"; // Import the function
+import { trackProductPrices as instamartStartTrackingHandler } from "./src/controllers/InstamartController.js"; // Import the function
 import bigbasketRoutes from "./src/routes/api/bigbasket/bigbasket.js";
-import { startTrackingHandler } from "./src/controllers/BigBasketController.js";
+import { startTrackingHandler as BigBasketStartTrackingHandler } from "./src/controllers/BigBasketController.js";
 import { startTrackingHandler as zeptoStartTrackingHandler } from "./src/controllers/ZeptoController.js";
 import { startTrackingHandler as flipkartStartTrackingHandler } from "./src/controllers/FlipkartGroceryController.js";
 import flipkartGroceryRouter from "./src/routes/api/flipkartGrocery/flipkartGrocery.js";
-import { searchAllProductsUsingCrawler } from "./src/controllers/FlipkartGroceryController.js";
 import amazonFreshRouter from "./src/routes/api/amazonFresh/amazonFresh.js";
 import { startTrackingHandler as amazonFreshStartTrackingHandler } from "./src/controllers/AmazonFreshController.js";
 import zeptoRouter from "./src/routes/api/zepto/zepto.js";
@@ -20,7 +19,7 @@ import productsRouter from "./src/routes/api/products.js"; // Import the new com
 import blinkitRouter from "./src/routes/api/blinkit/blinkit.js";
 import { startTrackingHandler as blinkitStartTrackingHandler } from "./src/controllers/BlinkitController.js";
 
-// Load environment variables from .env file  
+// Load environment variables from .env file
 dotenv.config();
 
 // Create an Express application
@@ -35,7 +34,7 @@ app.use(express.urlencoded({ extended: true })); // Parse URL-encoded request bo
 
 // Routes
 app.get("/", (req, res) => {
-  res.send("Hello World!"); // Define a simple route for the root path
+    res.send("Hello World!"); // Define a simple route for the root path
 });
 
 // Individual platform routes
@@ -47,6 +46,7 @@ app.use("/api/flipkart-grocery", flipkartGroceryRouter);
 app.use("/api/amazon-fresh", amazonFreshRouter);
 app.use("/api/blinkit", blinkitRouter);
 
+
 // Common products route that aggregates all platforms
 app.use("/api/products", productsRouter);
 
@@ -55,11 +55,11 @@ app.use(errorHandler);
 
 // Start the server and initialize price tracking
 app.listen(port, () => {
-  console.log(`Server is running on port - ${port}`);
-  // zeptoStartTrackingHandler(); // For Zepto
-  // trackProductPrices(); // For Instamart
-  // startTrackingHandler(); // For BigBasket
-  // searchAllProductsUsingCrawler(); // For Flipkart
-  // amazonFreshStartTrackingHandler(); // For Amazon Fresh
-  blinkitStartTrackingHandler(); // For Blinkit
+    console.log(`Server is running on port - ${port}`);
+    // zeptoStartTrackingHandler(); // For Zepto
+    instamartStartTrackingHandler(); // For Instamart
+    BigBasketStartTrackingHandler(); // For BigBasket
+    setTimeout(() => flipkartStartTrackingHandler(), 0); // For Flipkart
+    setTimeout(() => amazonFreshStartTrackingHandler(), 10000); // For Amazon Fresh
+    setTimeout(() => blinkitStartTrackingHandler(), 20000); // For Blinkit
 });

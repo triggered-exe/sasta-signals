@@ -2,7 +2,7 @@ import express from 'express';
 import { 
     startTracking, 
     searchProductsUsingCrawler,
-    startCrawlerSearchHandler,
+    startTrackingHandler,
 } from '../../../controllers/FlipkartGroceryController.js';
 
 const router = express.Router();
@@ -12,6 +12,6 @@ router.post('/track', startTracking);
 
 router.post('/search', searchProductsUsingCrawler);
 
-router.post('/start-crawler', startCrawlerSearchHandler);
+router.post('/start-crawler', startTrackingHandler);
 
 export default router; 

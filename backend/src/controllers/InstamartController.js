@@ -5,27 +5,28 @@ import { HALF_HOUR, ONE_HOUR, PAGE_SIZE } from "../utils/constants.js";
 import { Resend } from "resend";
 import { isNightTimeIST, chunk } from "../utils/priceTracking.js";
 import { sendPriceDropNotifications } from "../services/NotificationService.js";
+import { processProducts as globalProcessProducts } from "../utils/productProcessor.js";
 
 const placesData = {};
 const CATEGORY_CHUNK_SIZE = 3;
 const SUBCATEGORY_CHUNK_SIZE = 2;
 // Constants and configuration for Instamart API requests
 const INSTAMART_HEADERS = {
-  accept: "*/*",
-  "accept-language": "en-US,en;q=0.7",
-  "content-type": "application/json",
-  matcher: "cefb98e9gefbb99beeceecb",
-  priority: "u=1, i",
-  referer: "https://www.swiggy.com/instamart?",
-  "sec-ch-ua": '"Chromium";v="130", "Brave";v="130", "Not?A_Brand";v="99"',
-  "sec-ch-ua-mobile": "?1",
-  "sec-ch-ua-platform": '"Android"',
-  "sec-fetch-dest": "empty",
-  "sec-fetch-mode": "cors",
-  "sec-fetch-site": "same-origin",
-  "sec-gpc": "1",
-  "user-agent":
-    "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36",
+    accept: "*/*",
+    "accept-language": "en-US,en;q=0.7",
+    "content-type": "application/json",
+    matcher: "cefb98e9gefbb99beeceecb",
+    priority: "u=1, i",
+    referer: "https://www.swiggy.com/instamart?",
+    "sec-ch-ua": '"Chromium";v="130", "Brave";v="130", "Not?A_Brand";v="99"',
+    "sec-ch-ua-mobile": "?1",
+    "sec-ch-ua-platform": '"Android"',
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "same-origin",
+    "sec-gpc": "1",
+    "user-agent":
+        "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36",
 };
 
 // Remove trackingInterval variable as we'll use continuous tracking
@@ -36,651 +37,586 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Controller to fetch and return all product categories
 export const getStoreData = async (req, res, next) => {
-  try {
-    const categories = await fetchProductCategories();
-    console.log("IM:sending categories", categories?.length);
-    res.status(200).json(categories);
-  } catch (error) {
-    next(error);
-  }
+    try {
+        const categories = await fetchProductCategories();
+        console.log("IM:sending categories", categories?.length);
+        res.status(200).json(categories);
+    } catch (error) {
+        next(error);
+    }
 };
 
 // Controller to fetch products within a specific subcategory
 export const getSubcategoryProducts = async (req, res, next) => {
-  try {
-    const { filterId, filterName, categoryName, offset = 0 } = req.body;
+    try {
+        const { filterId, filterName, categoryName, offset = 0 } = req.body;
 
-    if (!filterId || !filterName || !categoryName) {
-      throw AppError.badRequest("Missing required parameters");
-    }
+        if (!filterId || !filterName || !categoryName) {
+            throw AppError.badRequest("Missing required parameters");
+        }
 
-    const response = await axios.post(
-      `https://www.swiggy.com/api/instamart/category-listing/filter`,
-      { facets: {}, sortAttribute: "" },
-      {
-        params: {
-          filterId,
-          storeId: "1311100",
-          primaryStoreId: "1311100",
-          secondaryStoreId: "",
-          type: "Speciality taxonomy 1",
-          pageNo: 0,
-          limit: 20,
-          offset,
-          filterName,
-          categoryName,
-        },
-        headers: INSTAMART_HEADERS,
-      }
-    );
-    if (!response.data || !response.data.data) {
-      console.error("IM:Swiggy API Response:", response?.data);
-      throw AppError.serviceUnavailable("Failed to fetch products from Swiggy");
-    }
+        const response = await axios.post(
+            `https://www.swiggy.com/api/instamart/category-listing/filter`,
+            { facets: {}, sortAttribute: "" },
+            {
+                params: {
+                    filterId,
+                    storeId: "1311100",
+                    primaryStoreId: "1311100",
+                    secondaryStoreId: "",
+                    type: "Speciality taxonomy 1",
+                    pageNo: 0,
+                    limit: 20,
+                    offset,
+                    filterName,
+                    categoryName,
+                },
+                headers: INSTAMART_HEADERS,
+            }
+        );
+        if (!response.data || !response.data.data) {
+            console.error("IM:Swiggy API Response:", response?.data);
+            throw AppError.serviceUnavailable("Failed to fetch products from Swiggy");
+        }
 
-    res.status(200).json(response.data);
-  } catch (error) {
-    if (!(error instanceof AppError)) {
-      console.error("IM:Unexpected Error:", error);
-      error = new AppError("An unexpected error occurred", 500);
+        res.status(200).json(response.data);
+    } catch (error) {
+        if (!(error instanceof AppError)) {
+            console.error("IM:Unexpected Error:", error);
+            error = new AppError("An unexpected error occurred", 500);
+        }
+        next(error);
     }
-    next(error);
-  }
 };
 
 // Controller to start periodic price tracking
 export const trackPrices = async (req, res, next) => {
-  try {
-    const message = await startTrackingHandler();
-    res.status(200).json({ message });
-  } catch (error) {
-    next(error);
-  }
+    try {
+        const message = await startTrackingHandler();
+        res.status(200).json({ message });
+    } catch (error) {
+        next(error);
+    }
 };
 
 // Handler to start tracking
 export const startTrackingHandler = async () => {
-  console.log("IM: starting tracking");
-  // Start the continuous tracking loop without awaiting it
-  trackProductPrices().catch(error => {
-    console.error('IM: Failed in tracking loop:', error);
-  });
-  return "Instamart price tracking started";
+    console.log("IM: starting tracking");
+    // Start the continuous tracking loop without awaiting it
+    trackProductPrices().catch((error) => {
+        console.error("IM: Failed in tracking loop:", error);
+    });
+    return "Instamart price tracking started";
 };
 
 // Process categories linearly instead of in parallel
-const processCategoriesChunk = async (
-  categoryChunk,
-  storeId,
-  cookie,
-  address = "500064"
-) => {
-  try {
-    // Common headers to use across all API calls
-    const headers = {
-      'accept': '*/*',
-      'accept-language': 'en-US,en;q=0.9',
-      'cache-control': 'no-cache',
-      'content-type': 'application/json',
-      'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
-      'cookie': cookie, // Already using the full cookie from fetchProductCategories
-      'referer': 'https://www.swiggy.com/instamart',
-      'priority': 'u=1, i',
-      'matcher': 'ea8778ebaf9d9bde8ab7ag7',
-      'sec-ch-ua': '"Brave";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
-      'sec-ch-ua-mobile': '?0',
-      'sec-ch-ua-platform': '"Windows"',
-      'sec-fetch-dest': 'empty',
-      'sec-fetch-mode': 'cors',
-      'sec-fetch-site': 'same-origin',
-      'sec-gpc': '1'
-    };
-    
-    // Process each category sequentially
-    for (const category of categoryChunk) {
-      try {
-        console.log("IM: processing category", category.name);
-        if (!category.subCategories?.length) {
-          console.log(`IM: Skipping category ${category.name} - no subcategories found`);
-          continue;
-        }
+const processCategoriesChunk = async (categoryChunk, storeId, cookie, address = "500064") => {
+    try {
+        // Common headers to use across all API calls
+        const headers = {
+            accept: "*/*",
+            "accept-language": "en-US,en;q=0.9",
+            "cache-control": "no-cache",
+            "content-type": "application/json",
+            "user-agent":
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+            cookie: cookie, // Already using the full cookie from fetchProductCategories
+            referer: "https://www.swiggy.com/instamart",
+            priority: "u=1, i",
+            matcher: "ea8778ebaf9d9bde8ab7ag7",
+            "sec-ch-ua": '"Brave";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"',
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-origin",
+            "sec-gpc": "1",
+        };
 
-        // Process subcategories sequentially
-        for (const subCategory of category.subCategories) {
-          try {
-            let offset = 0;
-            let pageNo = 0;
-            let limit = 20;
-            let allProducts = [];
-            const BATCH_SIZE = 20;
+        // Process each category sequentially
+        for (const category of categoryChunk) {
+            try {
+                console.log("IM: processing category", category.name);
+                if (!category.subCategories?.length) {
+                    console.log(`IM: Skipping category ${category.name} - no subcategories found`);
+                    continue;
+                }
 
-            while (true) {
-              let retryCount = 0;
-              const MAX_RETRIES = 3;
+                // Process subcategories sequentially
+                for (const subCategory of category.subCategories) {
+                    try {
+                        let offset = 0;
+                        let pageNo = 0;
+                        let limit = 20;
+                        let allProducts = [];
+                        const BATCH_SIZE = 20;
 
-              try {
-                // Fetch subcategory data
-                const response = await axios.post(
-                  `https://www.swiggy.com/api/instamart/category-listing/filter`,
-                  { facets: {}, sortAttribute: "" },
-                  {
-                    params: {
-                      filterId: subCategory.nodeId,
-                      storeId,
-                      offset,
-                      primaryStoreId: storeId,
-                      secondaryStoreId: "",
-                      type: category.taxonomyType,
-                      pageNo: pageNo,
-                      limit: limit,
-                      filterName: subCategory.name,
-                      categoryName: category.name
-                    },
-                    headers: headers
-                  }
-                );
+                        while (true) {
+                            let retryCount = 0;
+                            const MAX_RETRIES = 3;
 
-                const { totalItems = 0, widgets = [], hasMore = false, offset: offsetResponse = 0, pageNo: pageNoResponse = 0 } = response.data?.data || {};
+                            try {
+                                // Fetch subcategory data
+                                const response = await axios.post(
+                                    `https://www.swiggy.com/api/instamart/category-listing/filter`,
+                                    { facets: {}, sortAttribute: "" },
+                                    {
+                                        params: {
+                                            filterId: subCategory.nodeId,
+                                            storeId,
+                                            offset,
+                                            primaryStoreId: storeId,
+                                            secondaryStoreId: "",
+                                            type: category.taxonomyType,
+                                            pageNo: pageNo,
+                                            limit: limit,
+                                            filterName: subCategory.name,
+                                            categoryName: category.name,
+                                        },
+                                        headers: headers,
+                                    }
+                                );
 
-                // Check if the response is empty and rate limit is hit
-                if (!response.data.data) {
-                  if (!allProducts.length) {
-                    retryCount++;
-                    if (retryCount > MAX_RETRIES) {
-                      console.log(`IM: Max retries (${MAX_RETRIES}) reached for subcategory ${subCategory.name}`);
-                      break;
+                                const {
+                                    totalItems = 0,
+                                    widgets = [],
+                                    hasMore = false,
+                                    offset: offsetResponse = 0,
+                                    pageNo: pageNoResponse = 0,
+                                } = response.data?.data || {};
+
+                                // Check if the response is empty and rate limit is hit
+                                if (!response.data.data) {
+                                    if (!allProducts.length) {
+                                        retryCount++;
+                                        if (retryCount > MAX_RETRIES) {
+                                            console.log(
+                                                `IM: Max retries (${MAX_RETRIES}) reached for subcategory ${subCategory.name}`
+                                            );
+                                            break;
+                                        }
+                                        // Wait for progressively longer times between retries (1m, 2m, 3m)
+                                        const waitTime = retryCount * 60 * 1000;
+
+                                        console.log(
+                                            `IM: Rate limit hit (attempt ${retryCount}/${MAX_RETRIES}), waiting for ${
+                                                waitTime / 1000
+                                            } seconds before retry...`
+                                        );
+                                        await new Promise((resolve) => setTimeout(resolve, waitTime));
+                                        continue; // Retry the same request
+                                    } else {
+                                        break; // Only break if we have some products already
+                                    }
+                                }
+
+                                // Extract products from PRODUCT_LIST widgets
+                                const products = widgets
+                                    .filter((widget) => widget.type === "PRODUCT_LIST")
+                                    .flatMap((widget) => widget.data || [])
+                                    .filter((product) => product);
+
+                                // console.log(`IM: Found ${products.length} products in subcategory ${subCategory.name}`);
+
+                                if (!products.length) {
+                                    console.log("IM: no products found in subcategory", subCategory.name);
+                                    break;
+                                }
+
+                                allProducts = [...allProducts, ...products];
+
+                                // Break if no more products or reached total
+                                if (!hasMore || allProducts.length >= totalItems) break;
+
+                                offset = offsetResponse;
+                                pageNo = pageNoResponse + 1;
+                            } catch (error) {
+                                throw error;
+                            }
+                        }
+
+                        // After processing products in each subcategory
+                        if (allProducts.length > 0) {
+                            console.log(
+                                "IM: Processing products for subcategory",
+                                subCategory.name,
+                                "length",
+                                allProducts.length
+                            );
+                            const updatedCount = await processProducts(allProducts, category, subCategory, address);
+                            console.log(`IM: Processed ${updatedCount} products in ${subCategory.name}`);
+                        }
+                    } catch (error) {
+                        console.error(`IM: Error processing subcategory ${subCategory.name}:`, error.response);
+                        await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
+                        // Continue with next subcategory even if one fails
+                        continue;
                     }
-                    // Wait for progressively longer times between retries (1m, 2m, 3m)
-                    const waitTime = retryCount * 60 * 1000;
-
-                    console.log(`IM: Rate limit hit (attempt ${retryCount}/${MAX_RETRIES}), waiting for ${waitTime / 1000} seconds before retry...`);
-                    await new Promise(resolve => setTimeout(resolve, waitTime));
-                    continue; // Retry the same request
-                  } else {
-                    break; // Only break if we have some products already
-                  }
                 }
-
-                // Extract products from PRODUCT_LIST widgets
-                const products = widgets
-                  .filter((widget) => widget.type === "PRODUCT_LIST")
-                  .flatMap((widget) => widget.data || [])
-                  .filter((product) => product);
-
-                // console.log(`IM: Found ${products.length} products in subcategory ${subCategory.name}`);
-
-                if (!products.length) {
-                  console.log("IM: no products found in subcategory", subCategory.name);
-                  break;
-                }
-
-                allProducts = [...allProducts, ...products];
-
-                // Break if no more products or reached total
-                if (!hasMore || allProducts.length >= totalItems) break;
-
-                offset = offsetResponse;
-                pageNo = pageNoResponse + 1;
-
-              } catch (error) {
-                throw error;
-              }
+            } catch (error) {
+                console.error(`IM: Error processing category ${category.name}:`, error);
+                // Continue with next category even if one fails
+                continue;
             }
-
-            // After processing products in each subcategory
-            if (allProducts.length > 0) {
-              console.log("IM: Processing products for subcategory", subCategory.name, "length", allProducts.length);
-              const updatedCount = await processProducts(allProducts, category, subCategory, address);
-              console.log(`IM: Processed ${updatedCount} products in ${subCategory.name}`);
-            }
-          } catch (error) {
-            console.error(`IM: Error processing subcategory ${subCategory.name}:`, error.response);
-            await new Promise(resolve => setTimeout(resolve, 1 * 60 * 1000));
-            // Continue with next subcategory even if one fails
-            continue;
-          }
         }
-      } catch (error) {
-        console.error(`IM: Error processing category ${category.name}:`, error);
-        // Continue with next category even if one fails
-        continue;
-      }
+    } catch (error) {
+        console.error("IM: Error processing category chunk:", error);
     }
-  } catch (error) {
-    console.error('IM: Error processing category chunk:', error);
-  }
 };
 
 // Main function to track product prices across all categories
 export const trackProductPrices = async () => {
-  // Prevent multiple tracking instances
-  if (isTrackingActive) {
-    console.log("IM: Tracking is already active");
-    return;
-  }
-
-  isTrackingActive = true;
-
-  while (true) {
-    try {
-      // Skip if it's night time (12 AM to 6 AM IST)
-      if (isNightTimeIST()) {
-        console.log("IM: Skipping price tracking during night hours");
-        // Wait for 5 minutes before checking night time status again
-        await new Promise(resolve => setTimeout(resolve, 5 * 60 * 1000));
-        continue;
-      }
-
-      console.log("IM: Starting new tracking cycle at:", new Date().toISOString());
-
-      const { categories, storeId, cookie } = await fetchProductCategories();
-
-      if (!categories?.length) {
-        console.error("IM: No categories found or invalid categories data");
-        continue;
-      }
-
-      console.log("IM: Categories fetched:", categories.length);
-
-      // Process categories in parallel (in groups of 3 to avoid rate limiting)
-      const categoryChunks = chunk(categories, CATEGORY_CHUNK_SIZE);
-
-      for (const categoryChunk of categoryChunks) {
-        await processCategoriesChunk(categoryChunk, storeId, cookie);
-      }
-
-      console.log("IM: Tracking cycle completed at:", new Date().toISOString());
-
-      // Add a delay before starting the next cycle
-      await new Promise(resolve => setTimeout(resolve, 5 * 60 * 1000));
-
-    } catch (error) {
-      console.error("IM: Error in tracking cycle:", error);
-      // Wait before retrying after error
-      await new Promise(resolve => setTimeout(resolve, 5 * 60 * 1000));
+    // Prevent multiple tracking instances
+    if (isTrackingActive) {
+        console.log("IM: Tracking is already active");
+        return;
     }
-  }
+
+    isTrackingActive = true;
+
+    while (true) {
+        try {
+            // Skip if it's night time (12 AM to 6 AM IST)
+            if (isNightTimeIST()) {
+                console.log("IM: Skipping price tracking during night hours");
+                // Wait for 5 minutes before checking night time status again
+                await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
+                continue;
+            }
+
+            console.log("IM: Starting new tracking cycle at:", new Date().toISOString());
+
+            const { categories, storeId, cookie } = await fetchProductCategories();
+
+            if (!categories?.length) {
+                console.error("IM: No categories found or invalid categories data");
+                continue;
+            }
+
+            console.log("IM: Categories fetched:", categories.length);
+
+            // Process categories in parallel (in groups of 3 to avoid rate limiting)
+            const categoryChunks = chunk(categories, CATEGORY_CHUNK_SIZE);
+
+            for (const categoryChunk of categoryChunks) {
+                await processCategoriesChunk(categoryChunk, storeId, cookie);
+            }
+
+            console.log("IM: Tracking cycle completed at:", new Date().toISOString());
+
+            // Add a delay before starting the next cycle
+            await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
+        } catch (error) {
+            console.error("IM: Error in tracking cycle:", error);
+            // Wait before retrying after error
+            await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
+        }
+    }
 };
 
 // Fetches all product categories from Instamart API
 const fetchProductCategories = async (address = "500064") => {
-  try {
-    if (placesData[address]) {
-      return placesData[address];
-    }
-    // Step1: Get the place suggestions using the pincode/address
-    const placeResponse = await axios.get(
-      `https://www.swiggy.com/mapi/misc/place-autocomplete`,
-      {
-        params: { input: address },
-        headers: {
-          '__fetch_req__': 'true',
-          'accept': '*/*',
-          'accept-language': 'en-US,en;q=0.5',
-          'user-agent': 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Mobile Safari/537.36'
-        }
-      }
-    );
-
-    if (!placeResponse.data?.data?.length) {
-      throw new Error('No locations found for the given address');
-    }
-
-    // Step2: Get complete address using place_id
-    const placeId = placeResponse.data.data[0].place_id;
-    const storeResponse = await axios.get(
-      `https://www.swiggy.com/dapi/misc/address-recommend`,
-      {
-        params: { place_id: placeId },
-        headers: {
-          'accept': '*/*',
-          'user-agent': 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Mobile Safari/537.36',
-        }
-      }
-    );
-
-    if (!storeResponse.data?.data) {
-      throw new Error('Failed to get store details');
-    }
-
-    const { lat, lng } = storeResponse.data.data[0].geometry.location;
-    console.log("IM: got lat and lng", lat, lng);
-
-    // Step3: Get the store id using location
-    // Create a complete userLocation object similar to one from working cookie
-    const userLocation = {
-      address: `Hyderabad, Telangana ${address}, India`, // Format address similar to working cookie
-      lat,
-      lng,
-      id: "",
-      annotation: "",
-      name: ""
-    };
-
-    // Create cookie without URL encoding - direct JSON format
-    // This matches the format seen in working curl commands
-    const locationCookie = `userLocation=${JSON.stringify(userLocation)}`;
-    console.log("IM: using cookie:", locationCookie);
-    
-    // Full cookie with additional required fields from working curl command
-    const fullCookie = `deviceId=s%3A1ce58713-498a-4aec-bab1-493c2d86d249.LKtG1bUIkqwIQmPUzUlLyzBMoFZjQIow0rLiaXWXiVE; ${locationCookie}`;
-    
     try {
-      // First try with our dynamic but complete cookie
-      const response = await axios.get(
-        "https://www.swiggy.com/api/instamart/home",
-        {
-          params: {
-            clientId: "INSTAMART-APP"
-          },
-          headers: {
-            'accept': '*/*',
-            'accept-language': 'en-US,en;q=0.9',
-            'cache-control': 'no-cache',
-            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
-            'cookie': fullCookie,
-          }
+        if (placesData[address]) {
+            return placesData[address];
         }
-      );
-      
-      // If successful response, use the returned storeId
-      if (response.data?.data?.storeId) {
-        const storeId = response.data.data.storeId;
-        console.log("IM: got store id from API:", storeId);
-        
-        // Step4: Fetch categories using dynamic storeId from API
-        const categoriesResponse = await axios.get(
-          `https://www.swiggy.com/api/instamart/layout`,
-          {
+        // Step1: Get the place suggestions using the pincode/address
+        const placeResponse = await axios.get(`https://www.swiggy.com/mapi/misc/place-autocomplete`, {
+            params: { input: address },
+            headers: {
+                __fetch_req__: "true",
+                accept: "*/*",
+                "accept-language": "en-US,en;q=0.5",
+                "user-agent":
+                    "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Mobile Safari/537.36",
+            },
+        });
+
+        if (!placeResponse.data?.data?.length) {
+            throw new Error("No locations found for the given address");
+        }
+
+        // Step2: Get complete address using place_id
+        const placeId = placeResponse.data.data[0].place_id;
+        const storeResponse = await axios.get(`https://www.swiggy.com/dapi/misc/address-recommend`, {
+            params: { place_id: placeId },
+            headers: {
+                accept: "*/*",
+                "user-agent":
+                    "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Mobile Safari/537.36",
+            },
+        });
+
+        if (!storeResponse.data?.data) {
+            throw new Error("Failed to get store details");
+        }
+
+        const { lat, lng } = storeResponse.data.data[0].geometry.location;
+        console.log("IM: got lat and lng", lat, lng);
+
+        // Step3: Get the store id using location
+        // Create a complete userLocation object similar to one from working cookie
+        const userLocation = {
+            address: `Hyderabad, Telangana ${address}, India`, // Format address similar to working cookie
+            lat,
+            lng,
+            id: "",
+            annotation: "",
+            name: "",
+        };
+
+        // Create cookie without URL encoding - direct JSON format
+        // This matches the format seen in working curl commands
+        const locationCookie = `userLocation=${JSON.stringify(userLocation)}`;
+        console.log("IM: using cookie:", locationCookie);
+
+        // Full cookie with additional required fields from working curl command
+        const fullCookie = `deviceId=s%3A1ce58713-498a-4aec-bab1-493c2d86d249.LKtG1bUIkqwIQmPUzUlLyzBMoFZjQIow0rLiaXWXiVE; ${locationCookie}`;
+
+        try {
+            // First try with our dynamic but complete cookie
+            const response = await axios.get("https://www.swiggy.com/api/instamart/home", {
+                params: {
+                    clientId: "INSTAMART-APP",
+                },
+                headers: {
+                    accept: "*/*",
+                    "accept-language": "en-US,en;q=0.9",
+                    "cache-control": "no-cache",
+                    "user-agent":
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+                    cookie: fullCookie,
+                },
+            });
+
+            // If successful response, use the returned storeId
+            if (response.data?.data?.storeId) {
+                const storeId = response.data.data.storeId;
+                console.log("IM: got store id from API:", storeId);
+
+                // Step4: Fetch categories using dynamic storeId from API
+                const categoriesResponse = await axios.get(`https://www.swiggy.com/api/instamart/layout`, {
+                    params: {
+                        layoutId: "3742",
+                        limit: "40",
+                        pageNo: "0",
+                        serviceLine: "INSTAMART",
+                        customerPage: "STORES_MENU",
+                        hasMasthead: "false",
+                        storeId: storeId,
+                        primaryStoreId: storeId,
+                        secondaryStoreId: "",
+                    },
+                    headers: {
+                        accept: "*/*",
+                        "accept-language": "en-US,en;q=0.9",
+                        "content-type": "application/json",
+                        "user-agent":
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+                        cookie: fullCookie,
+                    },
+                });
+
+                if (!categoriesResponse.data?.data?.widgets) {
+                    throw new Error("Failed to fetch categories");
+                }
+
+                // Process categories from widgets
+                const widgets = categoriesResponse.data.data.widgets.filter(
+                    (widget) => widget.widgetInfo?.widgetType === "TAXONOMY"
+                );
+
+                // From widgets get the categories
+                const allCategoriesWithSubCategories = widgets.flatMap((widget) =>
+                    widget.data.map((category) => ({
+                        nodeId: category.nodeId,
+                        name: category.displayName,
+                        taxonomyType: widget.widgetInfo.taxonomyType,
+                        subCategories: category.nodes.map((node) => ({
+                            nodeId: node.nodeId,
+                            name: node.displayName,
+                            image: node.imageId,
+                            productCount: node.productCount,
+                        })),
+                    }))
+                );
+
+                placesData[address] = {
+                    categories: allCategoriesWithSubCategories,
+                    storeId: storeId,
+                    cookie: fullCookie,
+                    lat,
+                    lng,
+                };
+
+                return placesData[address];
+            } else {
+                console.log("IM: No storeId in response, falling back to hardcoded storeId");
+            }
+        } catch (error) {
+            console.log("IM: Error with dynamic cookie, falling back to hardcoded values:", error.message);
+        }
+
+        // FALLBACK: If the dynamic cookie approach failed, use hardcoded storeId
+        const storeId = "1400220"; // Hyderabad region storeId
+        console.log("IM: Using hardcoded store id:", storeId);
+
+        // Step4: Fetch categories using fallback hardcoded storeId
+        const categoriesResponse = await axios.get(`https://www.swiggy.com/api/instamart/layout`, {
             params: {
-              layoutId: '3742',
-              limit: '40',
-              pageNo: '0',
-              serviceLine: 'INSTAMART',
-              customerPage: 'STORES_MENU',
-              hasMasthead: 'false',
-              storeId: storeId,
-              primaryStoreId: storeId,
-              secondaryStoreId: ''
+                layoutId: "3742",
+                limit: "40",
+                pageNo: "0",
+                serviceLine: "INSTAMART",
+                customerPage: "STORES_MENU",
+                hasMasthead: "false",
+                storeId: storeId,
+                primaryStoreId: storeId,
+                secondaryStoreId: "",
             },
             headers: {
-              'accept': '*/*',
-              'accept-language': 'en-US,en;q=0.9',
-              'content-type': 'application/json',
-              'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
-              'cookie': fullCookie,
-            }
-          }
-        );
-        
+                accept: "*/*",
+                "accept-language": "en-US,en;q=0.9",
+                "content-type": "application/json",
+                "user-agent":
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+                cookie: fullCookie,
+                referer: "https://www.swiggy.com/instamart",
+                priority: "u=1, i",
+                matcher: "ea8778ebaf9d9bde8ab7ag7",
+                "sec-ch-ua": '"Brave";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": '"Windows"',
+                "sec-fetch-dest": "empty",
+                "sec-fetch-mode": "cors",
+                "sec-fetch-site": "same-origin",
+                "sec-gpc": "1",
+            },
+        });
+
         if (!categoriesResponse.data?.data?.widgets) {
-          throw new Error('Failed to fetch categories');
+            throw new Error("Failed to fetch categories");
         }
-        
+
         // Process categories from widgets
-        const widgets = categoriesResponse.data.data.widgets
-          .filter(widget => widget.widgetInfo?.widgetType === "TAXONOMY");
-        
-        // From widgets get the categories
-        const allCategoriesWithSubCategories = widgets.flatMap(widget =>
-          widget.data.map(category => ({
-            nodeId: category.nodeId,
-            name: category.displayName,
-            taxonomyType: widget.widgetInfo.taxonomyType,
-            subCategories: category.nodes.map(node => ({
-              nodeId: node.nodeId,
-              name: node.displayName,
-              image: node.imageId,
-              productCount: node.productCount
-            }))
-          }))
+        const widgets = categoriesResponse.data.data.widgets.filter(
+            (widget) => widget.widgetInfo?.widgetType === "TAXONOMY"
         );
-        
+
+        // From widgets get the categories
+        const allCategoriesWithSubCategories = widgets.flatMap((widget) =>
+            widget.data.map((category) => ({
+                nodeId: category.nodeId,
+                name: category.displayName,
+                taxonomyType: widget.widgetInfo.taxonomyType,
+                subCategories: category.nodes.map((node) => ({
+                    nodeId: node.nodeId,
+                    name: node.displayName,
+                    image: node.imageId,
+                    productCount: node.productCount,
+                })),
+            }))
+        );
+
         placesData[address] = {
-          categories: allCategoriesWithSubCategories,
-          storeId: storeId,
-          cookie: fullCookie,
-          lat,
-          lng
+            categories: allCategoriesWithSubCategories,
+            storeId: storeId,
+            cookie: locationCookie,
+            lat,
+            lng,
         };
-        
+
         return placesData[address];
-      } else {
-        console.log("IM: No storeId in response, falling back to hardcoded storeId");
-      }
     } catch (error) {
-      console.log("IM: Error with dynamic cookie, falling back to hardcoded values:", error.message);
+        console.error("IM: Error fetching categories:", error?.response?.data || error);
+        throw new AppError("Failed to fetch categories", 500);
     }
-
-    // FALLBACK: If the dynamic cookie approach failed, use hardcoded storeId
-    const storeId = "1400220";  // Hyderabad region storeId
-    console.log("IM: Using hardcoded store id:", storeId);
-
-    // Step4: Fetch categories using fallback hardcoded storeId
-    const categoriesResponse = await axios.get(
-      `https://www.swiggy.com/api/instamart/layout`,
-      {
-        params: {
-          layoutId: '3742',
-          limit: '40',
-          pageNo: '0',
-          serviceLine: 'INSTAMART',
-          customerPage: 'STORES_MENU',
-          hasMasthead: 'false',
-          storeId: storeId,
-          primaryStoreId: storeId,
-          secondaryStoreId: ''
-        },
-        headers: {
-          'accept': '*/*',
-          'accept-language': 'en-US,en;q=0.9',
-          'content-type': 'application/json',
-          'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
-          'cookie': fullCookie,
-          'referer': 'https://www.swiggy.com/instamart',
-          'priority': 'u=1, i',
-          'matcher': 'ea8778ebaf9d9bde8ab7ag7',
-          'sec-ch-ua': '"Brave";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
-          'sec-ch-ua-mobile': '?0',
-          'sec-ch-ua-platform': '"Windows"',
-          'sec-fetch-dest': 'empty',
-          'sec-fetch-mode': 'cors',
-          'sec-fetch-site': 'same-origin',
-          'sec-gpc': '1'
-        }
-      }
-    );
-
-    if (!categoriesResponse.data?.data?.widgets) {
-      throw new Error('Failed to fetch categories');
-    }
-
-    // Process categories from widgets
-    const widgets = categoriesResponse.data.data.widgets
-      .filter(widget => widget.widgetInfo?.widgetType === "TAXONOMY");
-
-    // From widgets get the categories
-    const allCategoriesWithSubCategories = widgets.flatMap(widget =>
-      widget.data.map(category => ({
-        nodeId: category.nodeId,
-        name: category.displayName,
-        taxonomyType: widget.widgetInfo.taxonomyType,
-        subCategories: category.nodes.map(node => ({
-          nodeId: node.nodeId,
-          name: node.displayName,
-          image: node.imageId,
-          productCount: node.productCount
-        }))
-      }))
-    );
-
-    placesData[address] = {
-      categories: allCategoriesWithSubCategories,
-      storeId: storeId,
-      cookie: locationCookie,
-      lat,
-      lng
-    };
-
-    return placesData[address];
-  } catch (error) {
-    console.error('IM: Error fetching categories:', error?.response?.data || error);
-    throw new AppError('Failed to fetch categories', 500);
-  }
 };
 
 // Process multiple products and their variations in bulk
-const processProducts = async (products, category, subcategory, address="500064") => {
-  try {
-    // Flatten all variations into a single array
-    const allVariations = products.flatMap(product =>
-      product.variations?.map(variation => ({
-        ...variation,
-        product_id: product.product_id,
-        product_name: product.display_name,
-        product_description: variation.meta?.short_description || '',
-        sourcing_time: variation.sourcing_time || '',
-        sourced_from: variation.sourced_from || '',
-      })) || []
-    );
+const processProducts = async (products, category, subcategory, address = "500064") => {
+    try {
+        // Flatten all variations into a single array and transform to standard format
+        const transformedProducts = products.flatMap(
+            (product) =>
+                product.variations?.map((variation) => {
+                    const currentPrice = variation.price?.offer_price || 0;
+                    const mrp = variation.price?.mrp || 0;
+                    const discount = mrp > 0 ? Math.floor((variation.price?.discount_value / mrp) * 100) : 0;
 
-    // Get all existing variations
-    const existingProducts = await InstamartProduct.find({
-      variationId: { $in: allVariations.map(v => v.id) }
-    }).lean();
+                    return {
+                        productId: variation.id, // Using variation.id as the unique identifier
+                        variationId: variation.id,
+                        productName: product.display_name,
+                        categoryName: category.name,
+                        subcategoryName: subcategory.name,
+                        inStock: variation.inventory?.in_stock || true,
+                        imageUrl: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,h_272,w_252/${
+                            variation.images?.[0] || "default_image"
+                        }`,
+                        price: currentPrice,
+                        mrp: mrp,
+                        discount: discount,
+                        quantity: variation.quantity,
+                        unit: variation.unit_of_measure,
+                        weight: variation.weight_in_grams,
+                        url: `https://www.swiggy.com/instamart/item/${product.product_id}?storeId=${placesData[address].storeId}`,
+                        // Additional Instamart-specific fields
+                        categoryId: category.nodeId,
+                        subcategoryId: subcategory.nodeId,
+                        mainProductId: product.product_id,
+                    };
+                }) || []
+        );
 
-    const existingProductsMap = new Map(
-      existingProducts.map(product => [product.variationId, product])
-    );
+        // Use the global processProducts function with Instamart-specific options
+        const result = await globalProcessProducts(transformedProducts, category.name, {
+            model: InstamartProduct,
+            source: "Instamart",
+            telegramNotification: true,
+            emailNotification: false,
+            significantDiscountThreshold: 10,
+        });
 
-    const droppedProducts = [];
-
-    const bulkOperations = allVariations
-      .map(variation => {
-        const currentPrice = variation.price?.offer_price || 0;
-        const existingProduct = existingProductsMap.get(variation.id);
-
-        // Skip if price hasn't changed
-        if (existingProduct && existingProduct.price === currentPrice) {
-          return null;
-        }
-
-        let previousPrice = currentPrice;
-        let priceDroppedAt = null;
-
-        if (existingProduct) {
-          previousPrice = existingProduct.price;
-
-            const currentDiscount = Math.floor(((variation.price?.discount_value) / variation.price?.mrp) * 100) || 0;
-            const previousDiscount = existingProduct.discount || 0;
-            // The current discount should be greater than or equal to 20% more than the previous discount
-            if (currentDiscount - previousDiscount >= 10) {
-            priceDroppedAt = new Date();
-              // Add the complete product data to droppedProducts
-              droppedProducts.push({
-                productId: variation.product_id,
-                productName: variation.product_name,
-                price: currentPrice,
-                previousPrice,
-                discount: currentDiscount,
-                variationId: variation.id
-              });
-          }
-        }
-
-        const productData = {
-          categoryName: category.name,
-          categoryId: category.nodeId,
-          subcategoryName: subcategory.name,
-          subcategoryId: subcategory.nodeId,
-          productId: variation.product_id,
-          variationId: variation.id,
-          productName: variation.product_name,
-          displayName: variation.display_name,
-          description: variation.product_description,
-          inStock: variation.inventory?.in_stock || true,
-          imageUrl: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,h_272,w_252/${variation.images?.[0] || "default_image"}`,
-          price: currentPrice,
-          previousPrice,
-          priceDroppedAt,
-          mrp: variation.price?.mrp || 0,
-          storePrice: variation.price?.store_price || 0,
-          discount: Math.floor(
-            ((variation.price?.discount_value) /
-              variation.price?.mrp) *
-            100
-          ),
-          quantity: variation.quantity,
-          unit: variation.unit_of_measure,
-          weight: variation.weight_in_grams,
-          url: `https://www.swiggy.com/instamart/item/${variation.product_id}?storeId=${placesData[address].storeId}`,
-        };
-
-        return {
-          updateOne: {
-            filter: { variationId: variation.id },
-            update: { $set: productData },
-            upsert: true,
-          },
-        };
-      })
-      .filter(Boolean);
-
-    if (droppedProducts.length > 0) {
-      console.log(`IM: Found ${droppedProducts.length} dropped products in ${subcategory.name}`);
-      try {
-        await sendPriceDropNotifications(droppedProducts, "Instamart");
-      } catch (error) {
-        console.error('IM: Error sending notifications:', error);
-        // Don't throw the error to continue processing
-      }
+        const processedCount = typeof result === "number" ? result : 0;
+        console.log(`IM: Processed ${processedCount} products in ${subcategory.name}`);
+        return processedCount;
+    } catch (error) {
+        console.error("IM: Error processing products:", error);
+        return 0;
     }
-
-    if (bulkOperations.length > 0) {
-      await InstamartProduct.bulkWrite(bulkOperations, { ordered: false });
-      console.log(`IM: Updated ${bulkOperations.length} variations in ${subcategory.name}`);
-    } else {
-      console.log("IM: No variations to update in", subcategory.name);
-    }
-
-    return bulkOperations.length;
-  } catch (error) {
-    console.error('IM: Error processing products:', error);
-    return 0;
-  }
 };
 
 // Controller to search products using Instamart's search API
 export const search = async (req, res, next) => {
-  try {
-    const { query, offset = 0 } = req.body;
+    try {
+        const { query, offset = 0 } = req.body;
 
-    if (!query) {
-      throw AppError.badRequest("Query parameter is required");
+        if (!query) {
+            throw AppError.badRequest("Query parameter is required");
+        }
+
+        const response = await axios.post(
+            `https://www.swiggy.com/api/instamart/search`,
+            { facets: {}, sortAttribute: "" },
+            {
+                params: {
+                    searchResultsOffset: offset,
+                    limit: 40,
+                    query,
+                    storeId: "1311100",
+                    primaryStoreId: "1311100",
+                    secondaryStoreId: "",
+                },
+                headers: {
+                    ...INSTAMART_HEADERS,
+                    Cookie: "deviceId=s%253A32b79aff-414d-4fb0-a759-df85f541312e.H1m4Tr18pypEEkkBIa%252BCo87Ft4iraHpp4mKmAKYhaKE; tid=s%253A04235f7c-720b-4708-81ed-fb8e66252512.UUMQhremwF41QpB9G7ytmOA%252Bodh2kypFE1p%252BwMRQi4M; versionCode=1200; platform=web; subplatform=mweb; statusBarHeight=0; bottomOffset=0; genieTrackOn=false; ally-on=false; isNative=false; strId=; openIMHP=false; userLocation=%257B%2522lat%2522%253A17.3585585%252C%2522lng%2522%253A78.4553883%252C%2522address%2522%253A%2522%2522%252C%2522id%2522%253A%2522%2522%252C%2522annotation%2522%253A%2522%2522%252C%2522name%2522%253A%2522%2522%257D",
+                },
+            }
+        );
+
+        res.status(200).json(response.data);
+    } catch (error) {
+        next(error);
     }
-
-    const response = await axios.post(
-      `https://www.swiggy.com/api/instamart/search`,
-      { facets: {}, sortAttribute: "" },
-      {
-        params: {
-          searchResultsOffset: offset,
-          limit: 40,
-          query,
-          storeId: "1311100",
-          primaryStoreId: "1311100",
-          secondaryStoreId: "",
-        },
-        headers: {
-          ...INSTAMART_HEADERS,
-          Cookie:
-            "deviceId=s%253A32b79aff-414d-4fb0-a759-df85f541312e.H1m4Tr18pypEEkkBIa%252BCo87Ft4iraHpp4mKmAKYhaKE; tid=s%253A04235f7c-720b-4708-81ed-fb8e66252512.UUMQhremwF41QpB9G7ytmOA%252Bodh2kypFE1p%252BwMRQi4M; versionCode=1200; platform=web; subplatform=mweb; statusBarHeight=0; bottomOffset=0; genieTrackOn=false; ally-on=false; isNative=false; strId=; openIMHP=false; userLocation=%257B%2522lat%2522%253A17.3585585%252C%2522lng%2522%253A78.4553883%252C%2522address%2522%253A%2522%2522%252C%2522id%2522%253A%2522%2522%252C%2522annotation%2522%253A%2522%2522%252C%2522name%2522%253A%2522%2522%257D",
-        },
-      }
-    );
-
-    res.status(200).json(response.data);
-  } catch (error) {
-    next(error);
-  }
 };

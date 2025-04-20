@@ -2,9 +2,7 @@ import { AppError } from "../utils/errorHandling.js";
 import { BlinkitProduct } from "../models/BlinkitProduct.js";
 import { isNightTimeIST, chunk } from "../utils/priceTracking.js";
 import contextManager from "../utils/contextManager.js";
-import { productQueries } from "../utils/productQueries.js";
 import { processProducts as globalProcessProducts } from "../utils/productProcessor.js";
-import { sendPriceDropNotifications } from "../services/NotificationService.js";
 
 // Set location for Blinkit
 const setLocation = async (location) => {
@@ -187,33 +185,33 @@ const extractProductsFromPage = async (page) => {
                 resolve();
                 return;
             }
-            
+
             // Calculate number of steps based on product count (12 products visible per screen)
             const productsPerScreen = 12;
             const estimatedScreens = Math.ceil(totalProducts / productsPerScreen);
             const steps = Math.max(estimatedScreens, 2); // At least 5 steps for smooth scrolling
-            
+
             console.log(`Scrolling with ${steps} steps for ${totalProducts} products`);
-            
+
             const totalHeight = container.scrollHeight;
             const viewportHeight = container.clientHeight;
             let currentPosition = container.scrollTop;
-            
+
             const scrollStep = currentPosition / steps;
-            
+
             function smoothScrollUp() {
                 if (currentPosition <= 0) {
                     resolve();
                     return;
                 }
-                
+
                 currentPosition = Math.max(currentPosition - scrollStep, 0);
                 container.scrollTop = currentPosition;
-                
+
                 // Pause at each step to let images load
                 setTimeout(smoothScrollUp, 500); // Increased timeout for better image loading
             }
-            
+
             smoothScrollUp();
         });
     }, currentProductCount); // Pass the total product count to the evaluate function
@@ -287,6 +285,13 @@ const extractProductsFromPage = async (page) => {
                         imageUrl = imageEl.getAttribute("src") || "";
                     }
 
+                    // Extract weight/unit information
+                    let weight = "";
+                    const weightEl = el.querySelector(".tw-text-200.tw-font-medium.tw-line-clamp-1");
+                    if (weightEl) {
+                        weight = weightEl.textContent.trim();
+                    }
+
                     // Find price elements - try multiple selectors
                     let priceText = "";
                     let mrpText = "";
@@ -330,6 +335,7 @@ const extractProductsFromPage = async (page) => {
                         productName,
                         url,
                         imageUrl,
+                        weight,
                         price,
                         mrp,
                         discount: mrp > price ? Math.floor(((mrp - price) / mrp) * 100) : 0,
@@ -505,7 +511,7 @@ export const startTrackingHandler = async (location = "bahadurpura police statio
                 }
 
                 const FILTERING_PARENT_CATEGORY_KEYWORDS = [
-                    "Chicken",
+                    "chicken",
                     "Toys",
                     "Baby",
                     "Pet",
@@ -516,9 +522,38 @@ export const startTrackingHandler = async (location = "bahadurpura police statio
                     "cards",
                     "cleaning",
                     "Cosmetics",
+                    "goods",
                 ];
 
-                const FILTERING_SUBCATEGORY_KEYWORDS = ["eggs", "vegan", "flower", "Meat", "pesticide"];
+                const FILTERING_SUBCATEGORY_KEYWORDS = [
+                    "eggs",
+                    "vegan",
+                    "flower",
+                    "Meat",
+                    "pesticide",
+                    "cosmetics",
+                    "women",
+                    "jewellery",
+                    "hair colour",
+                    "veggies",
+                    "tea",
+                    "salt",
+                    "beauty",
+                    "toy",
+                    "games",
+                    "books",
+                    "clocks",
+                    "diy",
+                    "decor",
+                    "herbs",
+                    "stationary",
+                    "fresh juice & dips",
+                    "cake",
+                    "conditioner",
+                    "serum",
+                    "hand & foot care",
+                    "mushroom",
+                ];
 
                 // Update filtering logic to exclude categories that match keywords fully or partially
                 allCategories = allCategories.filter((category) => {
@@ -538,17 +573,20 @@ export const startTrackingHandler = async (location = "bahadurpura police statio
                         }))
                     )
                     .filter((subcategory) => {
-                        return subcategory.url && !FILTERING_SUBCATEGORY_KEYWORDS.some((keyword) =>
-                            subcategory.name.toLowerCase().includes(keyword.toLowerCase())
+                        return (
+                            subcategory.url &&
+                            !FILTERING_SUBCATEGORY_KEYWORDS.some((keyword) =>
+                                subcategory.name.toLowerCase().includes(keyword.toLowerCase())
+                            )
                         );
                     });
 
                 // Shuffle subcategories to distribute load
-                // const shuffledSubcategories = [...subcategories].sort(() => Math.random() - 0.5);
-                const shuffledSubcategories = subcategories;
+                const shuffledSubcategories = [...subcategories].sort(() => Math.random() - 0.5);
+                // const shuffledSubcategories = subcategories;
 
                 // Create batches for parallel processing
-                const CONCURRENT_SEARCHES = 1;
+                const CONCURRENT_SEARCHES = 2;
                 const categoryBatches = chunk(shuffledSubcategories, CONCURRENT_SEARCHES);
 
                 console.log(

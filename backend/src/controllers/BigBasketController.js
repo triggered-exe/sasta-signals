@@ -1,4 +1,3 @@
-import { createPage, cleanup, hasStoredLocation, getContextStats, storeContext } from '../utils/crawlerSetup.js';
 import { isNightTimeIST } from '../utils/priceTracking.js';
 import axios from 'axios';
 import { BigBasketProduct } from '../models/BigBasketProduct.js';
@@ -6,6 +5,8 @@ import { HALF_HOUR } from "../utils/constants.js";
 import { bigBasketCategories } from '../utils/bigBasketCategories.js';
 import { Resend } from 'resend';
 import { processProducts as globalProcessProducts } from "../utils/productProcessor.js";
+import contextManager from "../utils/contextManager.js";
+import { AppError } from '../utils/errorHandling.js';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID;
@@ -19,111 +20,126 @@ let trackingInterval = null;
 
 const setCookiesAganstPincode = async (pincode) => {
     let page = null;
-    let context = null;
-
     try {
-        if (!pincodeData[pincode]) {
-            // Step 1: Get cookies from browser session
-            page = await createPage(pincode, true);
-            context = page.context();
+        // Get or create context for this pincode
+        const context = await contextManager.getContext(pincode);
 
-            // Navigate to BigBasket
-            await page.goto('https://www.bigbasket.com/', { waitUntil: 'networkidle' });
+        // Return existing context if already set up and serviceable
+        if (
+            contextManager.isWebsiteSet(pincode, "bigbasket") &&
+            contextManager.isWebsiteServiceable(pincode, "bigbasket")
+        ) {
+            console.log(`BB: Using existing serviceable context for ${pincode}`);
+            // Get the stored data from the context
+            const contextData = contextManager.contextMap.get(pincode);
+            return contextData.bigbasketData || {};
+        }
 
-            // Wait for the page to be fully loaded
-            await page.waitForTimeout(5000);
+        // Set up BigBasket for this context
+        page = await context.newPage();
 
-            // Get all cookies from the browser session
-            const cookies = await context.cookies();
-            const cookieString = cookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ');
-            // console.log('BB: Browser Cookies:', cookies);
+        // Navigate to BigBasket
+        await page.goto('https://www.bigbasket.com/', { waitUntil: 'networkidle' });
 
-            // Extract csurftoken from cookies
-            const csurfCookie = cookies.find(cookie => cookie.name === 'csurftoken');
-            const csurfTokenValue = csurfCookie ? csurfCookie.value : '';
-            // console.log('BB: CSRF Token:', csurfTokenValue);
+        // Wait for the page to be fully loaded
+        await page.waitForTimeout(5000);
 
-            // Initialize cookie data for this pincode
-            pincodeData[pincode] = {
-                cookieString,
-                csurfTokenValue,
-                cookieStringWithLatLang: null // Will be updated after setting delivery address
+        // Get all cookies from the browser session
+        const cookies = await context.cookies();
+        const cookieString = cookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ');
+
+        // Extract csurftoken from cookies
+        const csurfCookie = cookies.find(cookie => cookie.name === 'csurftoken');
+        const csurfTokenValue = csurfCookie ? csurfCookie.value : '';
+
+        // Initialize cookie data
+        const bigbasketData = {
+            cookieString,
+            csurfTokenValue,
+            cookieStringWithLatLang: null // Will be updated after setting delivery address
+        };
+
+        // Step 2: Navigate to autocomplete URL and get response
+        const autocompleteUrl = `https://www.bigbasket.com/places/v1/places/autocomplete/?inputText=${pincode}&token=096872a0-7aed-4c91-8cda-520a5e2f06ee`;
+        const autocompleteResponse = await page.goto(autocompleteUrl, { waitUntil: 'networkidle' });
+        const autocompleteText = await autocompleteResponse.text();
+        let autocompleteData;
+        try {
+            autocompleteData = { success: true, data: JSON.parse(autocompleteText) };
+        } catch (error) {
+            console.log('BB: Error parsing autocomplete response:', error);
+            autocompleteData = {
+                success: false,
+                error: error.message,
+                response: autocompleteText
             };
+        }
 
-            // Step 2: Navigate to autocomplete URL and get response
-            const autocompleteUrl = `https://www.bigbasket.com/places/v1/places/autocomplete/?inputText=${pincode}&token=096872a0-7aed-4c91-8cda-520a5e2f06ee`;
-            const autocompleteResponse = await page.goto(autocompleteUrl, { waitUntil: 'networkidle' });
-            const autocompleteText = await autocompleteResponse.text();
-            let autocompleteData;
-            try {
-                autocompleteData = { success: true, data: JSON.parse(autocompleteText) };
-            } catch (error) {
-                console.log('BB: Error parsing autocomplete response:', error);
-                autocompleteData = {
-                    success: false,
-                    error: error.message,
-                    response: autocompleteText
-                };
-            }
+        if (!autocompleteData.success) {
+            // Mark as not serviceable and clean up
+            contextManager.markServiceability(pincode, "bigbasket", false);
+            throw AppError.badRequest(`Error in autocomplete request: ${JSON.stringify(autocompleteData.error)}`);
+        }
 
-            console.log('BB: Autocomplete Response:', autocompleteData);
+        if (!autocompleteData.data?.predictions) {
+            // Mark as not serviceable and clean up
+            contextManager.markServiceability(pincode, "bigbasket", false);
+            throw AppError.badRequest(`Error fetching autocomplete options for pincode: ${pincode}`);
+        }
 
-            if (!autocompleteData.success) {
-                throw AppError.badRequest(`Error in autocomplete request: ${JSON.stringify(autocompleteData.error)}`);
-            }
+        // Extract the placeId from the autocomplete response
+        const placeId = autocompleteData.data?.predictions?.[0]?.placeId;
 
-            if (!autocompleteData.data?.predictions) {
-                throw AppError.badRequest(`Error fetching autocomplete options for pincode: ${pincode}`);
-            }
+        if (!placeId) {
+            // Mark as not serviceable and clean up
+            contextManager.markServiceability(pincode, "bigbasket", false);
+            throw AppError.badRequest(`No placeId found for pincode: ${pincode}`);
+        }
 
-            // Extract the placeId from the autocomplete response
-            const placeId = autocompleteData.data?.predictions?.[0]?.placeId;
+        bigbasketData.placeId = placeId;
+        console.log('BB: got the placeId', placeId);
 
-            if (!placeId) {
-                throw AppError.badRequest(`No placeId found for pincode: ${pincode}`);
-            }
+        // Step 3: Navigate to address details URL and get response
+        const addressUrl = `https://www.bigbasket.com/places/v1/places/details?placeId=${placeId}&token=096872a0-7aed-4c91-8cda-520a5e2f06ee`;
+        const addressResponse = await page.goto(addressUrl, { waitUntil: 'networkidle' });
+        const addressText = await addressResponse.text();
+        let addressData;
+        try {
+            addressData = { success: true, data: JSON.parse(addressText) };
+        } catch (error) {
+            addressData = {
+                success: false,
+                error: error.message,
+                response: addressText
+            };
+        }
 
-            pincodeData[pincode].placeId = placeId;
-            console.log('BB: got the placeId', placeId);
+        if (!addressData.success) {
+            // Mark as not serviceable and clean up
+            contextManager.markServiceability(pincode, "bigbasket", false);
+            throw AppError.badRequest(`BB: Error in address details request: ${JSON.stringify(addressData.error)}`);
+        }
 
-            // Step 3: Navigate to address details URL and get response
-            const addressUrl = `https://www.bigbasket.com/places/v1/places/details?placeId=${placeId}&token=096872a0-7aed-4c91-8cda-520a5e2f06ee`;
-            const addressResponse = await page.goto(addressUrl, { waitUntil: 'networkidle' });
-            const addressText = await addressResponse.text();
-            let addressData;
-            try {
-                addressData = { success: true, data: JSON.parse(addressText) };
-            } catch (error) {
-                addressData = {
-                    success: false,
-                    error: error.message,
-                    response: addressText
-                };
-            }
+        // Step 4: check serviceability with cookies
+        bigbasketData.lat = addressData.data?.geometry?.location?.lat;
+        bigbasketData.lng = addressData.data?.geometry?.location?.lng;
 
-            console.log('BB: Address Response:', addressData);
+        if (!bigbasketData.lat || !bigbasketData.lng) {
+            // Mark as not serviceable and clean up
+            contextManager.markServiceability(pincode, "bigbasket", false);
+            throw AppError.badRequest(`BB: No location data found for placeId: ${placeId}`);
+        }
 
-            if (!addressData.success) {
-                throw AppError.badRequest(`BB: Error in address details request: ${JSON.stringify(addressData.error)}`);
-            }
+        console.log('BB: lat', bigbasketData.lat, 'lng', bigbasketData.lng);
 
-            // Step 4: check serviceability with cookies
-            pincodeData[pincode].lat = addressData.data?.geometry?.location?.lat;
-            pincodeData[pincode].lng = addressData.data?.geometry?.location?.lng;
+        // Close page as we don't need it anymore
+        await page.close();
+        page = null;
 
-            if (!pincodeData[pincode].lat || !pincodeData[pincode].lng) {
-                throw AppError.badRequest(`BB: No location data found for placeId: ${placeId}`);
-            }
-
-            console.log('BB: lat', pincodeData[pincode].lat, 'lng', pincodeData[pincode].lng);
-
-            // Close browser session now that we have all the data
-            await page.close();
-            await context.close();
-
-            // Step 5: check serviceability with cookies
+        // Step 5: check serviceability with cookies
+        try {
             const serviceabilityResponse = await axios.get(
-                `https://www.bigbasket.com/ui-svc/v1/serviceable/?lat=${pincodeData[pincode].lat}&lng=${pincodeData[pincode].lng}&send_all_serviceability=true`,
+                `https://www.bigbasket.com/ui-svc/v1/serviceable/?lat=${bigbasketData.lat}&lng=${bigbasketData.lng}&send_all_serviceability=true`,
                 {
                     headers: {
                         'accept': '*/*',
@@ -135,45 +151,60 @@ const setCookiesAganstPincode = async (pincode) => {
             const area = serviceabilityResponse.data?.places_info?.area || '';
             const contact_zipcode = serviceabilityResponse.data?.places_info?.pincode || '';
 
-            pincodeData[pincode].area = area;
-            pincodeData[pincode].contact_zipcode = contact_zipcode;
-        }
+            bigbasketData.area = area;
+            bigbasketData.contact_zipcode = contact_zipcode;
 
-        // Step 6: Set delivery address with updated cookies
-        const deliveryAddressResponse = await axios.put(
-            'https://www.bigbasket.com/member-svc/v2/member/current-delivery-address',
-            {
-                lat: pincodeData[pincode].lat,
-                long: pincodeData[pincode].lng,
-                return_hub_cookies: false,
-                area: pincodeData[pincode].area,
-                contact_zipcode: pincodeData[pincode].contact_zipcode
-            },
-            {
-                headers: {
-                    'accept': '*/*',
-                    'content-type': 'application/json',
-                    'x-caller': 'bigbasket-pwa',
-                    'x-channel': 'BB-PWA',
-                    'x-entry-context': 'bb-b2c',
-                    'x-entry-context-id': '100',
-                    'x-requested-with': 'XMLHttpRequest',
-                    'cookie': pincodeData[pincode].cookieString,
-                    'x-csurftoken': pincodeData[pincode].csurfTokenValue
+            // Step 6: Set delivery address with updated cookies
+            const deliveryAddressResponse = await axios.put(
+                'https://www.bigbasket.com/member-svc/v2/member/current-delivery-address',
+                {
+                    lat: bigbasketData.lat,
+                    long: bigbasketData.lng,
+                    return_hub_cookies: false,
+                    area: bigbasketData.area,
+                    contact_zipcode: bigbasketData.contact_zipcode
+                },
+                {
+                    headers: {
+                        'accept': '*/*',
+                        'content-type': 'application/json',
+                        'x-caller': 'bigbasket-pwa',
+                        'x-channel': 'BB-PWA',
+                        'x-entry-context': 'bb-b2c',
+                        'x-entry-context-id': '100',
+                        'x-requested-with': 'XMLHttpRequest',
+                        'cookie': bigbasketData.cookieString,
+                        'x-csurftoken': bigbasketData.csurfTokenValue
+                    }
                 }
+            );
+
+            // Update cookie string with new cookies from delivery address response
+            const newCookies = deliveryAddressResponse.headers['set-cookie'] || [];
+            const newCookieString = newCookies.map(cookie => cookie.split(';')[0]).join('; ');
+            bigbasketData.cookieStringWithLatLang = bigbasketData.cookieString + '; ' + newCookieString;
+
+            // Store the data in the context and mark as serviceable
+            if (contextManager.contextMap.has(pincode)) {
+                contextManager.contextMap.get(pincode).bigbasketData = bigbasketData;
+                contextManager.contextMap.get(pincode).websites.add("bigbasket");
+                contextManager.markServiceability(pincode, "bigbasket", true);
             }
-        );
 
-        // Update cookie string with new cookies from delivery address response
-        const newCookies = deliveryAddressResponse.headers['set-cookie'] || [];
-        const newCookieString = newCookies.map(cookie => cookie.split(';')[0]).join('; ');
-        pincodeData[pincode].cookieStringWithLatLang = pincodeData[pincode].cookieString + '; ' + newCookieString;
-
-        return pincodeData[pincode];
+            console.log(`BB: Successfully set up for location: ${pincode}`);
+            return bigbasketData;
+        } catch (error) {
+            // Mark as not serviceable if there's an error in serviceability check
+            contextManager.markServiceability(pincode, "bigbasket", false);
+            throw error;
+        }
     } catch (error) {
-        console.error('Error setting cookies for pincode:', error);
-        pincodeData[pincode] = null;
+        // Mark as not serviceable and clean up
+        contextManager.markServiceability(pincode, "bigbasket", false);
+        console.error('BB: Error setting cookies for pincode:', error);
         throw error;
+    } finally {
+        if (page) await page.close();
     }
 };
 
@@ -185,8 +216,11 @@ export const searchProducts = async (req, res, next) => {
         }
 
         // Get or set up cookies for the pincode
-        if (!pincodeData[pincode]) {
-            await setCookiesAganstPincode(pincode);
+        const pincodeData = await setCookiesAganstPincode(pincode);
+
+        // Check if the location is serviceable
+        if (!contextManager.isWebsiteServiceable(pincode, "bigbasket")) {
+            throw AppError.badRequest(`Location ${pincode} is not serviceable by BigBasket`);
         }
 
         // Make the search call with updated cookies
@@ -201,7 +235,7 @@ export const searchProducts = async (req, res, next) => {
                     headers: {
                         'accept': '*/*',
                         'content-type': 'application/json',
-                        'cookie': pincodeData[pincode].cookieStringWithLatLang,
+                        'cookie': pincodeData.cookieStringWithLatLang,
                     }
                 }
             );
@@ -248,7 +282,7 @@ export const searchProducts = async (req, res, next) => {
         res.status(200).json({
             products: allProducts,
             total: allProducts.length,
-            cookieString: pincodeData[pincode].cookieStringWithLatLang
+            cookieString: pincodeData.cookieStringWithLatLang
         });
 
     } catch (error) {
@@ -314,6 +348,9 @@ const processProducts = async (products, category) => {
 };
 
 const fetchProductsForCategoryInChunks = async (category, pincode) => {
+    // Get the BigBasket data from the context
+    const contextData = contextManager.contextMap.get(pincode);
+    const bigbasketData = contextData?.bigbasketData || {};
     let allProducts = [];
     let currentPage = 1;
     let hasMorePages = true;
@@ -329,7 +366,7 @@ const fetchProductsForCategoryInChunks = async (category, pincode) => {
                     headers: {
                         'accept': '*/*',
                         'content-type': 'application/json',
-                        'cookie': pincodeData[pincode].cookieStringWithLatLang,
+                        'cookie': bigbasketData.cookieStringWithLatLang,
                         'x-channel': 'BB-WEB'
                     }
                 }
@@ -558,8 +595,16 @@ const trackPrices = async () => {
             console.log("BB: Starting new tracking cycle at:", new Date().toISOString());
 
             const pincode = '500064'; // Default pincode
-            if (!pincodeData[pincode]) {
-                await setCookiesAganstPincode(pincode);
+
+            // Set up cookies for the pincode using contextManager
+            await setCookiesAganstPincode(pincode);
+
+            // Check if the location is serviceable
+            if (!contextManager.isWebsiteServiceable(pincode, "bigbasket")) {
+                console.log(`BB: Location ${pincode} is not serviceable, skipping tracking`);
+                // Wait for 30 minutes before trying again
+                await new Promise(resolve => setTimeout(resolve, 30 * 60 * 1000));
+                continue;
             }
 
             const categories = await fetchCategories(); // Contains all the final categories in flattened format
@@ -569,7 +614,7 @@ const trackPrices = async () => {
             }
 
             // Process categories in parallel chunks
-            const CATEGORY_CHUNK_SIZE = 3;
+            const CATEGORY_CHUNK_SIZE = 2;
             const categoryChunks = [];
             for (let i = 0; i < categories.length; i += CATEGORY_CHUNK_SIZE) {
                 categoryChunks.push(categories.slice(i, i + CATEGORY_CHUNK_SIZE));

@@ -8,13 +8,16 @@ import { processProducts as globalProcessProducts } from "../utils/productProces
 
 // Set location for pincode
 const setLocation = async (pincode) => {
-  let page = null;
+    let page = null;
     try {
         // Get or create context
         const context = await contextManager.getContext(pincode);
 
         // If Amazon Fresh is already set up for this pincode, return the context
-        if (contextManager.isWebsiteSet(pincode, "amazonFresh")) {
+        if (
+            contextManager.isWebsiteSet(pincode, "amazonFresh") &&
+            contextManager.isWebsiteServiceable(location, "amazonFresh")
+        ) {
             return context;
         }
 
@@ -52,8 +55,6 @@ const setLocation = async (pincode) => {
         throw error;
     }
 };
-
-
 
 // Function to extract products from current page
 const extractProductsFromPage = async (page) => {
@@ -253,15 +254,14 @@ export const startTrackingHandler = async () => {
 
             console.log(`AF: Found ${queries.length} unique search queries`);
 
-            const CONCURRENT_SEARCHES = 3;
+            const CONCURRENT_SEARCHES = 2;
             const pincode = "500064"; // Default pincode
             let totalProcessedProducts = 0;
 
             // Process queries in parallel batches
             const taskChunks = chunk(queries, CONCURRENT_SEARCHES);
-
+            const context = await setLocation(pincode);
             for (const taskChunk of taskChunks) {
-                const context = await setLocation(pincode);
                 const pages = await Promise.all(taskChunk.map(() => context.newPage()));
 
                 try {
@@ -277,7 +277,7 @@ export const startTrackingHandler = async () => {
                                     telegramNotification: true,
                                     emailNotification: false,
                                 });
-                                const processedCount = typeof result === 'number' ? result : result.processedCount;
+                                const processedCount = typeof result === "number" ? result : result.processedCount;
                                 return processedCount;
                             } catch (error) {
                                 console.error(`AF: Error processing ${query}:`, error);
