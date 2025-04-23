@@ -13,6 +13,23 @@ const placesData = {};
 
 const CATEGORY_CHUNK_SIZE = 3;
 
+/**
+ * Generates a URL for a Zepto category or subcategory
+ * @param {string} categoryName - The name of the category
+ * @param {string} categoryId - The UUID of the category
+ * @param {string} subcategoryName - The name of the subcategory
+ * @param {string} subcategoryId - The UUID of the subcategory
+ * @returns {string} The complete URL for the category/subcategory
+ */
+export const generateCategoryUrl = (categoryName, categoryId, subcategoryName, subcategoryId) => {
+    // Convert names to URL-friendly format (lowercase, hyphenated)
+    const slugifiedCategoryName = categoryName.toLowerCase().replace(/\s+/g, "-");
+    const slugifiedSubcategoryName = subcategoryName.toLowerCase().replace(/\s+/g, "-");
+
+    // Construct the URL using the Zepto URL pattern
+    return `https://www.zeptonow.com/cn/${slugifiedCategoryName}/${slugifiedSubcategoryName}/cid/${categoryId}/scid/${subcategoryId}`;
+};
+
 // Set location for Zepto
 const setLocation = async (location) => {
     let page = null;
@@ -296,6 +313,15 @@ const fetchCategories = async (location = "vertex corporate") => {
                 processedCategoryIds.add(parentCategory.id);
 
                 // Create category with subcategories
+                // For the main category, we'll use the first subcategory's ID as the default subcategory
+                const firstSubcatId = item.availableSubcategories[0]?.id;
+                const categoryUrl = generateCategoryUrl(
+                    parentCategory.name,
+                    parentCategory.id,
+                    item.availableSubcategories[0]?.name,
+                    firstSubcatId
+                );
+
                 const category = {
                     id: parentCategory.id,
                     name: parentCategory.name,
@@ -303,14 +329,20 @@ const fetchCategories = async (location = "vertex corporate") => {
                     priority: parentCategory.priority || 0,
                     productCount: 0,
                     isActive: true,
-                    subCategories: item.availableSubcategories.map((subcat) => ({
-                        id: subcat.id,
-                        name: subcat.name,
-                        image: subcat.imageV2?.path ? `https://cdn.zeptonow.com/${subcat.imageV2.path}` : "",
-                        priority: subcat.priority || 0,
-                        unlisted: subcat.unlisted || false,
-                        displaySecondaryImage: subcat.displaySecondaryImage || false,
-                    })),
+                    url: categoryUrl, // Add the URL to the main category object
+                    subCategories: item.availableSubcategories.map((subcat) => {
+                        // Generate URL for each subcategory
+                        const url = generateCategoryUrl(parentCategory.name, parentCategory.id, subcat.name, subcat.id);
+                        return {
+                            id: subcat.id,
+                            name: subcat.name,
+                            image: subcat.imageV2?.path ? `https://cdn.zeptonow.com/${subcat.imageV2.path}` : "",
+                            priority: subcat.priority || 0,
+                            unlisted: subcat.unlisted || false,
+                            displaySecondaryImage: subcat.displaySecondaryImage || false,
+                            url: url, // Add the URL to the subcategory object
+                        };
+                    }),
                 };
 
                 categories.push(category);
@@ -391,6 +423,60 @@ const trackPrices = async (location = "vertex corporate") => {
                         randomizedCategories.length / CATEGORY_CHUNK_SIZE
                     )}`
                 );
+
+                // Process each category in the chunk
+                for (const category of chunk) {
+                    // Skip if no subcategories
+                    if (!category.subCategories || category.subCategories.length === 0) {
+                        console.log(`Zepto: No subcategories found for ${category.name}, skipping`);
+                        continue;
+                    }
+
+                    console.log(
+                        `Zepto: Processing category ${category.name} with ${category.subCategories.length} subcategories`
+                    );
+
+                    // Create a new page for this category
+                    const page = await context.newPage();
+
+                    try {
+                        // Process each subcategory
+                        for (const subcategory of category.subCategories) {
+                            // Skip unlisted subcategories
+                            if (subcategory.unlisted) {
+                                console.log(`Zepto: Skipping unlisted subcategory ${subcategory.name}`);
+                                continue;
+                            }
+
+                            try {
+                                // Extract products from the subcategory page
+                                const products = await extractProductsFromPage(page, category, subcategory);
+
+                                if (products.length === 0) {
+                                    console.log(`Zepto: No products found for ${subcategory.name}, skipping`);
+                                    continue;
+                                }
+
+                                // Process the products
+                                const { processedCount } = await processProducts(products, category, subcategory);
+                                console.log(`Zepto: Processed ${processedCount} products from ${subcategory.name}`);
+
+                                // Add a small delay between subcategories to avoid rate limiting
+                                await new Promise((resolve) => setTimeout(resolve, 2000));
+                            } catch (subcatError) {
+                                console.error(`Zepto: Error processing subcategory ${subcategory.name}:`, subcatError);
+                            }
+                        }
+                    } catch (catError) {
+                        console.error(`Zepto: Error processing category ${category.name}:`, catError);
+                    } finally {
+                        // Close the page when done with this category
+                        await page.close();
+                    }
+                }
+
+                // Add a delay between chunks to avoid overwhelming the system
+                await new Promise((resolve) => setTimeout(resolve, 5000));
             }
 
             console.log("Zepto: Finished tracking prices for all categories");
@@ -404,7 +490,101 @@ const trackPrices = async (location = "vertex corporate") => {
     }
 };
 
-const extractProductsFromPage = async (chunk) => {};
+/**
+ * Extracts products from a Zepto category or subcategory page
+ * @param {Object} page - The Playwright page object
+ * @param {Object} category - The category object
+ * @param {Object} subcategory - The subcategory object
+ * @returns {Promise<Array>} Array of extracted products
+ */
+const extractProductsFromPage = async (page, category, subcategory) => {
+    try {
+        console.log(`ZEPTO: Extracting products from ${subcategory.name} (${category.name})`);
+
+        // Navigate to the subcategory URL
+        await page.goto(subcategory.url, { waitUntil: "domcontentloaded", timeout: 30000 });
+
+        // Wait for products to load
+        await page
+            .waitForSelector('.content-start', { timeout: 10000 })
+            .catch(() => console.log(`ZEPTO: No products found for ${subcategory.name}`));
+
+        // Extract product data using page.evaluate
+        const products = await page.evaluate(() => {
+            const productCards = Array.from(document.querySelectorAll('.content-start > a'));
+
+            return productCards.map((card) => {
+                // Extract product details
+                const productId = card.getAttribute("data-product-id") || "";
+                const variantId = card.getAttribute("data-variant-id") || "";
+
+                // Extract product name
+                const nameElement = card.querySelector(".tw-font-medium.tw-text-black-800");
+                const productName = nameElement ? nameElement.textContent.trim() : "";
+
+                // Extract price information
+                const priceElement = card.querySelector(".tw-font-medium.tw-text-black-800 + div");
+                let price = 0;
+                let mrp = 0;
+                let discount = 0;
+
+                if (priceElement) {
+                    const priceText = priceElement.textContent.trim();
+                    // Parse price and MRP from text like "₹135 ₹279"
+                    const priceMatch = priceText.match(/₹(\d+(?:\.\d+)?)\s*(?:₹(\d+(?:\.\d+)?))?/);
+
+                    if (priceMatch) {
+                        price = parseFloat(priceMatch[1]) || 0;
+                        mrp = parseFloat(priceMatch[2]) || price;
+
+                        // Calculate discount percentage
+                        if (mrp > price) {
+                            discount = Math.round(((mrp - price) / mrp) * 100);
+                        }
+                    }
+                }
+
+                // Extract image URL
+                const imageElement = card.querySelector("img");
+                const imageUrl = imageElement ? imageElement.getAttribute("src") : "";
+
+                // Extract weight/quantity
+                const weightElement = card.querySelector(".tw-text-black-600.tw-text-xs");
+                const weight = weightElement ? weightElement.textContent.trim() : "";
+
+                // Construct product URL
+                const productUrl = productName
+                    ? `https://www.zeptonow.com/pn/${productName.toLowerCase().replace(/\s+/g, "-")}/pvid/${variantId}`
+                    : "";
+
+                return {
+                    product: {
+                        id: productId,
+                        name: productName,
+                        brand: "", // Brand info not directly available on the card
+                        url: productUrl, // Add the product URL
+                    },
+                    productVariant: {
+                        id: variantId,
+                        images: imageUrl ? [{ path: imageUrl }] : [],
+                        packsize: weight,
+                        unitOfMeasure: "",
+                    },
+                    outOfStock: false, // Assuming all visible products are in stock
+                    discountedSellingPrice: price * 100, // Convert to paise as expected by processProducts
+                    mrp: mrp * 100, // Convert to paise
+                    discountPercent: discount,
+                };
+            });
+        });
+
+        console.log(`ZEPTO: Extracted ${products.length} products from ${subcategory.name}`);
+        return products;
+    } catch (error) {
+        console.error(`ZEPTO: Error extracting products from ${subcategory?.name}:`, error);
+        return [];
+    }
+};
 
 const processProducts = async (products, category, subcategory) => {
     try {
@@ -427,9 +607,11 @@ const processProducts = async (products, category, subcategory) => {
                     discount: storeProduct.discountPercent || 0,
                     weight: `${variant.packsize} ${variant.unitOfMeasure.toLowerCase()}`,
                     brand: product.brand || "",
-                    url: `https://www.zeptonow.com/pn/${product.name.toLowerCase().replace(/\s+/g, "-")}/pvid/${
-                        variant.id
-                    }`,
+                    url:
+                        product.url ||
+                        `https://www.zeptonow.com/pn/${product.name.toLowerCase().replace(/\s+/g, "-")}/pvid/${
+                            variant.id
+                        }`,
                     eta: variant.shelfLifeInHours || "",
                 };
             });
