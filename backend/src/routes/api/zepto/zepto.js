@@ -1,16 +1,14 @@
-import express from 'express';
-import * as ZeptoController from '../../../controllers/ZeptoController.js';
+import express from "express";
+import * as ZeptoController from "../../../controllers/ZeptoController.js";
 
 const router = express.Router();
 
-router.get('/', (req, res) => {
+router.get("/", (req, res) => {
     res.json({
-        message: 'Zepto API is running'
+        message: "Zepto API is running",
     });
 });
 
-router.get('/search', ZeptoController.searchProducts);
-router.get('/categories', ZeptoController.getCategoriesHandler);
-router.post('/start-tracking', ZeptoController.startTracking);
+router.post("/start-tracking", ZeptoController.startTracking);
 
-export default router; 
+export default router;
