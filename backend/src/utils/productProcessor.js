@@ -13,7 +13,13 @@ import { sendEmailWithDroppedProducts, sendTelegramMessage } from "../services/N
  * @returns {Promise<number>} - Number of products processed
  */
 export const processProducts = async (products, categoryName, options = {}) => {
-    const { model, source = "Unknown", significantDiscountThreshold = 10, telegramNotification = false, emailNotification = false } = options;
+    const {
+        model,
+        source = "Unknown",
+        significantDiscountThreshold = 10,
+        telegramNotification = false,
+        emailNotification = false,
+    } = options;
 
     if (!model) {
         throw new Error("Product model is required for processing products");

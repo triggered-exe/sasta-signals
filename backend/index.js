@@ -56,10 +56,10 @@ app.use(errorHandler);
 // Start the server and initialize price tracking
 app.listen(port, () => {
     console.log(`Server is running on port - ${port}`);
-    // zeptoStartTrackingHandler(); // For Zepto
-    instamartStartTrackingHandler(); // For Instamart
-    BigBasketStartTrackingHandler(); // For BigBasket
-    setTimeout(() => flipkartStartTrackingHandler(), 0); // For Flipkart
-    setTimeout(() => amazonFreshStartTrackingHandler(), 10000); // For Amazon Fresh
-    setTimeout(() => blinkitStartTrackingHandler(), 20000); // For Blinkit
+    zeptoStartTrackingHandler(); // For Zepto
+    // instamartStartTrackingHandler(); // For Instamart
+    // BigBasketStartTrackingHandler(); // For BigBasket
+    // setTimeout(() => flipkartStartTrackingHandler(), 0); // For Flipkart
+    // setTimeout(() => amazonFreshStartTrackingHandler(), 10000); // For Amazon Fresh
+    // setTimeout(() => blinkitStartTrackingHandler(), 20000); // For Blinkit
 });
