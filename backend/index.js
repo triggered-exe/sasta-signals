@@ -55,6 +55,13 @@ app.use(errorHandler);
 // Start the server and initialize price tracking
 app.listen(port, () => {
     console.log(`Server is running on port - ${port}`);
+
+    // testing 
+    // blinkitStartTrackingHandler("bahadurpura police station") // For Blinkit
+
+
+
+    // development
     setTimeout(() => instamartStartTrackingHandler(), 150 * 1000)
     // setTimeout(() => zeptoStartTrackingHandler("vertex corporate"), 0)
     setTimeout(() => flipkartStartTrackingHandler("500064"), 10 * 1000); // For Flipkart

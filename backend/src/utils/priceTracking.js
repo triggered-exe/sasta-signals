@@ -27,7 +27,7 @@ export const buildSortCriteria = (sortOrder) => {
 
 // Helper function to build MongoDB match criteria for filtering products
 export const buildMatchCriteria = (priceDropped, notUpdated) => {
-  const criteria = { inStock: true };
+  const criteria = { };
   if (priceDropped === "true") {
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
       criteria.priceDroppedAt = {

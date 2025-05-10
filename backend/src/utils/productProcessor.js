@@ -90,9 +90,12 @@ export const processProducts = async (products, categoryName, options = {}) => {
             } else {
                 // For new products, set initial priceDroppedAt and if discount is 90% or more, add to droppedProducts
                 if (productData.discount >= 90) {
+                    productData.currentDiscount = productData.discount;
+                    productData.previousDiscount = productData.discount;
+                    productData.previousPrice = productData.price;
+                    productData.priceDroppedAt = now;
                     droppedProducts.push(productData);
                 }
-                productData.priceDroppedAt = now;
             }
 
             bulkOps.push({
@@ -109,7 +112,7 @@ export const processProducts = async (products, categoryName, options = {}) => {
             console.log(`${logPrefix} Found ${droppedProducts.length} dropped products from ${categoryName}`);
             try {
                 await Promise.all([
-                    telegramNotification && sendTelegramMessage(droppedProducts, source),
+                    telegramNotification && sendTelegramMessage(droppedProducts, source, 60),
                     emailNotification && sendEmailWithDroppedProducts(droppedProducts, source),
                 ]);
             } catch (error) {

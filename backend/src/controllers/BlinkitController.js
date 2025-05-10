@@ -553,6 +553,9 @@ export const startTrackingHandler = async (location = "bahadurpura police statio
                     "serum",
                     "hand & foot care",
                     "mushroom",
+                    "diapers",
+                    "smoking",
+                    "wellness"
                 ];
 
                 // Update filtering logic to exclude categories that match keywords fully or partially
@@ -583,7 +586,6 @@ export const startTrackingHandler = async (location = "bahadurpura police statio
 
                 // Shuffle subcategories to distribute load
                 const shuffledSubcategories = [...subcategories].sort(() => Math.random() - 0.5);
-                // const shuffledSubcategories = subcategories;
 
                 // Create batches for parallel processing
                 const CONCURRENT_SEARCHES = 2;
