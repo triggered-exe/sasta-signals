@@ -11,7 +11,7 @@ import contextManager from "../utils/contextManager.js";
 let isTrackingActive = false;
 const placesData = {};
 
-const CATEGORY_CHUNK_SIZE = 3;
+const CATEGORY_CHUNK_SIZE = 2;
 
 /**
  * Generates a URL for a Zepto category or subcategory
@@ -263,18 +263,18 @@ const fetchCategories = async (location = "vertex corporate") => {
                 request_id: `${Math.random().toString(36).substring(2, 15)}-${Math.random()
                     .toString(36)
                     .substring(2, 15)}-${Math.random().toString(36).substring(2, 15)}-${Math.random()
-                    .toString(36)
-                    .substring(2, 15)}`,
+                        .toString(36)
+                        .substring(2, 15)}`,
                 session_id: `${Math.random().toString(36).substring(2, 15)}-${Math.random()
                     .toString(36)
                     .substring(2, 15)}-${Math.random().toString(36).substring(2, 15)}-${Math.random()
-                    .toString(36)
-                    .substring(2, 15)}`,
+                        .toString(36)
+                        .substring(2, 15)}`,
                 sessionid: `${Math.random().toString(36).substring(2, 15)}-${Math.random()
                     .toString(36)
                     .substring(2, 15)}-${Math.random().toString(36).substring(2, 15)}-${Math.random()
-                    .toString(36)
-                    .substring(2, 15)}`,
+                        .toString(36)
+                        .substring(2, 15)}`,
                 store_id: storeId,
                 storeid: storeId,
             },
@@ -374,7 +374,7 @@ export const startTracking = async (req, res, next) => {
     }
 };
 
-export const startTrackingHandler = async () => {
+export const startTrackingHandler = async (location = "vertex corporate") => {
     console.log("Zepto: starting tracking");
     // Start the continuous tracking loop without awaiting it
     trackPrices().catch((error) => {
@@ -403,77 +403,148 @@ const trackPrices = async (location = "vertex corporate") => {
             console.log("Zepto: Starting new tracking cycle at:", new Date().toISOString());
 
             // Step1: Get the categories (now returns a flat array)
-            const categories = await fetchCategories(location);
+            let categories = await fetchCategories(location);
 
             console.log("Zepto: Starting to fetch products for all categories");
+
+            const FILTERING_PARENT_CATEGORY_KEYWORDS = [
+                "chicken",
+                "meat",
+                "makeup",
+                "skincare",
+                "hair",
+                "bath",
+                "cleaning",
+                "stationery",
+                "baby",
+                "pet",
+                "paan",
+                "toys",
+                "magazine",
+                "books",
+                "stores",
+                "cards",
+                "Cosmetics",
+                "goods",
+                "jewellery",
+                "feminine",
+                "home",
+                "kitchen",
+                "sexual wellness",
+            ];
+
+            const FILTERING_SUBCATEGORY_KEYWORDS = [
+                "all",
+                "top picks",
+                "flower",
+                "hydroponics",
+                "sprouts",
+                "gardening",
+                "eggs",
+                "vegan",
+                "meat",
+                "salami",
+                "non veg",
+                "pesticide",
+                "cosmetics",
+                "women",
+                "jewellery",
+                "hair colour",
+                "veggies",
+                "tea",
+                "salt",
+                "beauty",
+                "toy",
+                "games",
+                "books",
+                "clocks",
+                "diy",
+                "decor",
+                "herbs",
+                "stationary",
+                "fresh juice & dips",
+                "cake",
+                "conditioner",
+                "serum",
+                "hand & foot care",
+                "mushroom",
+                "girl",
+                "kids",
+                "baby",
+                "handbag",
+                "women",
+            ];
+
 
             if (!categories || categories.length === 0) {
                 console.log("Zepto: No categories found");
                 continue;
             }
 
+            // Filter out categories that contain any of the FILTERING_PARENT_CATEGORY_KEYWORDS
+            categories = categories.filter(category => !FILTERING_PARENT_CATEGORY_KEYWORDS.some(keyword => category.name.toLowerCase().includes(keyword)));
+
+
+
             // Randomize the categories
-            const randomizedCategories = [...categories].sort(() => Math.random() - 0.5);
+            let subcategories = categories.flatMap((category) => category.subCategories.map(subcategory => ({
+                ...subcategory,
+                categoryName: category.name,
+                categoryId: category.id,
+                category // Add the full category object for reference
+            })));
+
+            // Filter out subcategories that contain any of the FILTERING_SUBCATEGORY_KEYWORDS
+            subcategories = subcategories.filter(subcategory => !FILTERING_SUBCATEGORY_KEYWORDS.some(keyword => subcategory.name.toLowerCase().includes(keyword)));
+
+            const randomizedSubcategories = [...subcategories].sort(() => Math.random() - 0.5);
 
             // Process categories in chunks
-            for (let i = 0; i < randomizedCategories.length; i += CATEGORY_CHUNK_SIZE) {
-                const chunk = randomizedCategories.slice(i, i + CATEGORY_CHUNK_SIZE);
+            for (let i = 0; i < randomizedSubcategories.length; i += CATEGORY_CHUNK_SIZE) {
+                const chunk = randomizedSubcategories.slice(i, i + CATEGORY_CHUNK_SIZE);
                 console.log(
                     `Zepto: Processing chunk ${i / CATEGORY_CHUNK_SIZE + 1} of ${Math.ceil(
-                        randomizedCategories.length / CATEGORY_CHUNK_SIZE
+                        randomizedSubcategories.length / CATEGORY_CHUNK_SIZE
                     )}`
                 );
 
-                // Process each category in the chunk
-                for (const category of chunk) {
-                    // Skip if no subcategories
-                    if (!category.subCategories || category.subCategories.length === 0) {
-                        console.log(`Zepto: No subcategories found for ${category.name}, skipping`);
-                        continue;
+                // Process each subcategory in the chunk concurrently
+                const processingPromises = chunk.map(async (subcategory) => {
+                    // Skip unlisted subcategories
+                    if (subcategory.unlisted) {
+                        console.log(`Zepto: Skipping unlisted subcategory ${subcategory.name}`);
+                        return;
                     }
 
                     console.log(
-                        `Zepto: Processing category ${category.name} with ${category.subCategories.length} subcategories`
+                        `Zepto: Processing subcategory ${subcategory.name} from category ${subcategory.categoryName}`
                     );
 
-                    // Create a new page for this category
+                    // Create a new page for this subcategory
                     const page = await context.newPage();
 
                     try {
-                        // Process each subcategory
-                        for (const subcategory of category.subCategories) {
-                            // Skip unlisted subcategories
-                            if (subcategory.unlisted) {
-                                console.log(`Zepto: Skipping unlisted subcategory ${subcategory.name}`);
-                                continue;
-                            }
-
-                            try {
-                                // Extract products from the subcategory page
-                                const products = await extractProductsFromPage(page, category, subcategory);
-
-                                if (products.length === 0) {
-                                    console.log(`Zepto: No products found for ${subcategory.name}, skipping`);
-                                    continue;
-                                }
-
-                                // Process the products
-                                const { processedCount } = await processProducts(products, category, subcategory);
-                                console.log(`Zepto: Processed ${processedCount} products from ${subcategory.name}`);
-
-                                // Add a small delay between subcategories to avoid rate limiting
-                                await new Promise((resolve) => setTimeout(resolve, 2000));
-                            } catch (subcatError) {
-                                console.error(`Zepto: Error processing subcategory ${subcategory.name}:`, subcatError);
-                            }
+                        // Extract products from the subcategory page
+                        const products = await extractProductsFromPage(page, subcategory.category, subcategory);
+                        if (products.length === 0) {
+                            console.log(`Zepto: No products found for ${subcategory.name}, skipping`);
+                            return;
                         }
-                    } catch (catError) {
-                        console.error(`Zepto: Error processing category ${category.name}:`, catError);
+
+                        // Process the products
+                        const { processedCount } = await processProducts(products, subcategory.category, subcategory);
+                        console.log(`Zepto: Processed ${processedCount} products from ${subcategory.name}`);
+                    } catch (subcatError) {
+                        console.error(`Zepto: Error processing subcategory ${subcategory.name}:`, subcatError);
                     } finally {
-                        // Close the page when done with this category
+                        // Close the page when done with this subcategory
                         await page.close();
                     }
-                }
+                });
+
+                // Wait for all subcategories in the chunk to complete
+                await Promise.all(processingPromises);
+                console.log(`Zepto: Completed processing chunk ${i / CATEGORY_CHUNK_SIZE + 1}`);
 
                 // Add a delay between chunks to avoid overwhelming the system
                 await new Promise((resolve) => setTimeout(resolve, 5000));
@@ -491,7 +562,7 @@ const trackPrices = async (location = "vertex corporate") => {
 };
 
 /**
- * Extracts products from a Zepto category or subcategory page
+ * Extracts products from a Zepto category or subcategory page with infinite scrolling
  * @param {Object} page - The Playwright page object
  * @param {Object} category - The category object
  * @param {Object} subcategory - The subcategory object
@@ -506,79 +577,183 @@ const extractProductsFromPage = async (page, category, subcategory) => {
 
         // Wait for products to load
         await page
-            .waitForSelector('.content-start', { timeout: 10000 })
-            .catch(() => console.log(`ZEPTO: No products found for ${subcategory.name}`));
+            .waitForSelector('[data-testid="product-card"]', { timeout: 10000 })
+            .catch(() => {
+                console.log(`ZEPTO: No products found for ${subcategory.name}`);
+                return [];
+            });
+
+        await page.waitForTimeout(1000);
+
+        // Scroll to load all products (infinite scroll)
+        let previousProductCount = 0;
+        let currentProductCount = 0;
+        let scrollAttempts = 0;
+        const MAX_SCROLL_ATTEMPTS = 15; // Maximum number of scroll attempts
+
+        console.log(`ZEPTO: Starting to scroll for ${subcategory.name}`);
+        // Spinner element selector
+        const spinnerSelector = 'svg.animate-spin';
+
+        // Scroll until no spinner is visible or max attempts reached
+        while (scrollAttempts < MAX_SCROLL_ATTEMPTS) {
+            // Get current product count
+            currentProductCount = await page.evaluate(() => {
+                return document.querySelectorAll('[data-testid="product-card"]').length;
+            });
+
+            console.log(`ZEPTO: Found ${currentProductCount} products after ${scrollAttempts} scrolls`);
+
+            // Check if spinner is visible (indicating more products to load)
+            const { spinner, isSpinnerVisible } = await page.evaluate(() => {
+                const spinner = document.querySelector('.animate-spin');
+                return { spinner, isSpinnerVisible: !!spinner };
+            });
+
+            // If spinner is visible, but new products didn't load, we need to scroll again
+            if (isSpinnerVisible && currentProductCount === previousProductCount) {
+                await page.evaluate(() => {
+                    const spinner = document.querySelector('.animate-spin');
+                    if (spinner) {
+                        // Try different scrolling approaches to trigger loading
+                        window.scrollTo(0, document.body.scrollHeight - 500);
+                        setTimeout(() => {
+                            spinner.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }, 300);
+                    }
+                });
+            }
+
+            // If no spinner is visible and product count hasn't changed, we've reached the end
+            if (!isSpinnerVisible && currentProductCount === previousProductCount && scrollAttempts > 0) {
+                console.log(`ZEPTO: No more products to load, stopping at ${currentProductCount} products`);
+                break;
+            }
+
+            // Update previous count
+            previousProductCount = currentProductCount;
+
+            // Scroll the content-start container that holds the products
+            await page.evaluate((spinnerSelector) => {
+                const spinner = document.querySelector('.animate-spin');
+                if (spinner) {
+                    // Scroll the spinner into view to trigger loading more products
+                    spinner.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            });
+
+            // Wait for new products to load
+            await page.waitForTimeout(2000);
+
+            scrollAttempts++;
+        }
+
+        // Now scroll back to the top to ensure all images are loaded
+        await page.evaluate(() => {
+            const container = document.querySelector('.content-start');
+            if (container) {
+                container.scrollTo(0, 0);
+            }
+        });
+
+        await page.waitForTimeout(1000);
 
         // Extract product data using page.evaluate
         const products = await page.evaluate(() => {
-            const productCards = Array.from(document.querySelectorAll('.content-start > a'));
+            const productCards = Array.from(document.querySelectorAll('[data-testid="product-card"]'));
 
-            return productCards.map((card) => {
-                // Extract product details
-                const productId = card.getAttribute("data-product-id") || "";
-                const variantId = card.getAttribute("data-variant-id") || "";
+            return productCards.map(card => {
+                try {
+                    // Extract product URL and variant ID from href attribute
+                    const href = card.getAttribute('href') || '';
+                    const variantIdMatch = href.match(/\/pvid\/([\w-]+)/);
+                    const variantId = variantIdMatch ? variantIdMatch[1] : '';
 
-                // Extract product name
-                const nameElement = card.querySelector(".tw-font-medium.tw-text-black-800");
-                const productName = nameElement ? nameElement.textContent.trim() : "";
+                    // Extract product name
+                    const nameElement = card.querySelector('[data-testid="product-card-name"]');
+                    const productName = nameElement ? nameElement.textContent.trim() : '';
 
-                // Extract price information
-                const priceElement = card.querySelector(".tw-font-medium.tw-text-black-800 + div");
-                let price = 0;
-                let mrp = 0;
-                let discount = 0;
+                    // Extract weight/quantity
+                    const weightElement = card.querySelector('[data-testid="product-card-quantity"]');
+                    const weight = weightElement ? weightElement.textContent.trim() : '';
 
-                if (priceElement) {
-                    const priceText = priceElement.textContent.trim();
-                    // Parse price and MRP from text like "₹135 ₹279"
-                    const priceMatch = priceText.match(/₹(\d+(?:\.\d+)?)\s*(?:₹(\d+(?:\.\d+)?))?/);
+                    // Extract price information
+                    const priceElement = card.querySelector('[data-testid="product-card-price"]');
+                    let price = 0;
+                    let mrp = 0;
 
-                    if (priceMatch) {
-                        price = parseFloat(priceMatch[1]) || 0;
-                        mrp = parseFloat(priceMatch[2]) || price;
-
-                        // Calculate discount percentage
-                        if (mrp > price) {
-                            discount = Math.round(((mrp - price) / mrp) * 100);
+                    if (priceElement) {
+                        const priceText = priceElement.textContent.trim();
+                        // Parse price from text like "₹51"
+                        const priceMatch = priceText.match(/₹(\d+(?:\.\d+)?)/);
+                        if (priceMatch) {
+                            price = parseFloat(priceMatch[1]) || 0;
                         }
                     }
+
+                    // Extract MRP (original price)
+                    // Look for the element with line-through class that appears near the price
+                    const priceContainer = card.querySelector('.flex.items-baseline.gap-1');
+                    const mrpElement = priceContainer ? priceContainer.querySelector('.line-through') : null;
+
+                    if (mrpElement) {
+                        const mrpText = mrpElement.textContent.trim();
+                        // Parse MRP from text like "₹65"
+                        const mrpMatch = mrpText.match(/₹(\d+(?:\.\d+)?)/);
+                        if (mrpMatch) {
+                            mrp = parseFloat(mrpMatch[1]) || 0;
+                        }
+                    } else {
+                        // If no MRP found, use price as MRP
+                        mrp = price;
+                    }
+
+                    // Calculate discount percentage
+                    let discount = 0;
+                    if (mrp > price) {
+                        discount = Math.round(((mrp - price) / mrp) * 100);
+                    }
+
+                    // Extract discount from discount tag if available
+                    // Based on the example HTML, the discount tag has a specific structure
+                    const discountTag = card.querySelector('.z-\\[100\\] p, .absolute.top-0 p');
+                    if (discountTag) {
+                        const discountText = discountTag.textContent.trim();
+                        const discountMatch = discountText.match(/(\d+)%\s*Off/);
+                        if (discountMatch) {
+                            discount = parseInt(discountMatch[1], 10);
+                        }
+                    }
+
+                    // Extract image URL - get the first image in the card
+                    const imageElement = card.querySelector('[data-testid="product-card-image"]');
+                    let imageUrl = imageElement.getAttribute('src');
+
+                    // Check if product is out of stock
+                    const isOutOfStock = !card.textContent.toLowerCase().includes('add to cart');
+
+                    // Product URL
+                    const productUrl = "https://www.zeptonow.com" + href;
+
+                    return {
+                        productId: variantId,
+                        productName,
+                        url: productUrl,
+                        imageUrl,
+                        weight,
+                        price,
+                        mrp,
+                        discount: discount,
+                        inStock: !isOutOfStock
+                    };
+                } catch (error) {
+                    console.error('Error extracting product data:', error);
+                    return null;
                 }
-
-                // Extract image URL
-                const imageElement = card.querySelector("img");
-                const imageUrl = imageElement ? imageElement.getAttribute("src") : "";
-
-                // Extract weight/quantity
-                const weightElement = card.querySelector(".tw-text-black-600.tw-text-xs");
-                const weight = weightElement ? weightElement.textContent.trim() : "";
-
-                // Construct product URL
-                const productUrl = productName
-                    ? `https://www.zeptonow.com/pn/${productName.toLowerCase().replace(/\s+/g, "-")}/pvid/${variantId}`
-                    : "";
-
-                return {
-                    product: {
-                        id: productId,
-                        name: productName,
-                        brand: "", // Brand info not directly available on the card
-                        url: productUrl, // Add the product URL
-                    },
-                    productVariant: {
-                        id: variantId,
-                        images: imageUrl ? [{ path: imageUrl }] : [],
-                        packsize: weight,
-                        unitOfMeasure: "",
-                    },
-                    outOfStock: false, // Assuming all visible products are in stock
-                    discountedSellingPrice: price * 100, // Convert to paise as expected by processProducts
-                    mrp: mrp * 100, // Convert to paise
-                    discountPercent: discount,
-                };
-            });
+            }).filter(product => product !== null);
         });
 
-        console.log(`ZEPTO: Extracted ${products.length} products from ${subcategory.name}`);
+        console.log(`ZEPTO: Successfully extracted ${products.length} products from ${subcategory.name}`);
         return products;
     } catch (error) {
         console.error(`ZEPTO: Error extracting products from ${subcategory?.name}:`, error);
@@ -588,31 +763,22 @@ const extractProductsFromPage = async (page, category, subcategory) => {
 
 const processProducts = async (products, category, subcategory) => {
     try {
-        // Transform Zepto products to the standard format expected by globalProcessProducts
+        // Transform the extracted products to the standard format expected by globalProcessProducts
         const transformedProducts = products
-            .filter((storeProduct) => !storeProduct.outOfStock)
-            .map((storeProduct) => {
-                const product = storeProduct.product;
-                const variant = storeProduct.productVariant;
-
+            .map((product) => {
                 return {
-                    productId: variant.id,
-                    productName: product.name,
+                    productId: product.productId,
+                    productName: product.productName,
                     categoryName: category.name,
                     subcategoryName: subcategory.name,
-                    inStock: true,
-                    imageUrl: variant.images?.[0]?.path ? `https://cdn.zeptonow.com/${variant.images[0].path}` : "",
-                    price: storeProduct.discountedSellingPrice / 100,
-                    mrp: storeProduct.mrp / 100,
-                    discount: storeProduct.discountPercent || 0,
-                    weight: `${variant.packsize} ${variant.unitOfMeasure.toLowerCase()}`,
-                    brand: product.brand || "",
-                    url:
-                        product.url ||
-                        `https://www.zeptonow.com/pn/${product.name.toLowerCase().replace(/\s+/g, "-")}/pvid/${
-                            variant.id
-                        }`,
-                    eta: variant.shelfLifeInHours || "",
+                    inStock: product.inStock,
+                    imageUrl: product.imageUrl || "",
+                    price: product.price,
+                    mrp: product.mrp,
+                    discount: product.discount || 0,
+                    weight: product.weight || "",
+                    brand: "",  // Not extracted from the page
+                    url: product.url
                 };
             });
 

@@ -72,7 +72,7 @@ export default function PriceTracker({ apiEndpoint }) {
 
     const renderProductCard = (product) => (
         <div key={product._id} className="w-1/2 sm:w-1/3 md:w-1/3 lg:w-1/4 xl:w-1/5 2xl:w-1/6 p-1 sm:p-2 md:p-3">
-            <div className="group bg-white/90 dark:bg-gray-800/90 rounded-lg sm:rounded-xl shadow-md sm:shadow-lg overflow-hidden backdrop-blur-md border border-gray-200/50 dark:border-gray-700/50 transition-all duration-300 hover:shadow-xl hover:-translate-y-1 h-full flex flex-col">
+            <div className={`group ${!product.inStock ? 'opacity-70' : ''} bg-white/90 dark:bg-gray-800/90 rounded-lg sm:rounded-xl shadow-md sm:shadow-lg overflow-hidden backdrop-blur-md border border-gray-200/50 dark:border-gray-700/50 transition-all duration-300 hover:shadow-xl hover:-translate-y-1 h-full flex flex-col`}>
                 <div className="relative w-full pt-[100%]">
                     <a
                         href={product.url}
@@ -83,7 +83,7 @@ export default function PriceTracker({ apiEndpoint }) {
                         <img
                             src={product.imageUrl || '/assets/images/no-image.png'}
                             alt={product.productName}
-                            className="absolute inset-0 w-full h-full object-contain bg-white dark:bg-gray-900 p-2"
+                            className={`absolute inset-0 w-full h-full object-contain bg-white dark:bg-gray-900 p-2 ${!product.inStock ? 'grayscale' : ''}`}
                             loading="lazy"
                         />
                         <span className="absolute top-1 sm:top-2 left-1 sm:left-2 bg-white/95 dark:bg-gray-800/95 text-gray-900 dark:text-gray-100 px-1.5 sm:px-2 py-0.5 sm:py-1 text-xs sm:text-sm font-bold rounded-lg backdrop-blur-sm shadow-sm">
@@ -93,6 +93,13 @@ export default function PriceTracker({ apiEndpoint }) {
                             <span className="absolute top-1 sm:top-2 right-1 sm:right-2 bg-green-500/95 dark:bg-green-600/95 text-white font-semibold text-xs sm:text-sm px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-lg backdrop-blur-sm shadow-sm">
                                 {product.discount}%
                             </span>
+                        )}
+                        {!product.inStock && (
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                <span className="bg-red-500/90 text-white px-2 py-1 text-sm font-bold rounded-lg transform rotate-[-20deg] shadow-lg">
+                                    Out of Stock
+                                </span>
+                            </div>
                         )}
                         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/95 via-black/80 to-transparent text-white p-2 sm:p-3 backdrop-blur-[2px]">
                             <p className="text-xs sm:text-sm font-medium line-clamp-2">{product.productName}</p>

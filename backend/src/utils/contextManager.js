@@ -93,7 +93,7 @@ class ContextManager {
       // Create new context with reduced memory footprint
       const browser = await this.initBrowser();
       const context = await browser.newContext({
-        viewport: { width: 1280, height: 720 }, // Smaller viewport uses less memory
+        viewport: { width: 1280, height: 1080 }, // Increased height for better page rendering
         deviceScaleFactor: 1,
         isMobile: false,
         hasTouch: false,
@@ -132,7 +132,7 @@ class ContextManager {
       this.contextMap.get(pincode).serviceability[website] = isServiceable;
       this.updateLastUsed(pincode);
       await contextManager.cleanupNonServiceableContexts();
-      console.log(`Marked ${website} as ${isServiceable ? 'serviceable' : 'not serviceable'} for pincode: ${pincode}`);
+      console.log(`Marked ${website} as ${isServiceable ? 'serviceable' : 'not serviceable'} for pinc ode: ${pincode}`);
     }
   }
 

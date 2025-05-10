@@ -255,7 +255,7 @@ export const startTracking = async (_, res, next) => {
 
 let isTrackingCrawlerRunning = false;
 
-export const startTrackingHandler = async () => {
+export const startTrackingHandler = async (pincode = "500064") => {
     if (isTrackingCrawlerRunning) {
         throw new AppError("Search is already in progress", 400);
     }
@@ -287,7 +287,6 @@ export const startTrackingHandler = async () => {
             console.log(`FK: Found ${queries.length} unique search queries`);
 
             const PARALLEL_SEARCHES = 2;
-            const pincode = "500064";
             let totalProcessedProducts = 0;
 
             // Set up context with location once for all queries

@@ -221,7 +221,7 @@ export const startTracking = async (_, res, next) => {
     }
 };
 
-export const startTrackingHandler = async () => {
+export const startTrackingHandler = async (pincode = "500064") => {
     // Prevent multiple tracking instances
     if (isTrackingActive) {
         console.log("AF: Tracking is already active");
@@ -255,7 +255,6 @@ export const startTrackingHandler = async () => {
             console.log(`AF: Found ${queries.length} unique search queries`);
 
             const CONCURRENT_SEARCHES = 2;
-            const pincode = "500064"; // Default pincode
             let totalProcessedProducts = 0;
 
             // Process queries in parallel batches

@@ -418,153 +418,6 @@ const fetchProductsForCategoryInChunks = async (category, pincode) => {
     return allProducts;
 };
 
-// Sends Telegram message for products with price drops
-const sendTelegramMessage = async (droppedProducts) => {
-    try {
-        if (!droppedProducts || droppedProducts.length === 0) {
-            console.log("BB: No dropped products to send Telegram message for");
-            return;
-        }
-
-        // Filter products with discount > 59% and sort by highest discount
-        const filteredProducts = droppedProducts
-            .filter((product) => product.discount > 59)
-            .sort((a, b) => b.discount - a.discount);
-
-        if (filteredProducts.length === 0) {
-            return;
-        }
-
-        // Split into chunks of 15 products each
-        const chunks = [];
-        for (let i = 0; i < filteredProducts.length; i += 15) {
-            chunks.push(filteredProducts.slice(i, i + 15));
-        }
-
-        console.log(`BB: Sending Telegram messages for ${filteredProducts.length} products`);
-
-        // Send each chunk as a separate message
-        for (let i = 0; i < chunks.length; i++) {
-            const messageText =
-                `🔥 <b>BigBasket Price Drops</b>\n\n` +
-                chunks[i].map((product) => {
-                    const priceDrop = product.previousPrice - product.price;
-                    return `<b>${product.productName}</b>\n` +
-                        `💰 Current: ₹${product.price}\n` +
-                        `📊 Previous: ₹${product.previousPrice}\n` +
-                        `📉 Drop: ₹${priceDrop.toFixed(2)} (${product.discount}% off)\n` +
-                        `🔗 <a href="${product.url}">View on BigBasket</a>\n`;
-                }).join("\n");
-
-            await axios.post(
-                `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
-                {
-                    chat_id: TELEGRAM_CHANNEL_ID,
-                    text: messageText,
-                    parse_mode: "HTML",
-                    disable_web_page_preview: true,
-                }
-            );
-
-            // Add a small delay between messages
-            if (i < chunks.length - 1) {
-                await new Promise((resolve) => setTimeout(resolve, 1000));
-            }
-        }
-
-        console.log(`BB: Sent notifications for ${filteredProducts.length} products`);
-    } catch (error) {
-        console.error("BB: Error sending Telegram message:", error?.response?.data || error);
-        throw error;
-    }
-};
-
-// Sends email notification for products with price drops
-// This function is kept for future use and can be added to the notification options
-// eslint-disable-next-line no-unused-vars
-const sendEmailWithDroppedProducts = async (sortedProducts) => {
-    try {
-        // Skip sending email if no dropped products
-        if (!sortedProducts || sortedProducts.length === 0) {
-            console.log("BB: No dropped products to send email for");
-            return;
-        }
-
-        console.log(`BB: Attempting to send email for ${sortedProducts.length} dropped products`);
-
-        // Split products into chunks of 50 each
-        const chunks = [];
-        for (let i = 0; i < sortedProducts.length; i += 50) {
-            chunks.push(sortedProducts.slice(i, i + 50));
-        }
-
-        // Send email for each chunk
-        for (let i = 0; i < chunks.length; i++) {
-            const emailContent = `
-                <h2>Recently Dropped Products on BigBasket (Part ${i + 1}/${chunks.length})</h2>
-                <div style="font-family: Arial, sans-serif;">
-                    ${chunks[i]
-                    .map(
-                        (product) => {
-                            const prevDiscount = Math.floor(((product.mrp - product.previousPrice) / product.mrp) * 100);
-                            return `
-                                <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #eee; border-radius: 8px;">
-                                    <a href="${product.url}"
-                                       style="text-decoration: none; color: inherit; display: block;">
-                                        <div style="display: flex; align-items: center;">
-                                            <img src="${product.imageUrl}"
-                                                 alt="${product.productName}"
-                                                 style="width: 100px; height: 100px; object-fit: cover; border-radius: 4px; margin-right: 15px;">
-                                            <div>
-                                                <h3 style="margin: 0 0 8px 0;">${product.productName}</h3>
-                                                <p style="margin: 4px 0; color: #2f80ed;">
-                                                    Current: ₹${product.price} (${product.discount}% off)
-                                                </p>
-                                                <p style="margin: 4px 0; color: #666;">
-                                                    Previous: ₹${product.previousPrice} (${prevDiscount}% off)
-                                                </p>
-                                                <p style="margin: 4px 0; text-decoration: line-through; color: #666;">
-                                                    MRP: ₹${product.mrp}
-                                                </p>
-                                                <p style="margin: 4px 0; color: #219653;">
-                                                    Price Drop: ₹${(product.previousPrice - product.price).toFixed(2)}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </a>
-                                </div>
-                            `
-                        }
-                    )
-                    .join("")}
-                </div>
-            `;
-
-            // Verify Resend API key is set
-            if (!process.env.RESEND_API_KEY) {
-                throw new Error("RESEND_API_KEY is not configured");
-            }
-
-            const response = await resend.emails.send({
-                from: "onboarding@resend.dev",
-                to: "harishanker.500apps@gmail.com",
-                subject: `🔥 Price Drops Alert - BigBasket (Part ${i + 1}/${chunks.length}, ${chunks[i].length} products)`,
-                html: emailContent,
-            });
-
-            console.log(`BB: Email part ${i + 1}/${chunks.length} sent successfully`, response);
-
-            // Add a small delay between emails to avoid rate limiting
-            if (i < chunks.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-        }
-    } catch (error) {
-        console.error("BB: Error sending email:", error?.response?.data || error);
-        throw error;
-    }
-};
-
 const processChunk = async (chunk, pincode) => {
     for (const category of chunk) {
         console.log(`BB: Processing category: ${category.name}`);
@@ -581,7 +434,7 @@ const processChunk = async (chunk, pincode) => {
 };
 
 // Main tracking function (not a route handler)
-const trackPrices = async () => {
+const trackPrices = async (pincode = "500064") => {
     while (true) {
         try {
             // Skip if it's night time (12 AM to 6 AM IST)
@@ -593,8 +446,6 @@ const trackPrices = async () => {
             }
 
             console.log("BB: Starting new tracking cycle at:", new Date().toISOString());
-
-            const pincode = '500064'; // Default pincode
 
             // Set up cookies for the pincode using contextManager
             await setCookiesAganstPincode(pincode);
@@ -639,10 +490,10 @@ const trackPrices = async () => {
     }
 };
 
-export const startTrackingHandler = async () => {
+export const startTrackingHandler = async (pincode = "500064") => {
     console.log("BB: starting tracking");
     // Start the continuous tracking loop without awaiting it
-    trackPrices().catch(error => {
+    trackPrices(pincode).catch(error => {
         console.error('BB: Failed in tracking loop:', error);
     });
     return "BigBasket price tracking started";
@@ -658,9 +509,6 @@ export const startTracking = async (_, res, next) => {
         next(error instanceof AppError ? error : AppError.internalError('Failed to start price tracking'));
     }
 };
-
-
-
 
 export const searchProductsUsingCrawler = async (req, res, next) => {
     let page = null;
