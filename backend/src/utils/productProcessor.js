@@ -88,7 +88,10 @@ export const processProducts = async (products, categoryName, options = {}) => {
                     }
                 }
             } else {
-                // For new products, set initial priceDroppedAt
+                // For new products, set initial priceDroppedAt and if discount is 90% or more, add to droppedProducts
+                if (productData.discount >= 90) {
+                    droppedProducts.push(productData);
+                }
                 productData.priceDroppedAt = now;
             }
 

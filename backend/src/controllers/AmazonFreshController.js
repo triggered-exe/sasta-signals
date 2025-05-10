@@ -16,8 +16,9 @@ const setLocation = async (pincode) => {
         // If Amazon Fresh is already set up for this pincode, return the context
         if (
             contextManager.isWebsiteSet(pincode, "amazonFresh") &&
-            contextManager.isWebsiteServiceable(location, "amazonFresh")
+            contextManager.isWebsiteServiceable(pincode, "amazonFresh")
         ) {
+            console.log(`AF: Using existing serviceable context for ${pincode}`);
             return context;
         }
 
@@ -46,6 +47,9 @@ const setLocation = async (pincode) => {
         }
 
         contextManager.markServiceability(pincode, "amazonFresh", true);
+        // Register the website in the context's websites set
+        contextManager.contextMap.get(pincode).websites.add("amazonFresh");
+        console.log(`AF: Successfully set up for pincode: ${pincode}`);
         await page.close();
         return context;
     } catch (error) {
