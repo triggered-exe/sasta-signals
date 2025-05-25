@@ -2,7 +2,6 @@
 import { useState, useEffect } from "react";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
-import { websites } from '../../config/websites';
 
 export default function AppLayout({ children, selectedWebsite, setSelectedWebsite }) {
     const [isMenuExpanded, setIsMenuExpanded] = useState(false);

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import axios from "axios";
 import { FaSpinner } from 'react-icons/fa';
 import { PAGE_SIZE } from "@/utils/constants";
@@ -13,18 +13,21 @@ export default function PriceTracker({ apiEndpoint }) {
     const [notUpdated, setNotUpdated] = useState(false);
     const [totalPages, setTotalPages] = useState(1);
     const [isLoading, setIsLoading] = useState(false);
+    const prevApiEndpointRef = useRef(apiEndpoint);
 
-    const fetchProducts = async () => {
+    const fetchProducts = (async (page, endpoint, sort, dropped, notUpd) => { 
+        console.log('fetchign , parameters: ', page, endpoint, sort, dropped, notUpd);
         setIsLoading(true);
         setError(null);
+
         try {
-            const response = await axios.get(`${process.env.NEXT_PUBLIC_BACKEND_URL}${apiEndpoint}`, {
+            const response = await axios.get(`${process.env.NEXT_PUBLIC_BACKEND_URL}${endpoint}`, {
                 params: {
-                    page: currentPage,
+                    page: page,
                     pageSize: PAGE_SIZE,
-                    sortOrder,
-                    priceDropped: priceDropped.toString(),
-                    notUpdated: notUpdated.toString()
+                    sortOrder: sort,
+                    priceDropped: dropped.toString(),
+                    notUpdated: notUpd.toString()
                 }
             });
 
@@ -38,22 +41,31 @@ export default function PriceTracker({ apiEndpoint }) {
         } finally {
             setIsLoading(false);
         }
-    };
+    });
 
-    // Reset to page 1 when website changes
+    // Single useEffect to handle all changes with proper logic
     useEffect(() => {
-        console.log("resetting page");
-        setCurrentPage(1);
-    }, [apiEndpoint]);
+        console.log('useEffect called');
+        const isApiEndpointChanged = prevApiEndpointRef.current !== apiEndpoint;
 
-    // Fetch products when dependencies change
-    useEffect(() => {
-        console.log("fetching products");
-        fetchProducts();
-    }, [currentPage, sortOrder, priceDropped, notUpdated, apiEndpoint]);
+        if (isApiEndpointChanged) {
+            // API endpoint changed - always fetch page 1
+            console.log('API endpoint changed, fetching page 1 for:', apiEndpoint);
+            setCurrentPage(1);
+            // Fetch products only if currentPage is 1 Since for other pages, the useEffect for currentPage will trigger
+            if(currentPage === 1) {
+                fetchProducts(1, apiEndpoint, sortOrder, priceDropped, notUpdated);
+            }
+            prevApiEndpointRef.current = apiEndpoint;
+        } else {
+            // Other parameters changed - fetch current page
+            console.log('Parameters changed, fetching page:', currentPage, 'for:', apiEndpoint);
+            fetchProducts(currentPage, apiEndpoint, sortOrder, priceDropped, notUpdated);
+        }
+    }, [currentPage, apiEndpoint, sortOrder, priceDropped, notUpdated]);
 
     const handleSortChange = (e) => {
-        setSodrtOrder(e.target.value);
+        setSortOrder(e.target.value);
         setCurrentPage(1);
     };
 
