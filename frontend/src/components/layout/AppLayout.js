@@ -8,16 +8,6 @@ export default function AppLayout({ children, selectedWebsite, setSelectedWebsit
     const [isMenuExpanded, setIsMenuExpanded] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
 
-    // Initialize dark mode from localStorage on mount
-    useEffect(() => {
-        const isDarkMode = localStorage.getItem('darkMode') === 'true';
-        if (isDarkMode) {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-        }
-    }, []);
-
     // Initialize isMobile state after component mounts
     useEffect(() => {
         setIsMobile(window.innerWidth < 768);

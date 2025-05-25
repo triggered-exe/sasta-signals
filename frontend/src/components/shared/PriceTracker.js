@@ -46,13 +46,14 @@ export default function PriceTracker({ apiEndpoint }) {
         setCurrentPage(1);
     }, [apiEndpoint]);
 
+    // Fetch products when dependencies change
     useEffect(() => {
         console.log("fetching products");
         fetchProducts();
     }, [currentPage, sortOrder, priceDropped, notUpdated, apiEndpoint]);
 
     const handleSortChange = (e) => {
-        setSortOrder(e.target.value);
+        setSodrtOrder(e.target.value);
         setCurrentPage(1);
     };
 
@@ -210,4 +211,4 @@ export default function PriceTracker({ apiEndpoint }) {
             </div>
         </div>
     );
-} 
+}
