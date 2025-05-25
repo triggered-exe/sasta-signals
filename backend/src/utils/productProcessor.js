@@ -32,7 +32,7 @@ export const processProducts = async (products, categoryName, options = {}) => {
         const logPrefix = `${source.toUpperCase()}:`;
 
         // Get existing products for price comparison
-        const productIds = products.filter((p) => p.inStock).map((p) => p.productId);
+        const productIds = products.map((p) => p.productId);
 
         const existingProducts = await model
             .find({

@@ -61,11 +61,11 @@ app.listen(port, () => {
 
 
 
-    // development
-    setTimeout(() => instamartStartTrackingHandler(), 150 * 1000)
-    // setTimeout(() => zeptoStartTrackingHandler("vertex corporate"), 0)
-    setTimeout(() => flipkartStartTrackingHandler("500064"), 10 * 1000); // For Flipkart
-    setTimeout(() => BigBasketStartTrackingHandler("500064"), 60 * 1000); // For BigBasket
-    setTimeout(() => amazonFreshStartTrackingHandler("500064"), 90 * 1000); // For Amazon Fresh
-    setTimeout(() => blinkitStartTrackingHandler("bahadurpura police station"), 120 * 1000); // For Blinkit
+    // // development
+    // setTimeout(() => instamartStartTrackingHandler(), 150 * 1000)
+    // // setTimeout(() => zeptoStartTrackingHandler("vertex corporate"), 0)
+    // setTimeout(() => flipkartStartTrackingHandler("500064"), 10 * 1000); // For Flipkart
+    // setTimeout(() => BigBasketStartTrackingHandler("500064"), 60 * 1000); // For BigBasket
+    // setTimeout(() => amazonFreshStartTrackingHandler("500064"), 90 * 1000); // For Amazon Fresh
+    // setTimeout(() => blinkitStartTrackingHandler("bahadurpura police station"), 120 * 1000); // For Blinkit
 });
