@@ -12,32 +12,44 @@ const getSystemPreference = () => {
 };
 
 /**
+ * Get the current theme from localStorage or system preference
+ * @returns {string} 'dark' or 'light'
+ */
+export const getTheme = () => {
+  if (typeof window === 'undefined') return 'light';
+
+  try {
+    const theme = localStorage.getItem('theme');
+    if (theme) return theme;
+
+    const systemTheme = getSystemPreference();
+    localStorage.setItem('theme', systemTheme);
+    return systemTheme;
+  } catch (e) {
+    return getSystemPreference();
+  }
+};
+
+/**
+ * Apply theme to the document
+ * @param {string} theme - 'dark' or 'light'
+ */
+export const applyTheme = (theme) => {
+  if (theme === 'dark') {
+    document.documentElement.classList.add('dark');
+  } else {
+    document.documentElement.classList.remove('dark');
+  }
+};
+
+/**
  * Initialize theme from localStorage or system preference and apply to document
- * Should be called on component mount (client-side only)
+ * @returns {string} The current theme ('dark' or 'light')
  */
 export const initializeTheme = () => {
-  try {
-    let theme = localStorage.getItem('theme');
-
-    if (!theme) {
-      // No stored preference, use system preference
-      theme = getSystemPreference();
-      localStorage.setItem('theme', theme);
-    }
-
-    // Apply theme to document
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  } catch (e) {
-    // Handle localStorage access errors (e.g., in private browsing)
-    const systemTheme = getSystemPreference();
-    if (systemTheme === 'dark') {
-      document.documentElement.classList.add('dark');
-    }
-  }
+  const theme = getTheme();
+  applyTheme(theme);
+  return theme;
 };
 
 /**
@@ -46,16 +58,11 @@ export const initializeTheme = () => {
  */
 export const toggleTheme = () => {
   try {
-    const currentTheme = localStorage.getItem('theme') || 'light';
+    const currentTheme = getTheme();
     const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
 
     localStorage.setItem('theme', newTheme);
-
-    if (newTheme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    applyTheme(newTheme);
 
     return newTheme;
   } catch (e) {
@@ -63,3 +70,43 @@ export const toggleTheme = () => {
     return 'light';
   }
 };
+
+/**
+ * Inline script code for theme initialization (to prevent flash)
+ * This is the same logic as above but as a string for use in <script> tags
+ */
+export const themeInitScript = `
+(function() {
+  // Get the system's preferred color scheme
+  const getSystemPreference = () => {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  };
+
+  // Get the current theme from localStorage or system preference
+  const getTheme = () => {
+    try {
+      const theme = localStorage.getItem('theme');
+      if (theme) return theme;
+
+      const systemTheme = getSystemPreference();
+      localStorage.setItem('theme', systemTheme);
+      return systemTheme;
+    } catch (e) {
+      return getSystemPreference();
+    }
+  };
+
+  // Apply theme to the document
+  const applyTheme = (theme) => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  };
+
+  // Initialize theme
+  const theme = getTheme();
+  applyTheme(theme);
+})();
+`;
