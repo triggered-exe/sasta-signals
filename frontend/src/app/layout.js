@@ -1,25 +1,16 @@
+"use client";
+import { useEffect } from "react";
 import "./globals.css";
+import { initializeTheme } from "@/utils/theme";
 
 export default function RootLayout({ children }) {
+  useEffect(() => {
+    initializeTheme();
+  }, []);
+  
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en">
       <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function() {
-                try {
-                  const isDarkMode = localStorage.getItem('darkMode') === 'true';
-                  if (isDarkMode) {
-                    document.documentElement.classList.add('dark');
-                  }
-                } catch (e) {
-                  // Handle localStorage access errors (e.g., in private browsing)
-                }
-              })();
-            `,
-          }}
-        />
       </head>
       <body className="bg-gray-100 text-gray-900 vsc-initialized">
         {children}

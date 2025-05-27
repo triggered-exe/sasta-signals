@@ -16,7 +16,6 @@ export default function PriceTracker({ apiEndpoint }) {
     const prevApiEndpointRef = useRef(apiEndpoint);
 
     const fetchProducts = (async (page, endpoint, sort, dropped, notUpd) => { 
-        console.log('fetchign , parameters: ', page, endpoint, sort, dropped, notUpd);
         setIsLoading(true);
         setError(null);
 
@@ -45,12 +44,10 @@ export default function PriceTracker({ apiEndpoint }) {
 
     // Single useEffect to handle all changes with proper logic
     useEffect(() => {
-        console.log('useEffect called');
         const isApiEndpointChanged = prevApiEndpointRef.current !== apiEndpoint;
 
         if (isApiEndpointChanged) {
             // API endpoint changed - always fetch page 1
-            console.log('API endpoint changed, fetching page 1 for:', apiEndpoint);
             setCurrentPage(1);
             // Fetch products only if currentPage is 1 Since for other pages, the useEffect for currentPage will trigger
             if(currentPage === 1) {
@@ -59,7 +56,6 @@ export default function PriceTracker({ apiEndpoint }) {
             prevApiEndpointRef.current = apiEndpoint;
         } else {
             // Other parameters changed - fetch current page
-            console.log('Parameters changed, fetching page:', currentPage, 'for:', apiEndpoint);
             fetchProducts(currentPage, apiEndpoint, sortOrder, priceDropped, notUpdated);
         }
     }, [currentPage, apiEndpoint, sortOrder, priceDropped, notUpdated]);

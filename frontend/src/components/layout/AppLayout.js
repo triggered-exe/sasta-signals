@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
+import { toggleTheme } from "@/utils/theme";
 
 export default function AppLayout({ children, selectedWebsite, setSelectedWebsite }) {
     const [isMenuExpanded, setIsMenuExpanded] = useState(false);
@@ -33,10 +34,9 @@ export default function AppLayout({ children, selectedWebsite, setSelectedWebsit
         setIsMenuExpanded(!isMenuExpanded);
     };
 
-    // Toggle dark mode
-    const toggleDarkMode = () => {
-        const isDark = document.documentElement.classList.toggle('dark');
-        localStorage.setItem('darkMode', isDark.toString());
+    // Toggle theme using utility function
+    const handleToggleTheme = () => {
+        toggleTheme();
     };
 
     return (
@@ -47,7 +47,7 @@ export default function AppLayout({ children, selectedWebsite, setSelectedWebsit
                 <Sidebar
                     isMenuExpanded={isMenuExpanded}
                     toggleMenuExpansion={toggleMenuExpansion}
-                    toggleDarkMode={toggleDarkMode}
+                    toggleDarkMode={handleToggleTheme}
                     selectedWebsite={selectedWebsite}
                     setSelectedWebsite={setSelectedWebsite}
                 />
@@ -60,4 +60,4 @@ export default function AppLayout({ children, selectedWebsite, setSelectedWebsit
             </div>
         </div>
     );
-} 
+}
