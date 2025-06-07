@@ -12,53 +12,38 @@ class ContextManager {
     if (!this.browser) {
       this.browser = await firefox.launch({
         headless: process.env.ENVIRONMENT === "development" ? false : true,
-        args: [
-          // Core arguments for security and compatibility
-          "--disable-web-security",
-          "--disable-features=IsolateOrigins,site-per-process",
-
-          // Memory optimization arguments for low-RAM VMs
-          "--disable-dev-shm-usage", // Prevents browser from running out of memory in containers
-          "--no-sandbox", // Reduces memory overhead but slightly reduces security
-          "--disable-setuid-sandbox", // Works with no-sandbox for compatibility
+        firefoxUserPrefs: {
+          // Memory optimization preferences for low-RAM VMs
+          // "browser.cache.disk.enable": false, // Disable disk cache to save memory
+          // "browser.cache.memory.enable": true,
+          // "browser.cache.memory.capacity": 32768, // Limit memory cache to 32MB
 
           // Disable memory-intensive features
-          "--disable-gpu", // Saves significant memory on VMs
-          "--disable-software-rasterizer", // Reduces rendering memory usage
-          "--disable-extensions", // Extensions consume extra memory
+          "browser.sessionhistory.max_total_viewers": 2, // Limit back/forward cache
+          "browser.tabs.animate": false, // Disable tab animations
+          "browser.fullscreen.animate": false, // Disable fullscreen animations
 
-          // More memory optimizations for resource-constrained environments
-          "--disable-default-apps",
-          "--disable-translate",
-          "--disable-sync",
-          "--disable-background-networking",
+          // Disable unnecessary features
+          "browser.safebrowsing.enabled": false, // Disable safe browsing
+          "browser.safebrowsing.malware.enabled": false,
+          "browser.safebrowsing.phishing.enabled": false,
+          "extensions.update.enabled": false, // Disable extension updates
+          "app.update.enabled": false, // Disable browser updates
 
           // Performance optimizations
-          "--metrics-recording-only",
-          "--disable-background-timer-throttling",
-          "--disable-backgrounding-occluded-windows",
+          "dom.ipc.processCount": 1, // Limit content processes
+          "browser.tabs.remote.autostart": false, // Disable e10s for memory savings
 
-          // Additional memory-saving flags
-          "--disable-breakpad", // Crash reporting uses memory
-          "--disable-component-extensions-with-background-pages",
-          "--disable-features=TranslateUI,BlinkGenPropertyTrees",
-          "--disable-ipc-flooding-protection",
+          // Security preferences (equivalent to Chrome's --disable-web-security)
+          "security.tls.insecure_fallback_hosts": "*",
+          "security.mixed_content.block_active_content": false,
+          "security.mixed_content.block_display_content": false,
 
-          // Network and rendering optimizations
-          "--enable-features=NetworkService,NetworkServiceInProcess",
-          "--force-color-profile=srgb",
-          "--hide-scrollbars",
-          "--ignore-gpu-blacklist",
-          "--mute-audio",
-
-          // Startup optimizations
-          "--no-default-browser-check",
-          "--no-first-run",
-          "--password-store=basic",
-          "--use-gl=swiftshader", // Software rendering that uses less memory
-          "--use-mock-keychain",
-          "--window-size=1920,1080",
-        ],
+          // Disable telemetry and data collection
+          "toolkit.telemetry.enabled": false,
+          "datareporting.healthreport.uploadEnabled": false,
+          "datareporting.policy.dataSubmissionEnabled": false,
+        },
       });
     }
     return this.browser;
