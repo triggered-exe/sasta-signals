@@ -9,6 +9,7 @@ router.get("/", (req, res) => {
     });
 });
 
+router.post("/search", ZeptoController.searchQuery);
 router.post("/start-tracking", ZeptoController.startTracking);
 
 export default router;

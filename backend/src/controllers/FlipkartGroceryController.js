@@ -31,6 +31,8 @@ const setLocation = async (pincode) => {
             timeout: 30000, // 30 second timeout
         });
 
+        await page.waitForTimeout(1000); // Increased timeout
+
         // Set location
         console.log(`FK: Setting location for ${pincode}...`);
         await page.keyboard.type(pincode);

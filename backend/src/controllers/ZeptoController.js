@@ -2,16 +2,17 @@ import { AppError } from "../utils/errorHandling.js";
 import { isNightTimeIST } from "../utils/priceTracking.js";
 import axios from "axios";
 import { ZeptoProduct } from "../models/ZeptoProduct.js";
-import { HALF_HOUR } from "../utils/constants.js";
-import { sendPriceDropNotifications } from "../services/NotificationService.js";
 import { processProducts as globalProcessProducts } from "../utils/productProcessor.js";
 import contextManager from "../utils/contextManager.js";
+import { productQueries } from "../utils/productQueries.js";
 
 // Global variables
-let isTrackingActive = false;
 const placesData = {};
 
-const CATEGORY_CHUNK_SIZE = 2;
+// Mobile user agent for Zepto (required for products to be visible)
+const MOBILE_USER_AGENT = 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Mobile/15E148 Safari/604.1';
+
+
 
 /**
  * Generates a URL for a Zepto category or subcategory
@@ -30,11 +31,34 @@ export const generateCategoryUrl = (categoryName, categoryId, subcategoryName, s
     return `https://www.zeptonow.com/cn/${slugifiedCategoryName}/${slugifiedSubcategoryName}/cid/${categoryId}/scid/${subcategoryId}`;
 };
 
-// Set location for Zepto
+
+
+// Create a mobile context for search operations only
+const createMobileContext = async () => {
+    try {
+        const browser = await contextManager.initBrowser();
+        const mobileContext = await browser.newContext({
+            viewport: { width: 375, height: 812 }, // Mobile viewport
+            userAgent: MOBILE_USER_AGENT, // Mobile user agent
+            javaScriptEnabled: true,
+            bypassCSP: true,
+            ignoreHTTPSErrors: true,
+        });
+        console.log("ZEPTO: Created mobile context for search operations");
+        return mobileContext;
+    } catch (error) {
+        console.error("ZEPTO: Error creating mobile context:", error);
+        throw error;
+    }
+};
+
+
+
+// Set location for Zepto (using regular contextManager)
 const setLocation = async (location) => {
     let page = null;
     try {
-        // Get or create context
+        // Get or create context using the global contextManager
         const context = await contextManager.getContext(location);
 
         // Return existing context if already set up and serviceable
@@ -365,7 +389,36 @@ const fetchCategories = async (location = "vertex corporate") => {
     }
 };
 
-export const startTracking = async (req, res, next) => {
+// Search endpoint for testing
+export const searchQuery = async (req, res, next) => {
+    try {
+        const { query, location } = req.body;
+
+        if (!query || !location) {
+            throw AppError.badRequest("Query and location are required");
+        }
+
+        console.log("ZEPTO: Using mobile context for search");
+
+        const allProducts = await searchAndExtractProducts(query, 3);
+
+        // Sort by price
+        allProducts.sort((a, b) => a.price - b.price);
+
+        res.status(200).json({
+            success: true,
+            products: allProducts,
+            total: allProducts.length,
+            totalPages: Math.ceil(allProducts.length / allProducts.length),
+            processedPages: Math.ceil(allProducts.length / allProducts.length),
+        });
+    } catch (error) {
+        console.error("ZEPTO: Search error:", error);
+        next(error);
+    }
+};
+
+export const startTracking = async (_, res, next) => {
     try {
         const message = await startTrackingHandler();
         res.status(200).json({ message });
@@ -374,7 +427,7 @@ export const startTracking = async (req, res, next) => {
     }
 };
 
-export const startTrackingHandler = async (location = "vertex corporate") => {
+export const startTrackingHandler = async () => {
     console.log("Zepto: starting tracking");
     // Start the continuous tracking loop without awaiting it
     trackPrices().catch((error) => {
@@ -383,205 +436,26 @@ export const startTrackingHandler = async (location = "vertex corporate") => {
     return "Zepto price tracking started";
 };
 
-const trackPrices = async (location = "vertex corporate") => {
-    while (true) {
-        try {
-            // Skip if it's night time (12 AM to 6 AM IST)
-            if (isNightTimeIST()) {
-                console.log("Zepto: Skipping price tracking during night hours");
-                // Wait for 5 minutes before checking night time status again
-                await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
-                continue;
-            }
-
-            // Set up browser context with location
-            const context = await setLocation("vertex corporate");
-            if (!context) {
-                throw new Error("ZEPTO: Failed to set location for Zepto");
-            }
-
-            console.log("Zepto: Starting new tracking cycle at:", new Date().toISOString());
-
-            // Step1: Get the categories (now returns a flat array)
-            let categories = await fetchCategories(location);
-
-            console.log("Zepto: Starting to fetch products for all categories");
-
-            const FILTERING_PARENT_CATEGORY_KEYWORDS = [
-                "chicken",
-                "meat",
-                "makeup",
-                "skincare",
-                "hair",
-                "bath",
-                "cleaning",
-                "stationery",
-                "baby",
-                "pet",
-                "paan",
-                "toys",
-                "magazine",
-                "books",
-                "stores",
-                "cards",
-                "Cosmetics",
-                "goods",
-                "jewellery",
-                "feminine",
-                "home",
-                "kitchen",
-                "sexual wellness",
-            ];
-
-            const FILTERING_SUBCATEGORY_KEYWORDS = [
-                "all",
-                "top picks",
-                "flower",
-                "hydroponics",
-                "sprouts",
-                "gardening",
-                "eggs",
-                "vegan",
-                "meat",
-                "salami",
-                "non veg",
-                "pesticide",
-                "cosmetics",
-                "women",
-                "jewellery",
-                "hair colour",
-                "veggies",
-                "tea",
-                "salt",
-                "beauty",
-                "toy",
-                "games",
-                "books",
-                "clocks",
-                "diy",
-                "decor",
-                "herbs",
-                "stationary",
-                "fresh juice & dips",
-                "cake",
-                "conditioner",
-                "serum",
-                "hand & foot care",
-                "mushroom",
-                "girl",
-                "kids",
-                "baby",
-                "handbag",
-                "women",
-            ];
-
-
-            if (!categories || categories.length === 0) {
-                console.log("Zepto: No categories found");
-                continue;
-            }
-
-            // Filter out categories that contain any of the FILTERING_PARENT_CATEGORY_KEYWORDS
-            categories = categories.filter(category => !FILTERING_PARENT_CATEGORY_KEYWORDS.some(keyword => category.name.toLowerCase().includes(keyword)));
-
-
-
-            // Randomize the categories
-            let subcategories = categories.flatMap((category) => category.subCategories.map(subcategory => ({
-                ...subcategory,
-                categoryName: category.name,
-                categoryId: category.id,
-                category // Add the full category object for reference
-            })));
-
-            // Filter out subcategories that contain any of the FILTERING_SUBCATEGORY_KEYWORDS
-            subcategories = subcategories.filter(subcategory => !FILTERING_SUBCATEGORY_KEYWORDS.some(keyword => subcategory.name.toLowerCase().includes(keyword)));
-
-            const randomizedSubcategories = [...subcategories].sort(() => Math.random() - 0.5);
-
-            // Process categories in chunks
-            for (let i = 0; i < randomizedSubcategories.length; i += CATEGORY_CHUNK_SIZE) {
-                const chunk = randomizedSubcategories.slice(i, i + CATEGORY_CHUNK_SIZE);
-                console.log(
-                    `Zepto: Processing chunk ${i / CATEGORY_CHUNK_SIZE + 1} of ${Math.ceil(
-                        randomizedSubcategories.length / CATEGORY_CHUNK_SIZE
-                    )}`
-                );
-
-                // Process each subcategory in the chunk concurrently
-                const processingPromises = chunk.map(async (subcategory) => {
-                    // Skip unlisted subcategories
-                    if (subcategory.unlisted) {
-                        console.log(`Zepto: Skipping unlisted subcategory ${subcategory.name}`);
-                        return;
-                    }
-
-                    console.log(
-                        `Zepto: Processing subcategory ${subcategory.name} from category ${subcategory.categoryName}`
-                    );
-
-                    // Create a new page for this subcategory
-                    const page = await context.newPage();
-
-                    try {
-                        // Extract products from the subcategory page
-                        const products = await extractProductsFromPage(page, subcategory.category, subcategory);
-                        if (products.length === 0) {
-                            console.log(`Zepto: No products found for ${subcategory.name}, skipping`);
-                            return;
-                        }
-
-                        // Process the products
-                        const { processedCount } = await processProducts(products, subcategory.category, subcategory);
-                        console.log(`Zepto: Processed ${processedCount} products from ${subcategory.name}`);
-                    } catch (subcatError) {
-                        console.error(`Zepto: Error processing subcategory ${subcategory.name}:`, subcatError);
-                    } finally {
-                        // Close the page when done with this subcategory
-                        await page.close();
-                    }
-                });
-
-                // Wait for all subcategories in the chunk to complete
-                await Promise.all(processingPromises);
-                console.log(`Zepto: Completed processing chunk ${i / CATEGORY_CHUNK_SIZE + 1}`);
-
-                // Add a delay between chunks to avoid overwhelming the system
-                await new Promise((resolve) => setTimeout(resolve, 5000));
-            }
-
-            console.log("Zepto: Finished tracking prices for all categories");
-        } catch (error) {
-            console.error("Zepto: Failed to track prices:", error);
-        } finally {
-            console.log("Zepto: Tracking cycle completed at:", new Date().toISOString());
-            // Add a small delay before starting the next cycle to prevent overwhelming the system
-            await new Promise((resolve) => setTimeout(resolve, 60 * 1000));
-        }
-    }
-};
-
-/**
- * Extracts products from a Zepto category or subcategory page with infinite scrolling
- * @param {Object} page - The Playwright page object
- * @param {Object} category - The category object
- * @param {Object} subcategory - The subcategory object
- * @returns {Promise<Array>} Array of extracted products
- */
-const extractProductsFromPage = async (page, category, subcategory) => {
+// Function to search and extract products for a query on Zepto
+const searchAndExtractProducts = async (query, maxPages = 3) => {
+    let mobileContext = null;
+    let page = null;
     try {
-        console.log(`ZEPTO: Extracting products from ${subcategory.name} (${category.name})`);
+        console.log(`ZEPTO: Searching for "${query}"`);
 
-        // Navigate to the subcategory URL
-        await page.goto(subcategory.url, { waitUntil: "domcontentloaded", timeout: 30000 });
+        // Create a mobile context specifically for this search
+        mobileContext = await createMobileContext();
+        page = await mobileContext.newPage();
+
+        // Navigate to search page
+        const searchUrl = `https://www.zeptonow.com/search?query=${encodeURIComponent(query)}`;
+        await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
 
         // Wait for products to load
-        await page
-            .waitForSelector('[data-testid="product-card"]', { timeout: 10000 })
-            .catch(() => {
-                console.log(`ZEPTO: No products found for ${subcategory.name}`);
-                return [];
-            });
+        await page.waitForSelector('[data-testid="product-card"]', { timeout: 10000 }).catch(() => {
+            console.log(`ZEPTO: No products found for "${query}"`);
+            return [];
+        });
 
         await page.waitForTimeout(1000);
 
@@ -589,11 +463,9 @@ const extractProductsFromPage = async (page, category, subcategory) => {
         let previousProductCount = 0;
         let currentProductCount = 0;
         let scrollAttempts = 0;
-        const MAX_SCROLL_ATTEMPTS = 15; // Maximum number of scroll attempts
+        const MAX_SCROLL_ATTEMPTS = maxPages * 5; // Adjust based on maxPages
 
-        console.log(`ZEPTO: Starting to scroll for ${subcategory.name}`);
-        // Spinner element selector
-        const spinnerSelector = 'svg.animate-spin';
+        console.log(`ZEPTO: Starting to scroll for "${query}"`);
 
         // Scroll until no spinner is visible or max attempts reached
         while (scrollAttempts < MAX_SCROLL_ATTEMPTS) {
@@ -602,12 +474,12 @@ const extractProductsFromPage = async (page, category, subcategory) => {
                 return document.querySelectorAll('[data-testid="product-card"]').length;
             });
 
-            console.log(`ZEPTO: Found ${currentProductCount} products after ${scrollAttempts} scrolls`);
+            console.log(`ZEPTO: Found ${currentProductCount} products after ${scrollAttempts} scrolls for "${query}"`);
 
             // Check if spinner is visible (indicating more products to load)
-            const { spinner, isSpinnerVisible } = await page.evaluate(() => {
+            const { isSpinnerVisible } = await page.evaluate(() => {
                 const spinner = document.querySelector('.animate-spin');
-                return { spinner, isSpinnerVisible: !!spinner };
+                return { isSpinnerVisible: !!spinner };
             });
 
             // If spinner is visible, but new products didn't load, we need to scroll again
@@ -626,15 +498,15 @@ const extractProductsFromPage = async (page, category, subcategory) => {
 
             // If no spinner is visible and product count hasn't changed, we've reached the end
             if (!isSpinnerVisible && currentProductCount === previousProductCount && scrollAttempts > 0) {
-                console.log(`ZEPTO: No more products to load, stopping at ${currentProductCount} products`);
+                console.log(`ZEPTO: No more products to load for "${query}", stopping at ${currentProductCount} products`);
                 break;
             }
 
             // Update previous count
             previousProductCount = currentProductCount;
 
-            // Scroll the content-start container that holds the products
-            await page.evaluate((spinnerSelector) => {
+            // Scroll to trigger loading more products
+            await page.evaluate(() => {
                 const spinner = document.querySelector('.animate-spin');
                 if (spinner) {
                     // Scroll the spinner into view to trigger loading more products
@@ -647,16 +519,6 @@ const extractProductsFromPage = async (page, category, subcategory) => {
 
             scrollAttempts++;
         }
-
-        // Now scroll back to the top to ensure all images are loaded
-        await page.evaluate(() => {
-            const container = document.querySelector('.content-start');
-            if (container) {
-                container.scrollTo(0, 0);
-            }
-        });
-
-        await page.waitForTimeout(1000);
 
         // Extract product data using page.evaluate
         const products = await page.evaluate(() => {
@@ -692,7 +554,6 @@ const extractProductsFromPage = async (page, category, subcategory) => {
                     }
 
                     // Extract MRP (original price)
-                    // Look for the element with line-through class that appears near the price
                     const priceContainer = card.querySelector('.flex.items-baseline.gap-1');
                     const mrpElement = priceContainer ? priceContainer.querySelector('.line-through') : null;
 
@@ -715,7 +576,6 @@ const extractProductsFromPage = async (page, category, subcategory) => {
                     }
 
                     // Extract discount from discount tag if available
-                    // Based on the example HTML, the discount tag has a specific structure
                     const discountTag = card.querySelector('.z-\\[100\\] p, .absolute.top-0 p');
                     if (discountTag) {
                         const discountText = discountTag.textContent.trim();
@@ -725,9 +585,9 @@ const extractProductsFromPage = async (page, category, subcategory) => {
                         }
                     }
 
-                    // Extract image URL - get the first image in the card
+                    // Extract image URL
                     const imageElement = card.querySelector('[data-testid="product-card-image"]');
-                    let imageUrl = imageElement.getAttribute('src');
+                    let imageUrl = imageElement ? imageElement.getAttribute('src') : '';
 
                     // Check if product is out of stock
                     const isOutOfStock = !card.textContent.toLowerCase().includes('add to cart');
@@ -750,51 +610,123 @@ const extractProductsFromPage = async (page, category, subcategory) => {
                     console.error('Error extracting product data:', error);
                     return null;
                 }
-            }).filter(product => product !== null);
+            }).filter(product => product !== null && product.productId);
         });
 
-        console.log(`ZEPTO: Successfully extracted ${products.length} products from ${subcategory.name}`);
+        console.log(`ZEPTO: Successfully extracted ${products.length} products for "${query}"`);
         return products;
     } catch (error) {
-        console.error(`ZEPTO: Error extracting products from ${subcategory?.name}:`, error);
+        console.error(`ZEPTO: Error searching for "${query}":`, error);
         return [];
+    } finally {
+        // Clean up mobile context
+        if (page) {
+            try {
+                await page.close();
+            } catch (closeError) {
+                console.error("ZEPTO: Error closing page:", closeError);
+            }
+        }
+        if (mobileContext) {
+            try {
+                await mobileContext.close();
+            } catch (closeError) {
+                console.error("ZEPTO: Error closing mobile context:", closeError);
+            }
+        }
     }
 };
 
-const processProducts = async (products, category, subcategory) => {
-    try {
-        // Transform the extracted products to the standard format expected by globalProcessProducts
-        const transformedProducts = products
-            .map((product) => {
-                return {
-                    productId: product.productId,
-                    productName: product.productName,
-                    categoryName: category.name,
-                    subcategoryName: subcategory.name,
-                    inStock: product.inStock,
-                    imageUrl: product.imageUrl || "",
-                    price: product.price,
-                    mrp: product.mrp,
-                    discount: product.discount || 0,
-                    weight: product.weight || "",
-                    brand: "",  // Not extracted from the page
-                    url: product.url
-                };
+const trackPrices = async () => {
+    while (true) {
+        try {
+            // Skip if it's night time (12 AM to 6 AM IST)
+            if (isNightTimeIST()) {
+                console.log("Zepto: Skipping price tracking during night hours");
+                // Wait for 5 minutes before checking night time status again
+                await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
+                continue;
+            }
+
+            // Set up browser context with location (using regular contextManager)
+            const context = await setLocation("vertex corporate");
+            if (!context) {
+                throw new Error("ZEPTO: Failed to set location for Zepto");
+            }
+            console.log("ZEPTO: Using regular context for location setup");
+
+            console.log("Zepto: Starting new tracking cycle at:", new Date().toISOString());
+
+            // Get all queries from productQueries
+            const queries = [];
+            Object.values(productQueries).forEach((category) => {
+                Object.values(category).forEach((subcategory) => {
+                    subcategory.forEach((query) => {
+                        queries.push(query);
+                    });
+                });
             });
 
-        // Use the global processProducts function with Zepto-specific options
-        const result = await globalProcessProducts(transformedProducts, category.name, {
-            model: ZeptoProduct,
-            source: "Zepto",
-            telegramNotification: true,
-            emailNotification: false,
-            significantDiscountThreshold: 10,
-        });
+            console.log(`Zepto: Found ${queries.length} search queries to process`);
 
-        const processedCount = typeof result === "number" ? result : 0;
-        return { processedCount };
-    } catch (error) {
-        console.error("Zepto: Error processing products:", error);
-        return { processedCount: 0 };
+            let totalProcessedProducts = 0;
+            const QUERY_CHUNK_SIZE = 2; // Process 2 queries concurrently
+
+            // Process queries in chunks
+            for (let i = 0; i < queries.length; i += QUERY_CHUNK_SIZE) {
+                const queryChunk = queries.slice(i, i + QUERY_CHUNK_SIZE);
+                console.log(
+                    `Zepto: Processing chunk ${i / QUERY_CHUNK_SIZE + 1} of ${Math.ceil(
+                        queries.length / QUERY_CHUNK_SIZE
+                    )}`
+                );
+
+                // Run searches in parallel (each creates its own mobile context)
+                const results = await Promise.all(
+                    queryChunk.map(async (query) => {
+                        console.log(`Zepto: Processing ${query}`);
+                        try {
+                            const products = await searchAndExtractProducts(query, 3);
+
+                            // Transform products to include category information
+                            const transformedProducts = products.map((product) => ({
+                                ...product,
+                                categoryName: query, // Use query as category name
+                                subcategoryName: "", // No subcategory for search-based approach
+                                brand: "", // Not extracted from search results
+                            }));
+
+                            const result = await globalProcessProducts(transformedProducts, query, {
+                                model: ZeptoProduct,
+                                source: "Zepto",
+                                telegramNotification: true,
+                                emailNotification: false,
+                                significantDiscountThreshold: 10,
+                            });
+                            const processedCount = typeof result === "number" ? result : result.processedCount;
+                            return processedCount;
+                        } catch (error) {
+                            console.error(`Zepto: Error processing ${query}:`, error);
+                            return 0;
+                        }
+                    })
+                );
+
+                totalProcessedProducts += results.reduce((a, b) => a + b, 0);
+
+                // Add delay between chunks
+                await new Promise((resolve) => setTimeout(resolve, 3000));
+            }
+
+            console.log(`Zepto: Completed search-based tracking. Processed ${totalProcessedProducts} products`);
+        } catch (error) {
+            console.error("Zepto: Failed to track prices:", error);
+        } finally {
+            console.log("Zepto: Tracking cycle completed at:", new Date().toISOString());
+            // Add a delay before starting the next cycle
+            await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000)); // 5 minutes
+        }
     }
 };
+
+
