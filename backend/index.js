@@ -8,7 +8,7 @@ import meeshoRouter from "./src/routes/api/meesho/meesho.js";
 import { trackProductPrices as instamartStartTrackingHandler } from "./src/controllers/InstamartController.js"; // Import the function
 import bigbasketRoutes from "./src/routes/api/bigbasket/bigbasket.js";
 import { startTrackingHandler as BigBasketStartTrackingHandler } from "./src/controllers/BigBasketController.js";
-import { startTrackingHandler as zeptoStartTrackingHandler } from "./src/controllers/ZeptoController.js";
+import { startTrackingHelper as zeptoStartTrackingHandler } from "./src/controllers/ZeptoController.js";
 import { startTrackingHandler as flipkartStartTrackingHandler } from "./src/controllers/FlipkartGroceryController.js";
 import flipkartGroceryRouter from "./src/routes/api/flipkartGrocery/flipkartGrocery.js";
 import amazonFreshRouter from "./src/routes/api/amazonFresh/amazonFresh.js";
@@ -60,12 +60,12 @@ app.listen(port, () => {
     // blinkitStartTrackingHandler("bahadurpura police station") // For Blinkit
     if(process.env.ENVIRONMENT === "production"){
     setTimeout(() => instamartStartTrackingHandler(), 150 * 1000)
-    // setTimeout(() => zeptoStartTrackingHandler("vertex corporate"), 0)
+    setTimeout(() => zeptoStartTrackingHandler("vertex corporate"), 0)
     setTimeout(() => BigBasketStartTrackingHandler("500064"), 5 * 1000); // For BigBasket
     setTimeout(() => flipkartStartTrackingHandler("500064"), 30 * 1000); // For Flipkart
     setTimeout(() => amazonFreshStartTrackingHandler("500064"), 60 * 1000); // For Amazon Fresh
     setTimeout(() => blinkitStartTrackingHandler("bahadurpura police station"), 90 * 1000); // For Blinkit
     }else{
-    // setTimeout(() => zeptoStartTrackingHandler("vertex corporate"), 0)
+    setTimeout(() => zeptoStartTrackingHandler("vertex corporate"), 0)
     }
 });
