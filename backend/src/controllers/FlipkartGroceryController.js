@@ -27,7 +27,7 @@ const setLocation = async (pincode) => {
         // Navigate to Flipkart
         console.log("FK: Navigating to Flipkart...");
         await page.goto("https://www.flipkart.com/grocery-supermart-store?marketplace=GROCERY", {
-            waitUntil: "networkidle",
+            waitUntil: "domcontentloaded",
             timeout: 30000, // 30 second timeout
         });
 
@@ -37,7 +37,7 @@ const setLocation = async (pincode) => {
         console.log(`FK: Setting location for ${pincode}...`);
         await page.keyboard.type(pincode);
         await page.keyboard.press("Enter");
-        await page.waitForTimeout(1000); // Increased timeout
+        await page.waitForTimeout(3000); // Increased timeout
 
         // Verify location
         const locationInput = await page.$('input[placeholder*="Enter pincode"]');
@@ -73,7 +73,7 @@ const extractProductsFromPage = async (page, url, query) => {
     try {
         // Navigate to current page
         await page.goto(url, {
-            waitUntil: "networkidle",
+            waitUntil: "domcontentloaded",
             timeout: 30000,
         });
 

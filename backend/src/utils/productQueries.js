@@ -1,9 +1,14 @@
 export const productQueries = {
+  SnacksAndBeverages: {
+    Snacks: ["Chips", "Namkeens", "Biscuits", "Chocolates", "Nuts"],
+    Beverages: ["Tea", "Coffee", "Juices", "Soft Drinks", "Energy Drinks"],
+    Sweets: ["ice creams", "candies", "indian sweets"],
+    Concentrates: ["syrups"],
+  },
   MedicinesAndHealthcare: {
     HealthSupplements: [
       "multi vitamins",
-      "Protein supplements",
-      "whey protein",
+      "Protein powder",
       "Creatine",
       "Pre-workout",
       "BCAA",

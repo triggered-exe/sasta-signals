@@ -8,12 +8,6 @@ import { productQueries } from "../utils/productQueries.js";
 
 // Global variables
 const placesData = {};
-
-// Mobile user agent for Zepto (required for products to be visible)
-const MOBILE_USER_AGENT = 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Mobile/15E148 Safari/604.1';
-
-
-
 /**
  * Generates a URL for a Zepto category or subcategory
  * @param {string} categoryName - The name of the category
@@ -32,33 +26,11 @@ export const generateCategoryUrl = (categoryName, categoryId, subcategoryName, s
 };
 
 
-
-// Create a mobile context for search operations only
-const createMobileContext = async () => {
-    try {
-        const browser = await contextManager.initBrowser();
-        const mobileContext = await browser.newContext({
-            viewport: { width: 375, height: 812 }, // Mobile viewport
-            userAgent: MOBILE_USER_AGENT, // Mobile user agent
-            javaScriptEnabled: true,
-            bypassCSP: true,
-            ignoreHTTPSErrors: true,
-        });
-        console.log("ZEPTO: Created mobile context for search operations");
-        return mobileContext;
-    } catch (error) {
-        console.error("ZEPTO: Error creating mobile context:", error);
-        throw error;
-    }
-};
-
-
-
-// Set location for Zepto (using regular contextManager)
+// Set location for Zepto
 const setLocation = async (location) => {
     let page = null;
     try {
-        // Get or create context using the global contextManager
+        // Get or create context
         const context = await contextManager.getContext(location);
 
         // Return existing context if already set up and serviceable
@@ -250,147 +222,78 @@ export const getCategoriesHandler = async (req, res, next) => {
 
 const fetchCategories = async (location = "vertex corporate") => {
     try {
-        // Return cached data if available
-        if (placesData[location] && placesData[location].categories) {
-            return placesData[location].categories;
-        }
+        // Fetch the sitemap XML
+        const response = await axios.get('https://www.zeptonow.com/sitemap/categories/hyderabad.xml');
 
-        // Step1: Get the storeId
-        const storeId = await getStoreId(location);
-        const { latitude, longitude } = placesData[location] || { latitude: 17.4561171, longitude: 78.3757135 };
+        // Parse the URLs from the XML content
+        const unfilteredUrls = response.data.match(/https:\/\/www\.zeptonow\.com\/city\/[^<]+/g) || [];
 
-        // Fetch categories from API
-        const response = await axios.get("https://api.zeptonow.com/api/v2/get_page", {
-            params: {
-                page_size: 10,
-                latitude,
-                longitude,
-                page_type: "PAGE_IN_PAGE",
-                version: "v1",
-                layout_id: 9277,
-                scope: "pip",
-            },
-            headers: {
-                accept: "application/json, text/plain, */*",
-                "accept-language": "en-US,en;q=0.7",
-                app_sub_platform: "WEB",
-                app_version: "12.64.7",
-                appversion: "12.64.7",
-                auth_revamp_flow: "v2",
-                compatible_components:
-                    ",NEW_FEE_STRUCTURE,NEW_BILL_INFO,RE_PROMISE_ETA_ORDER_SCREEN_ENABLED,SUPERSTORE_V1,MANUALLY_APPLIED_DELIVERY_FEE_RECEIVABLE,MARKETPLACE_REPLACEMENT,ZEPTO_PASS,ZEPTO_PASS:1,ZEPTO_PASS:2,ZEPTO_PASS_RENEWAL,CART_REDESIGN_ENABLED,SHIPMENT_WIDGETIZATION_ENABLED,TABBED_CAROUSEL_V2,24X7_ENABLED_V1,PROMO_CASH:0,HOMEPAGE_V2,SUPER_SAVER:1,NO_PLATFORM_CHECK_ENABLED_V2,HP_V4_FEED,GIFT_CARD,SCLP_ADD_MONEY,GIFTING_ENABLED,OFSE,WIDGET_BASED_ETA,NEW_ETA_BANNER,",
-                device_id: "43947ad0-3a84-4ba2-9542-e0d2cf84659a",
-                deviceid: "43947ad0-3a84-4ba2-9542-e0d2cf84659a",
-                marketplace_type: "ZEPTO_NOW",
-                platform: "WEB",
-                "request-signature": "750446e0e26bdc566c76f67e3fc73286a36dbffaa16c114ba106a55a9c681ff3",
-                request_id: `${Math.random().toString(36).substring(2, 15)}-${Math.random()
-                    .toString(36)
-                    .substring(2, 15)}-${Math.random().toString(36).substring(2, 15)}-${Math.random()
-                        .toString(36)
-                        .substring(2, 15)}`,
-                session_id: `${Math.random().toString(36).substring(2, 15)}-${Math.random()
-                    .toString(36)
-                    .substring(2, 15)}-${Math.random().toString(36).substring(2, 15)}-${Math.random()
-                        .toString(36)
-                        .substring(2, 15)}`,
-                sessionid: `${Math.random().toString(36).substring(2, 15)}-${Math.random()
-                    .toString(36)
-                    .substring(2, 15)}-${Math.random().toString(36).substring(2, 15)}-${Math.random()
-                        .toString(36)
-                        .substring(2, 15)}`,
-                store_id: storeId,
-                storeid: storeId,
-            },
+        // Process URLs to extract categories and their subcategories
+        const categoryMap = new Map();
+        const unwantedCategories = ["women", "feminine", "girls", "jewellery", "kitchen", "purse", "decor", "hair-color",
+             "fish", "kids", "boys", "toys", "unlisted", "books", "pet-care", "elderly", "cleaning-essentials", 
+             "test-", "sample", "prescription-medicine", "bags-wallets", "dummy", "home-needs", "makeup", "home",
+             "lips", "face", "eyes", "nail", "beauty", "gardening", "sexual-wellness", "bath-body", "zepto-cafe"]
+
+        const urls = unfilteredUrls.filter(url => !unwantedCategories.some(category => url.includes(category)));
+
+        urls.forEach(url => {
+            const parts = url.split('/');
+
+            // URL structure: /city/hyderabad/cn/category-name/subcategory-name/cid/category-id/scid/subcategory-id
+            const categoryIndex = parts.indexOf('cn') + 1;
+            const cidIndex = parts.indexOf('cid') + 1;
+            const scidIndex = parts.indexOf('scid') + 1;
+
+            if (categoryIndex > 0 && cidIndex > 0 && scidIndex > 0) {
+                const categoryName = parts[categoryIndex].replace(/-/g, ' ');
+                const subcategoryName = parts[categoryIndex + 1].replace(/-/g, ' ');
+                const categoryId = parts[cidIndex];
+                const subcategoryId = parts[scidIndex];
+
+                // If this category doesn't exist yet, create it
+                if (!categoryMap.has(categoryId)) {
+                    categoryMap.set(categoryId, {
+                        categoryId,
+                        categoryName,
+                        subcategories: []
+                    });
+                }
+
+                // Add subcategory to the category
+                const category = categoryMap.get(categoryId);
+                if (!category.subcategories.some(subcategory => subcategory.subcategoryId === subcategoryId)) {
+                    category.subcategories.push({
+                        categoryId,
+                        categoryName,
+                        subcategoryId,
+                        subcategoryName,
+                        url: url
+                    });
+                }
+            }
         });
 
-        if (!response.data) {
-            throw AppError.badRequest("Failed to fetch categories");
-        }
+        // Convert map to a clean object structure
+        const categories = Array.from(categoryMap.values()).map(category => ({
+            categoryId: category.categoryId,
+            categoryName: category.categoryName,
+            subcategories: Array.from(category.subcategories.values())
+        }));
 
-        // Process the data from the API response
-        const widgets = response.data?.pageLayout?.widgets || [];
-        const categoryWidgets = widgets.filter((widget) => widget.campaignName === "Category grid");
-
-        if (!categoryWidgets.length) {
-            console.log("Zepto: No category widgets found in response");
-            return [];
-        }
-
-        // Create flat array of categories
-        const categories = [];
-        const processedCategoryIds = new Set();
-
-        for (const widget of categoryWidgets) {
-            const items = widget.data?.items || [];
-            for (const item of items) {
-                if (!item.availableSubcategories?.length) continue;
-
-                // Get parent category from first subcategory
-                const firstSubcat = item.availableSubcategories[0];
-                const parentCategory = firstSubcat.category;
-
-                if (!parentCategory?.id) continue;
-
-                // Skip if already processed this category
-                if (processedCategoryIds.has(parentCategory.id)) continue;
-                processedCategoryIds.add(parentCategory.id);
-
-                // Create category with subcategories
-                // For the main category, we'll use the first subcategory's ID as the default subcategory
-                const firstSubcatId = item.availableSubcategories[0]?.id;
-                const categoryUrl = generateCategoryUrl(
-                    parentCategory.name,
-                    parentCategory.id,
-                    item.availableSubcategories[0]?.name,
-                    firstSubcatId
-                );
-
-                const category = {
-                    id: parentCategory.id,
-                    name: parentCategory.name,
-                    image: parentCategory.image?.path ? `https://cdn.zeptonow.com/${parentCategory.image.path}` : "",
-                    priority: parentCategory.priority || 0,
-                    productCount: 0,
-                    isActive: true,
-                    url: categoryUrl, // Add the URL to the main category object
-                    subCategories: item.availableSubcategories.map((subcat) => {
-                        // Generate URL for each subcategory
-                        const url = generateCategoryUrl(parentCategory.name, parentCategory.id, subcat.name, subcat.id);
-                        return {
-                            id: subcat.id,
-                            name: subcat.name,
-                            image: subcat.imageV2?.path ? `https://cdn.zeptonow.com/${subcat.imageV2.path}` : "",
-                            priority: subcat.priority || 0,
-                            unlisted: subcat.unlisted || false,
-                            displaySecondaryImage: subcat.displaySecondaryImage || false,
-                            url: url, // Add the URL to the subcategory object
-                        };
-                    }),
-                };
-
-                categories.push(category);
-            }
-        }
-
-        console.log(`Zepto: Extracted ${categories.length} categories with their subcategories`);
-
-        // Cache the results
-        placesData[location] = {
-            ...placesData[location],
-            categories,
-            storeId,
-        };
+        console.log("Zepto: categories with subcategories", JSON.stringify(categories, null, 2));
 
         return categories;
     } catch (error) {
-        console.error("Zepto: Error fetching categories:", error?.response?.data || error);
+        console.error("Zepto: Error fetching categories from sitemap:", error?.response?.data || error);
         throw AppError.internalError("Failed to fetch categories");
     }
 };
 
+
 // Search endpoint for testing
 export const searchQuery = async (req, res, next) => {
+    let page = null;
     try {
         const { query, location } = req.body;
 
@@ -398,12 +301,25 @@ export const searchQuery = async (req, res, next) => {
             throw AppError.badRequest("Query and location are required");
         }
 
-        console.log("ZEPTO: Using mobile context for search");
+        // Get or create context for this location
+        const context = await setLocation(location);
+        page = await context.newPage();
 
-        const allProducts = await searchAndExtractProducts(query, 3);
+        // Note: User agent should be set at context level, not page level in Playwright
+        console.log("ZEPTO: Proceeding with search (user agent should be set at context level)");
+
+        const allProducts = await searchAndExtractProducts(page, query, 3);
 
         // Sort by price
         allProducts.sort((a, b) => a.price - b.price);
+
+        // Set headers for better browser compatibility
+        res.set({
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+            'Content-Type': 'application/json'
+        });
 
         res.status(200).json({
             success: true,
@@ -414,48 +330,59 @@ export const searchQuery = async (req, res, next) => {
         });
     } catch (error) {
         console.error("ZEPTO: Search error:", error);
+
+        // Set headers for error responses too
+        res.set({
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+            'Content-Type': 'application/json'
+        });
+
+        // Handle specific error types for better user experience
+        if (error.message && error.message.includes("Location") && error.message.includes("not serviceable")) {
+            return res.status(400).json({
+                success: false,
+                message: error.message,
+                products: []
+            });
+        }
+
         next(error);
+    } finally {
+        if (page) await page.close();
     }
 };
 
 export const startTracking = async (_, res, next) => {
     try {
-        const message = await startTrackingHandler();
+        const message = await startTrackingHelper();
         res.status(200).json({ message });
     } catch (error) {
         next(error instanceof AppError ? error : AppError.internalError("Failed to start price tracking"));
     }
 };
 
-export const startTrackingHandler = async () => {
-    console.log("Zepto: starting tracking");
-    // Start the continuous tracking loop without awaiting it
-    trackPrices().catch((error) => {
-        console.error("Zepto: Failed in tracking loop:", error);
-    });
-    return "Zepto price tracking started";
-};
-
 // Function to search and extract products for a query on Zepto
-const searchAndExtractProducts = async (query, maxPages = 3) => {
-    let mobileContext = null;
-    let page = null;
+const searchAndExtractProducts = async (page, query, maxPages = 3) => {
     try {
         console.log(`ZEPTO: Searching for "${query}"`);
 
-        // Create a mobile context specifically for this search
-        mobileContext = await createMobileContext();
-        page = await mobileContext.newPage();
+        // Note: User agent should be set at context level in Playwright
+        console.log(`ZEPTO: Searching for "${query}" (user agent should be set at context level)`);
 
         // Navigate to search page
         const searchUrl = `https://www.zeptonow.com/search?query=${encodeURIComponent(query)}`;
         await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
 
-        // Wait for products to load
-        await page.waitForSelector('[data-testid="product-card"]', { timeout: 10000 }).catch(() => {
-            console.log(`ZEPTO: No products found for "${query}"`);
-            return [];
-        });
+        // Wait for products to load or check if no results
+        try {
+            await page.waitForSelector('[data-testid="product-card"]', { timeout: 10000 });
+            console.log(`ZEPTO: Products found for "${query}"`);
+        } catch (error) {
+            console.log(`ZEPTO: No products found for "${query}" - checking for no results message`);
+            throw new Error(`No products found for "${query}"`);
+        }
 
         await page.waitForTimeout(1000);
 
@@ -476,25 +403,25 @@ const searchAndExtractProducts = async (query, maxPages = 3) => {
 
             console.log(`ZEPTO: Found ${currentProductCount} products after ${scrollAttempts} scrolls for "${query}"`);
 
-            // Check if spinner is visible (indicating more products to load)
+            // First scroll to the last available product card to trigger loading
+            await page.evaluate(() => {
+                const productCards = document.querySelectorAll('[data-testid="product-card"]');
+                if (productCards.length > 0) {
+                    const lastCard = productCards[productCards.length - 1];
+                    lastCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            });
+
+            // Wait a bit for the scroll to trigger loading
+            await page.waitForTimeout(1000);
+
+            // Now check if spinner is visible (indicating more products to load)
             const { isSpinnerVisible } = await page.evaluate(() => {
                 const spinner = document.querySelector('.animate-spin');
                 return { isSpinnerVisible: !!spinner };
             });
 
-            // If spinner is visible, but new products didn't load, we need to scroll again
-            if (isSpinnerVisible && currentProductCount === previousProductCount) {
-                await page.evaluate(() => {
-                    const spinner = document.querySelector('.animate-spin');
-                    if (spinner) {
-                        // Try different scrolling approaches to trigger loading
-                        window.scrollTo(0, document.body.scrollHeight - 500);
-                        setTimeout(() => {
-                            spinner.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        }, 300);
-                    }
-                });
-            }
+            console.log("isSpinnerVisible", isSpinnerVisible);
 
             // If no spinner is visible and product count hasn't changed, we've reached the end
             if (!isSpinnerVisible && currentProductCount === previousProductCount && scrollAttempts > 0) {
@@ -505,14 +432,15 @@ const searchAndExtractProducts = async (query, maxPages = 3) => {
             // Update previous count
             previousProductCount = currentProductCount;
 
-            // Scroll to trigger loading more products
-            await page.evaluate(() => {
-                const spinner = document.querySelector('.animate-spin');
-                if (spinner) {
-                    // Scroll the spinner into view to trigger loading more products
-                    spinner.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }
-            });
+            // If spinner is visible, scroll to it to continue loading
+            if (isSpinnerVisible) {
+                await page.evaluate(() => {
+                    const spinner = document.querySelector('.animate-spin');
+                    if (spinner) {
+                        spinner.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                });
+            }
 
             // Wait for new products to load
             await page.waitForTimeout(2000);
@@ -618,26 +546,10 @@ const searchAndExtractProducts = async (query, maxPages = 3) => {
     } catch (error) {
         console.error(`ZEPTO: Error searching for "${query}":`, error);
         return [];
-    } finally {
-        // Clean up mobile context
-        if (page) {
-            try {
-                await page.close();
-            } catch (closeError) {
-                console.error("ZEPTO: Error closing page:", closeError);
-            }
-        }
-        if (mobileContext) {
-            try {
-                await mobileContext.close();
-            } catch (closeError) {
-                console.error("ZEPTO: Error closing mobile context:", closeError);
-            }
-        }
     }
 };
 
-const trackPrices = async () => {
+const startTrackingHelper = async () => {
     while (true) {
         try {
             // Skip if it's night time (12 AM to 6 AM IST)
@@ -648,12 +560,11 @@ const trackPrices = async () => {
                 continue;
             }
 
-            // Set up browser context with location (using regular contextManager)
+            // Set up browser context with location
             const context = await setLocation("vertex corporate");
             if (!context) {
                 throw new Error("ZEPTO: Failed to set location for Zepto");
             }
-            console.log("ZEPTO: Using regular context for location setup");
 
             console.log("Zepto: Starting new tracking cycle at:", new Date().toISOString());
 
@@ -670,7 +581,7 @@ const trackPrices = async () => {
             console.log(`Zepto: Found ${queries.length} search queries to process`);
 
             let totalProcessedProducts = 0;
-            const QUERY_CHUNK_SIZE = 2; // Process 2 queries concurrently
+            const QUERY_CHUNK_SIZE = 1; // Process 2 queries concurrently
 
             // Process queries in chunks
             for (let i = 0; i < queries.length; i += QUERY_CHUNK_SIZE) {
@@ -681,38 +592,55 @@ const trackPrices = async () => {
                     )}`
                 );
 
-                // Run searches in parallel (each creates its own mobile context)
-                const results = await Promise.all(
-                    queryChunk.map(async (query) => {
-                        console.log(`Zepto: Processing ${query}`);
-                        try {
-                            const products = await searchAndExtractProducts(query, 3);
+                // Create pages for this chunk
+                const pages = await Promise.all(
+                    queryChunk.map(async () => {
+                        const page = await context.newPage();
 
-                            // Transform products to include category information
-                            const transformedProducts = products.map((product) => ({
-                                ...product,
-                                categoryName: query, // Use query as category name
-                                subcategoryName: "", // No subcategory for search-based approach
-                                brand: "", // Not extracted from search results
-                            }));
-
-                            const result = await globalProcessProducts(transformedProducts, query, {
-                                model: ZeptoProduct,
-                                source: "Zepto",
-                                telegramNotification: true,
-                                emailNotification: false,
-                                significantDiscountThreshold: 10,
-                            });
-                            const processedCount = typeof result === "number" ? result : result.processedCount;
-                            return processedCount;
-                        } catch (error) {
-                            console.error(`Zepto: Error processing ${query}:`, error);
-                            return 0;
-                        }
+                        // Note: User agent should be set at context level in Playwright
+                        return page;
                     })
                 );
 
-                totalProcessedProducts += results.reduce((a, b) => a + b, 0);
+                try {
+                    // Run searches in parallel
+                    const results = await Promise.all(
+                        queryChunk.map(async (query, index) => {
+                            console.log(`Zepto: Processing ${query}`);
+                            try {
+                                const products = await searchAndExtractProducts(pages[index], query, 3);
+
+                                // Transform products to include category information
+                                const transformedProducts = products.map((product) => ({
+                                    ...product,
+                                    categoryName: query, // Use query as category name
+                                    subcategoryName: "", // No subcategory for search-based approach
+                                    brand: "", // Not extracted from search results
+                                }));
+
+                                return transformedProducts; //  will remove this later
+
+                                const result = await globalProcessProducts(transformedProducts, query, {
+                                    model: ZeptoProduct,
+                                    source: "Zepto",
+                                    telegramNotification: true,
+                                    emailNotification: false,
+                                    significantDiscountThreshold: 10,
+                                });
+                                const processedCount = typeof result === "number" ? result : result.processedCount;
+                                return processedCount;
+                            } catch (error) {
+                                console.error(`Zepto: Error processing ${query}:`, error);
+                                return 0;
+                            }
+                        })
+                    );
+
+                    totalProcessedProducts += results.reduce((a, b) => a + b, 0);
+                } finally {
+                    // Close pages after each chunk
+                    await Promise.all(pages.map((page) => page.close()));
+                }
 
                 // Add delay between chunks
                 await new Promise((resolve) => setTimeout(resolve, 3000));

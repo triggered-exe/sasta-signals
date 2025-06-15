@@ -186,7 +186,7 @@ const searchAndExtractProducts = async (page, query, maxPages = 10) => {
         let allProducts = [];
         let hasNextPage = true;
         let currentPage = 1;
-        const MAX_PAGES = maxPages || 10; // Default to 10 if not set
+        const MAX_PAGES = maxPages;
 
         while (hasNextPage && currentPage <= MAX_PAGES) {
             // Extract products from current page
@@ -273,7 +273,7 @@ export const startTrackingHandler = async (pincode = "500064") => {
                         taskChunk.map(async (query, index) => {
                             console.log(`AF: Processing ${query}`);
                             try {
-                                const products = await searchAndExtractProducts(pages[index], query, 15);
+                                const products = await searchAndExtractProducts(pages[index], query, 10);
                                 const result = await globalProcessProducts(products, query, {
                                     model: AmazonFreshProduct,
                                     source: "Amazon Fresh",

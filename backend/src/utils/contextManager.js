@@ -1,4 +1,5 @@
 import { firefox } from "playwright";
+const ipadUserAgent = 'Mozilla/5.0 (iPad; CPU OS 6_0 like Mac OS X) AppleWebKit/536.26 (KHTML, like Gecko) Version/6.0 Mobile/10A5376e Safari/8536.25';
 
 class ContextManager {
   constructor() {
@@ -6,6 +7,7 @@ class ContextManager {
     this.contextMap = new Map(); // Map to store contexts by pincode
     this.MAX_CONTEXTS = 3; // Reduced from 5 to 3 for memory efficiency - critical for t1.micro instances
   }
+
 
   async initBrowser() {
     console.log("Environment", process.env.ENVIRONMENT);
@@ -78,13 +80,10 @@ class ContextManager {
       // Create new context with reduced memory footprint
       const browser = await this.initBrowser();
       const context = await browser.newContext({
-        viewport: { width: 1280, height: 1080 }, // Increased height for better page rendering
-        deviceScaleFactor: 1,
-        isMobile: false,
-        hasTouch: false,
-        javaScriptEnabled: true,
-        bypassCSP: true,
-        ignoreHTTPSErrors: true,
+        // Set the User-Agent
+      userAgent: ipadUserAgent,
+      // Emulate the screen size of an iPad (portrait mode)
+      viewport: { width: 1280, height: 1024 },
       });
 
       // Store context with metadata including tracking when it was last used
