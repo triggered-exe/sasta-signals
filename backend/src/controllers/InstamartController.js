@@ -559,7 +559,7 @@ const processProducts = async (products, category, subcategory, address = "50006
                         discount: discount,
                         quantity: variation.quantity,
                         unit: variation.unit_of_measure,
-                        weight: variation.weight_in_grams,
+                        weight: variation.sku_quantity_with_combo || variation.weight_in_grams || 0,
                         url: `https://www.swiggy.com/instamart/item/${product.product_id}?storeId=${placesData[address].storeId}`,
                         // Additional Instamart-specific fields
                         categoryId: category.nodeId,

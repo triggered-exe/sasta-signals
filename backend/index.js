@@ -60,12 +60,12 @@ app.listen(port, () => {
     // blinkitStartTrackingHandler("bahadurpura police station") // For Blinkit
     if(process.env.ENVIRONMENT === "production"){
     setTimeout(() => instamartStartTrackingHandler(), 150 * 1000)
-    // setTimeout(() => zeptoStartTrackingHandler("legacy palace"), 0)
+    setTimeout(() => zeptoStartTrackingHandler("legacy palace"), 0)
     setTimeout(() => BigBasketStartTrackingHandler("500064"), 15 * 1000); // For BigBasket
     setTimeout(() => flipkartStartTrackingHandler("500064"), 30 * 1000); // For Flipkart
     setTimeout(() => amazonFreshStartTrackingHandler("500064"), 60 * 1000); // For Amazon Fresh
     setTimeout(() => blinkitStartTrackingHandler("bahadurpura police station"), 90 * 1000); // For Blinkit
     }else{
-        setTimeout(() => zeptoStartTrackingHandler("legacy palace"), 0); // For BigBasket
+        setTimeout(() => instamartStartTrackingHandler(), 0)
     }
 });

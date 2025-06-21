@@ -287,13 +287,31 @@ const extractProducts = async (page, options = {}) => {
             console.log(`ZEPTO: Found ${currentProductCount} products after ${scrollAttempts} scrolls`);
 
             // First scroll to the last available product card to trigger loading
-            await page.evaluate(() => {
+            const { shouldStopScrolling } = await page.evaluate(() => {
                 const productCards = document.querySelectorAll('[data-testid="product-card"]');
                 if (productCards.length > 0) {
                     const lastCard = productCards[productCards.length - 1];
+
+                    // Check if the last product is out of stock
+                    const addButton = lastCard.querySelector('button[aria-label="add"]');
+                    const isOutOfStock = addButton ? false : true;
+
+                    if (isOutOfStock) {
+                        console.log('Last product is out of stock, stopping scroll');
+                        return { shouldStopScrolling: true };
+                    }
+
                     lastCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    return { shouldStopScrolling: false };
                 }
+                return { shouldStopScrolling: false };
             });
+
+            // If last product is out of stock, stop scrolling
+            if (shouldStopScrolling) {
+                console.log(`ZEPTO: Stopping scroll - last product is out of stock at ${currentProductCount} products`);
+                break;
+            }
 
             // Wait a bit for the scroll to trigger loading
             await page.waitForTimeout(1000);
