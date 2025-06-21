@@ -339,59 +339,56 @@ const extractProducts = async (page, options = {}) => {
                     const href = card.getAttribute('href') || '';
                     const variantIdMatch = href.match(/\/pvid\/([\w-]+)/);
                     const variantId = variantIdMatch ? variantIdMatch[1] : '';
+                    if(!variantId){
+                        return null;
+                    }
 
                     // Extract product name
                     const nameElement = card.querySelector('[data-testid="product-card-name"]');
                     const productName = nameElement ? nameElement.textContent.trim() : '';
 
-                    // Extract weight/quantity
-                    const weightElement = card.querySelector('[data-testid="product-card-quantity"]');
-                    const weight = weightElement ? weightElement.textContent.trim() : '';
+                    // Extract weight/quantity, last p tag with class name tracking-normal
+                    const weightElements = card.querySelectorAll('p.tracking-normal');
+                    const weight = weightElements.length > 0 ? weightElements[weightElements.length - 1].textContent.trim() : '';
 
                     // Extract price information
-                    const priceElement = card.querySelector('[data-testid="product-card-price"]');
                     let price = 0;
                     let mrp = 0;
 
-                    if (priceElement) {
-                        const priceText = priceElement.textContent.trim();
-                        // Parse price from text like "₹51"
-                        const priceMatch = priceText.match(/₹(\d+(?:\.\d+)?)/);
-                        if (priceMatch) {
-                            price = parseFloat(priceMatch[1]) || 0;
+                    // Look for price in the new structure
+                    const priceContainer = card.querySelector('.flex.flex-wrap.items-baseline');
+                    if (priceContainer) {
+                        // Current price , first p tag is the price
+                        const priceElements = priceContainer.querySelectorAll('p');
+                        const priceElement = priceElements[0];
+                        if (priceElement) {
+                            const priceText = priceElement.textContent.trim();
+                            const priceMatch = priceText.match(/₹(\d+(?:\.\d+)?)/);
+                            if (priceMatch) {
+                                price = parseFloat(priceMatch[1]) || 0;
+                            }
+                        }
+
+                        // MRP, second p tag is the MRP
+                        const mrpElement = priceElements[1];
+                        if (mrpElement) {
+                            const mrpText = mrpElement.textContent.trim();
+                            const mrpMatch = mrpText.match(/₹(\d+(?:\.\d+)?)/);
+                            if (mrpMatch) {
+                                mrp = parseFloat(mrpMatch[1]) || 0;
+                            }
                         }
                     }
 
-                    // Extract MRP (original price)
-                    const priceContainer = card.querySelector('.flex.items-baseline.gap-1');
-                    const mrpElement = priceContainer ? priceContainer.querySelector('.line-through') : null;
-
-                    if (mrpElement) {
-                        const mrpText = mrpElement.textContent.trim();
-                        // Parse MRP from text like "₹65"
-                        const mrpMatch = mrpText.match(/₹(\d+(?:\.\d+)?)/);
-                        if (mrpMatch) {
-                            mrp = parseFloat(mrpMatch[1]) || 0;
-                        }
-                    } else {
-                        // If no MRP found, use price as MRP
+                    // If no MRP found, use price as MRP
+                    if (mrp === 0) {
                         mrp = price;
                     }
 
                     // Calculate discount percentage
                     let discount = 0;
-                    if (mrp > price) {
+                    if (mrp > price && price > 0) {
                         discount = Math.round(((mrp - price) / mrp) * 100);
-                    }
-
-                    // Extract discount from discount tag if available
-                    const discountTag = card.querySelector('.z-\\[100\\] p, .absolute.top-0 p');
-                    if (discountTag) {
-                        const discountText = discountTag.textContent.trim();
-                        const discountMatch = discountText.match(/(\d+)%\s*Off/);
-                        if (discountMatch) {
-                            discount = parseInt(discountMatch[1], 10);
-                        }
                     }
 
                     // Extract image URL
@@ -399,7 +396,8 @@ const extractProducts = async (page, options = {}) => {
                     let imageUrl = imageElement ? imageElement.getAttribute('src') : '';
 
                     // Check if product is out of stock
-                    const isOutOfStock = !card.textContent.toLowerCase().includes('add to cart');
+                    const addButton = card.querySelector('button[aria-label="add"]');
+                    const isOutOfStock = addButton ? false : true;
 
                     // Product URL
                     const productUrl = "https://www.zeptonow.com" + href;
@@ -421,9 +419,9 @@ const extractProducts = async (page, options = {}) => {
                 }
             }).filter(product => product !== null && product.productId);
         });
-
-        console.log(`ZEPTO: Successfully extracted ${products.length} products`);
-        return products;
+        const filteredProducts = products.filter(product => product !== null && product.productId && product.mrp > 0);
+        console.log(`ZEPTO: Successfully extracted ${filteredProducts.length} products`);
+        return filteredProducts;
     } catch (error) {
         console.error(`ZEPTO: Error extracting products:`, error);
         return [];
