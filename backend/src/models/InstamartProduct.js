@@ -31,7 +31,7 @@ const instamartProductSchema = new mongoose.Schema({
   // Variation specific details
   quantity: String,
   unit: String,
-  weight: Number,
+  weight: String,
   
   // Tracking
   trackedAt: Date

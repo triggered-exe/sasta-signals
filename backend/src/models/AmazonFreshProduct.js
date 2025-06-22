@@ -24,7 +24,7 @@ const amazonFreshProductSchema = new mongoose.Schema({
     },
     imageUrl: String,
     url: String,
-    weight: Number,
+    weight: String,
     unit: String,
     pricePerUnit: Number,
     brand: String,

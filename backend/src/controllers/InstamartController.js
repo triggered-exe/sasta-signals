@@ -110,7 +110,7 @@ export const startTrackingHandler = async () => {
 };
 
 // Process categories linearly instead of in parallel
-const processCategoriesChunk = async (categoryChunk, storeId, cookie, address = "500064") => {
+const fetchProductsForCategoriesChunk = async (categoryChunk, storeId, cookie, address = "500064") => {
     try {
         // Common headers to use across all API calls
         const headers = {
@@ -199,8 +199,7 @@ const processCategoriesChunk = async (categoryChunk, storeId, cookie, address = 
                                         const waitTime = retryCount * 60 * 1000;
 
                                         console.log(
-                                            `IM: Rate limit hit (attempt ${retryCount}/${MAX_RETRIES}), waiting for ${
-                                                waitTime / 1000
+                                            `IM: Rate limit hit (attempt ${retryCount}/${MAX_RETRIES}), waiting for ${waitTime / 1000
                                             } seconds before retry...`
                                         );
                                         await new Promise((resolve) => setTimeout(resolve, waitTime));
@@ -244,7 +243,7 @@ const processCategoriesChunk = async (categoryChunk, storeId, cookie, address = 
                                 allProducts.length
                             );
                             const updatedCount = await processProducts(allProducts, category, subCategory, address);
-                            console.log(`IM: Processed ${updatedCount} products in ${subCategory.name}`);
+                            console.log(`IM: Extracted products ${updatedCount} products in ${subCategory.name}`);
                         }
                     } catch (error) {
                         console.error(`IM: Error processing subcategory ${subCategory.name}:`, error.response);
@@ -299,7 +298,7 @@ export const trackProductPrices = async () => {
             const categoryChunks = chunk(categories, CATEGORY_CHUNK_SIZE);
 
             for (const categoryChunk of categoryChunks) {
-                await processCategoriesChunk(categoryChunk, storeId, cookie);
+                await fetchProductsForCategoriesChunk(categoryChunk, storeId, cookie);
             }
 
             console.log("IM: Tracking cycle completed at:", new Date().toISOString());
@@ -550,10 +549,9 @@ const processProducts = async (products, category, subcategory, address = "50006
                         productName: product.display_name,
                         categoryName: category.name,
                         subcategoryName: subcategory.name,
-                        inStock: variation.inventory?.in_stock || true,
-                        imageUrl: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,h_272,w_252/${
-                            variation.images?.[0] || "default_image"
-                        }`,
+                        inStock: variation.inventory?.in_stock,
+                        imageUrl: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,h_272,w_252/${variation.images?.[0] || "default_image"
+                            }`,
                         price: currentPrice,
                         mrp: mrp,
                         discount: discount,
