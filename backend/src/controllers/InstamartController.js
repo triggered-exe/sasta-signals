@@ -440,8 +440,31 @@ const fetchProductCategories = async (address = "500064") => {
                     }))
                 );
 
+                // Filter out categories with cetain names
+                const unwantedCategories = ["pet supplies", "puja", "grooming", "cleaning essentials", "sexual wellness", "women", "feminine", "girls", "jewellery", "kitchen", "purse", "decor", "hair-color",
+                    "fish", "kids", "boys", "toys", "unlisted", "books", "pet-care", "elderly", "cleaning-essentials",
+                    "home-needs", "makeup", "home",
+                    "lips", "face", "eyes", "nail", "beauty", "gardening"]
+                const filteredCategories = allCategoriesWithSubCategories.filter((category => {
+                    // Check if the category name contains any unwanted keywords
+                    if (unwantedCategories.some(unwanted => category.name.toLowerCase().includes(unwanted))) {
+                        return false;
+                    }
+                    return true
+                })).map((category) => {
+                    // Filter subcategories for unwanted keywords
+                    const filteredSubCategories = category.subCategories.filter(subCategory => {
+                        return !unwantedCategories.some(unwanted => subCategory.name.toLowerCase().includes(unwanted));
+                    });
+                    // Return a new category object with filtered subcategories
+                    return {
+                        ...category,
+                        subCategories: filteredSubCategories
+                    };
+                });
+
                 placesData[address] = {
-                    categories: allCategoriesWithSubCategories,
+                    categories: filteredCategories,
                     storeId: storeId,
                     cookie: fullCookie,
                     lat,
@@ -455,77 +478,6 @@ const fetchProductCategories = async (address = "500064") => {
         } catch (error) {
             console.log("IM: Error with dynamic cookie, falling back to hardcoded values:", error.message);
         }
-
-        // FALLBACK: If the dynamic cookie approach failed, use hardcoded storeId
-        const storeId = "1400220"; // Hyderabad region storeId
-        console.log("IM: Using hardcoded store id:", storeId);
-
-        // Step4: Fetch categories using fallback hardcoded storeId
-        const categoriesResponse = await axios.get(`https://www.swiggy.com/api/instamart/layout`, {
-            params: {
-                layoutId: "3742",
-                limit: "40",
-                pageNo: "0",
-                serviceLine: "INSTAMART",
-                customerPage: "STORES_MENU",
-                hasMasthead: "false",
-                storeId: storeId,
-                primaryStoreId: storeId,
-                secondaryStoreId: "",
-            },
-            headers: {
-                accept: "*/*",
-                "accept-language": "en-US,en;q=0.9",
-                "content-type": "application/json",
-                "user-agent":
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
-                cookie: fullCookie,
-                referer: "https://www.swiggy.com/instamart",
-                priority: "u=1, i",
-                matcher: "ea8778ebaf9d9bde8ab7ag7",
-                "sec-ch-ua": '"Brave";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
-                "sec-ch-ua-mobile": "?0",
-                "sec-ch-ua-platform": '"Windows"',
-                "sec-fetch-dest": "empty",
-                "sec-fetch-mode": "cors",
-                "sec-fetch-site": "same-origin",
-                "sec-gpc": "1",
-            },
-        });
-
-        if (!categoriesResponse.data?.data?.widgets) {
-            throw new Error("Failed to fetch categories");
-        }
-
-        // Process categories from widgets
-        const widgets = categoriesResponse.data.data.widgets.filter(
-            (widget) => widget.widgetInfo?.widgetType === "TAXONOMY"
-        );
-
-        // From widgets get the categories
-        const allCategoriesWithSubCategories = widgets.flatMap((widget) =>
-            widget.data.map((category) => ({
-                nodeId: category.nodeId,
-                name: category.displayName,
-                taxonomyType: widget.widgetInfo.taxonomyType,
-                subCategories: category.nodes.map((node) => ({
-                    nodeId: node.nodeId,
-                    name: node.displayName,
-                    image: node.imageId,
-                    productCount: node.productCount,
-                })),
-            }))
-        );
-
-        placesData[address] = {
-            categories: allCategoriesWithSubCategories,
-            storeId: storeId,
-            cookie: locationCookie,
-            lat,
-            lng,
-        };
-
-        return placesData[address];
     } catch (error) {
         console.error("IM: Error fetching categories:", error?.response?.data || error);
         throw new AppError("Failed to fetch categories", 500);

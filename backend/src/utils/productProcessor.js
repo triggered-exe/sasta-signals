@@ -60,7 +60,7 @@ export const processProducts = async (products, categoryName, options = {}) => {
                 price: product.price,
                 discount: product.discount,
                 imageUrl: product.imageUrl,
-                weight: String(product.weight),
+                weight: (product.weight) ? String(product.weight) : "",
                 unit: product.unit,
                 url: product.url,
                 updatedAt: now,
