@@ -336,7 +336,7 @@ const processProducts = async (products, category) => {
         const processedCount = await globalProcessProducts(transformedProducts, category.name, {
             model: BigBasketProduct,
             source: "BigBasket",
-            emailNotification: true,
+            emailNotification: false,
             telegramNotification: true,
         });
 
