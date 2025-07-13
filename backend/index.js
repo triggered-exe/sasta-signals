@@ -70,7 +70,7 @@ const startServer = async () => {
                 setTimeout(() => amazonFreshStartTrackingHandler("500064"), 60 * 1000); // For Amazon Fresh
                 setTimeout(() => blinkitStartTrackingHandler("bahadurpura police station"), 90 * 1000); // For Blinkit
             } else {
-                setTimeout(() => amazonFreshStartTrackingHandler("500064"), 0)
+                setTimeout(() => instamartStartTrackingHandler("500064"), 0)
             }
         });
     } catch (error) {

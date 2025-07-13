@@ -39,7 +39,7 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 export const getStoreData = async (req, res, next) => {
     try {
         const categories = await fetchProductCategories();
-        console.log("IM:sending categories", categories?.length);
+        console.log("INSTAMART:sending categories", categories?.length);
         res.status(200).json(categories);
     } catch (error) {
         next(error);
@@ -75,14 +75,14 @@ export const getSubcategoryProducts = async (req, res, next) => {
             }
         );
         if (!response.data || !response.data.data) {
-            console.error("IM:Swiggy API Response:", response?.data);
+            console.error("INSTAMART:Swiggy API Response:", response?.data);
             throw AppError.serviceUnavailable("Failed to fetch products from Swiggy");
         }
 
         res.status(200).json(response.data);
     } catch (error) {
         if (!(error instanceof AppError)) {
-            console.error("IM:Unexpected Error:", error);
+            console.error("INSTAMART:Unexpected Error:", error);
             error = new AppError("An unexpected error occurred", 500);
         }
         next(error);
@@ -101,10 +101,10 @@ export const trackPrices = async (req, res, next) => {
 
 // Handler to start tracking
 export const startTrackingHandler = async () => {
-    console.log("IM: starting tracking");
+    console.log("INSTAMART: starting tracking");
     // Start the continuous tracking loop without awaiting it
     trackProductPrices().catch((error) => {
-        console.error("IM: Failed in tracking loop:", error);
+        console.error("INSTAMART: Failed in tracking loop:", error);
     });
     return "Instamart price tracking started";
 };
@@ -136,7 +136,7 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, storeId, cookie, a
         // Process each category sequentially
         for (const category of categoryChunk) {
             try {
-                console.log("IM: processing category", category.name);
+                console.log("INSTAMART: processing category", category.name);
                 if (!category.subCategories?.length) {
                     console.log(`IM: Skipping category ${category.name} - no subcategories found`);
                     continue;
@@ -218,7 +218,7 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, storeId, cookie, a
                                 // console.log(`IM: Found ${products.length} products in subcategory ${subCategory.name}`);
 
                                 if (!products.length) {
-                                    console.log("IM: no products found in subcategory", subCategory.name);
+                                    console.log("INSTAMART: no products found in subcategory", subCategory.name);
                                     break;
                                 }
 
@@ -259,15 +259,15 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, storeId, cookie, a
             }
         }
     } catch (error) {
-        console.error("IM: Error processing category chunk:", error);
+        console.error("INSTAMART: Error processing category chunk:", error);
     }
 };
 
 // Main function to track product prices across all categories
-export const trackProductPrices = async () => {
+export const trackProductPrices = async (address = "500064") => {
     // Prevent multiple tracking instances
     if (isTrackingActive) {
-        console.log("IM: Tracking is already active");
+        console.log("INSTAMART: Tracking is already active");
         return;
     }
 
@@ -277,36 +277,36 @@ export const trackProductPrices = async () => {
         try {
             // Skip if it's night time (12 AM to 6 AM IST)
             if (isNightTimeIST()) {
-                console.log("IM: Skipping price tracking during night hours");
+                console.log("INSTAMART: Skipping price tracking during night hours");
                 // Wait for 5 minutes before checking night time status again
                 await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
                 continue;
             }
 
-            console.log("IM: Starting new tracking cycle at:", new Date().toISOString());
+            console.log("INSTAMART: Starting new tracking cycle at:", new Date().toISOString());
 
-            const { categories, storeId, cookie } = await fetchProductCategories();
+            const { categories, storeId, cookie } = await fetchProductCategories(address);
 
             if (!categories?.length) {
-                console.error("IM: No categories found or invalid categories data");
+                console.error("INSTAMART: No categories found or invalid categories data");
                 continue;
             }
 
-            console.log("IM: Categories fetched:", categories.length);
+            console.log("INSTAMART: Categories fetched:", categories.length);
 
             // Process categories in parallel (in groups of 3 to avoid rate limiting)
             const categoryChunks = chunk(categories, CATEGORY_CHUNK_SIZE);
 
             for (const categoryChunk of categoryChunks) {
-                await fetchProductsForCategoriesChunk(categoryChunk, storeId, cookie);
+                await fetchProductsForCategoriesChunk(categoryChunk, storeId, cookie, address);
             }
 
-            console.log("IM: Tracking cycle completed at:", new Date().toISOString());
+            console.log("INSTAMART: Tracking cycle completed at:", new Date().toISOString());
 
             // Add a delay before starting the next cycle
             await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
         } catch (error) {
-            console.error("IM: Error in tracking cycle:", error);
+            console.error("INSTAMART: Error in tracking cycle:", error);
             // Wait before retrying after error
             await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
         }
@@ -351,7 +351,7 @@ const fetchProductCategories = async (address = "500064") => {
         }
 
         const { lat, lng } = storeResponse.data.data[0].geometry.location;
-        console.log("IM: got lat and lng", lat, lng);
+        console.log("INSTAMART: got lat and lng", lat, lng);
 
         // Step3: Get the store id using location
         // Create a complete userLocation object similar to one from working cookie
@@ -367,33 +367,33 @@ const fetchProductCategories = async (address = "500064") => {
         // Create cookie without URL encoding - direct JSON format
         // This matches the format seen in working curl commands
         const locationCookie = `userLocation=${JSON.stringify(userLocation)}`;
-        console.log("IM: using cookie:", locationCookie);
+        console.log("INSTAMART: using cookie:", locationCookie);
 
         // Full cookie with additional required fields from working curl command
         const fullCookie = `deviceId=s%3A1ce58713-498a-4aec-bab1-493c2d86d249.LKtG1bUIkqwIQmPUzUlLyzBMoFZjQIow0rLiaXWXiVE; ${locationCookie}`;
 
         try {
             // First try with our dynamic but complete cookie
-            const response = await axios.get("https://www.swiggy.com/api/instamart/home", {
-                params: {
-                    clientId: "INSTAMART-APP",
-                },
+            // Fetch the webpage first to get the store ID
+            const response = await axios.get("https://www.swiggy.com/instamart", {
                 headers: {
-                    accept: "*/*",
+                    accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
                     "accept-language": "en-US,en;q=0.9",
                     "cache-control": "no-cache",
-                    "user-agent":
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+                    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
                     cookie: fullCookie,
                 },
             });
 
-            // If successful response, use the returned storeId
-            if (response.data?.data?.storeId) {
-                const storeId = response.data.data.storeId;
-                console.log("IM: got store id from API:", storeId);
+            // Extract store ID from the HTML response
+            const html = response.data;
+            const storeIdMatch = html.match(/"storeId":"(\d+)"/);
+            
+            if (storeIdMatch && storeIdMatch[1]) {
+                const storeId = storeIdMatch[1];
+                console.log("INSTAMART: got store id from webpage:", storeId);
 
-                // Step4: Fetch categories using dynamic storeId from API
+                // Step4: Fetch categories using dynamic storeId from webpage
                 const categoriesResponse = await axios.get(`https://www.swiggy.com/api/instamart/layout`, {
                     params: {
                         layoutId: "3742",
@@ -473,13 +473,13 @@ const fetchProductCategories = async (address = "500064") => {
 
                 return placesData[address];
             } else {
-                console.log("IM: No storeId in response, falling back to hardcoded storeId");
+                console.log("INSTAMART: No storeId in response");
             }
         } catch (error) {
-            console.log("IM: Error with dynamic cookie, falling back to hardcoded values:", error.message);
+            console.log("INSTAMART: Error with dynamic cookie:", error.message);
         }
     } catch (error) {
-        console.error("IM: Error fetching categories:", error?.response?.data || error);
+        console.error("INSTAMART: Error fetching categories:", error?.response?.data || error);
         throw new AppError("Failed to fetch categories", 500);
     }
 };
@@ -532,7 +532,7 @@ const processProducts = async (products, category, subcategory, address = "50006
         console.log(`IM: Processed ${processedCount} products in ${subcategory.name}`);
         return processedCount;
     } catch (error) {
-        console.error("IM: Error processing products:", error);
+        console.error("INSTAMART: Error processing products:", error);
         return 0;
     }
 };
