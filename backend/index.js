@@ -33,7 +33,7 @@ app.use(express.urlencoded({ extended: true })); // Parse URL-encoded request bo
 
 // Routes
 app.get("/", (req, res) => {
-    res.send("Hello World!"); // Define a simple route for the root path
+  res.send("Hello World!"); // Define a simple route for the root path
 });
 
 // Individual platform routes
@@ -45,38 +45,37 @@ app.use("/api/flipkart-grocery", flipkartGroceryRouter);
 app.use("/api/amazon-fresh", amazonFreshRouter);
 app.use("/api/blinkit", blinkitRouter);
 
-
 // Common products route that aggregates all platforms
 app.use("/api/products", productsRouter);
 
-// Global error handler 
+// Global error handler
 app.use(errorHandler);
 
 // Start the server and initialize price tracking
 const startServer = async () => {
-    try {
-        // Wait for database connection before starting the server
-        await connectDB();
-        console.log('Database connected, starting server...');
+  try {
+    // Wait for database connection before starting the server
+    await connectDB();
+    console.log("Database connected, starting server...");
 
-        app.listen(port, () => {
-            console.log(`Server is running on port - ${port}`);
+    app.listen(port, () => {
+      console.log(`Server is running on port - ${port}`);
 
-            if (process.env.ENVIRONMENT === "production") {
-                setTimeout(() => instamartStartTrackingHandler(), 150 * 1000)
-                setTimeout(() => zeptoStartTrackingHandler("legacy palace"), 0)
-                setTimeout(() => BigBasketStartTrackingHandler("500064"), 15 * 1000); // For BigBasket
-                setTimeout(() => flipkartStartTrackingHandler("500064"), 30 * 1000); // For Flipkart
-                setTimeout(() => amazonFreshStartTrackingHandler("500064"), 60 * 1000); // For Amazon Fresh
-                setTimeout(() => blinkitStartTrackingHandler("bahadurpura police station"), 90 * 1000); // For Blinkit
-            } else {
-                setTimeout(() => instamartStartTrackingHandler("500064"), 0)
-            }
-        });
-    } catch (error) {
-        console.error('Failed to start server:', error);
-        process.exit(1);
-    }
+      if (process.env.ENVIRONMENT === "production") {
+        setTimeout(() => instamartStartTrackingHandler(), 150 * 1000);
+        setTimeout(() => zeptoStartTrackingHandler("legacy palace"), 0);
+        setTimeout(() => BigBasketStartTrackingHandler("500064"), 15 * 1000); // For BigBasket
+        setTimeout(() => flipkartStartTrackingHandler("500064"), 30 * 1000); // For Flipkart
+        setTimeout(() => amazonFreshStartTrackingHandler("500064"), 60 * 1000); // For Amazon Fresh
+        setTimeout(() => blinkitStartTrackingHandler("500064"), 90 * 1000); // For Blinkit
+      } else {
+        setTimeout(() => zeptoStartTrackingHandler("legacy palace"), 0);
+      }
+    });
+  } catch (error) {
+    console.error("Failed to start server:", error);
+    process.exit(1);
+  }
 };
 
 // Start the server
