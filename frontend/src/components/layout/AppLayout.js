@@ -34,11 +34,6 @@ export default function AppLayout({ children, selectedWebsite, setSelectedWebsit
         setIsMenuExpanded(!isMenuExpanded);
     };
 
-    // Toggle theme using utility function
-    const handleToggleTheme = () => {
-        toggleTheme();
-    };
-
     return (
         <div className="flex flex-col min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
             <Header />
@@ -47,7 +42,7 @@ export default function AppLayout({ children, selectedWebsite, setSelectedWebsit
                 <Sidebar
                     isMenuExpanded={isMenuExpanded}
                     toggleMenuExpansion={toggleMenuExpansion}
-                    toggleDarkMode={handleToggleTheme}
+                    toggleDarkMode={toggleTheme}
                     selectedWebsite={selectedWebsite}
                     setSelectedWebsite={setSelectedWebsite}
                 />

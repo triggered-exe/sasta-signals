@@ -1,32 +1,47 @@
+"use client";
+
 /**
- * Theme utility functions for managing dark/light mode
+ * Simplified theme utility for managing theme with cookies
+ * Default theme is white (light)
  */
 
 /**
- * Get the system's preferred color scheme
- * @returns {string} 'dark' or 'light'
+ * Get the current theme from cookies (client-side)
+ * @returns {string} 'light' (default) or 'dark'
  */
-const getSystemPreference = () => {
-  if (typeof window === 'undefined') return 'light';
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+export const getTheme = () => {
+  try {
+    // Check cookie
+    const cookieTheme = document.cookie
+      .split("; ")
+      .find((row) => row.startsWith("theme="))
+      ?.split("=")[1];
+
+    if (cookieTheme) {
+      return cookieTheme;
+    }
+
+    return "light"; // Default to light
+  } catch (e) {
+    return "light";
+  }
 };
 
 /**
- * Get the current theme from localStorage or system preference
- * @returns {string} 'dark' or 'light'
+ * Set theme in cookie
+ * @param {string} theme - 'dark' or 'light'
  */
-export const getTheme = () => {
-  if (typeof window === 'undefined') return 'light';
-
+export const setTheme = (theme) => {
   try {
-    const theme = localStorage.getItem('theme');
-    if (theme) return theme;
+    // Set in cookie (expires in 1 year)
+    const expires = new Date();
+    expires.setFullYear(expires.getFullYear() + 1);
+    document.cookie = `theme=${theme}; expires=${expires.toUTCString()}; path=/; SameSite=Lax`;
 
-    const systemTheme = getSystemPreference();
-    localStorage.setItem('theme', systemTheme);
-    return systemTheme;
+    // Apply to document
+    applyTheme(theme);
   } catch (e) {
-    return getSystemPreference();
+    console.warn("Failed to set theme:", e);
   }
 };
 
@@ -35,21 +50,11 @@ export const getTheme = () => {
  * @param {string} theme - 'dark' or 'light'
  */
 export const applyTheme = (theme) => {
-  if (theme === 'dark') {
-    document.documentElement.classList.add('dark');
+  if (theme === "dark") {
+    document.documentElement.classList.add("dark");
   } else {
-    document.documentElement.classList.remove('dark');
+    document.documentElement.classList.remove("dark");
   }
-};
-
-/**
- * Initialize theme from localStorage or system preference and apply to document
- * @returns {string} The current theme ('dark' or 'light')
- */
-export const initializeTheme = () => {
-  const theme = getTheme();
-  applyTheme(theme);
-  return theme;
 };
 
 /**
@@ -59,54 +64,11 @@ export const initializeTheme = () => {
 export const toggleTheme = () => {
   try {
     const currentTheme = getTheme();
-    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-
-    localStorage.setItem('theme', newTheme);
-    applyTheme(newTheme);
-
+    const newTheme = currentTheme === "dark" ? "light" : "dark";
+    setTheme(newTheme);
     return newTheme;
   } catch (e) {
-    console.warn('Failed to toggle theme:', e);
-    return 'light';
+    console.warn("Failed to toggle theme:", e);
+    return "light";
   }
 };
-
-/**
- * Inline script code for theme initialization (to prevent flash)
- * This is the same logic as above but as a string for use in <script> tags
- */
-export const themeInitScript = `
-(function() {
-  // Get the system's preferred color scheme
-  const getSystemPreference = () => {
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-  };
-
-  // Get the current theme from localStorage or system preference
-  const getTheme = () => {
-    try {
-      const theme = localStorage.getItem('theme');
-      if (theme) return theme;
-
-      const systemTheme = getSystemPreference();
-      localStorage.setItem('theme', systemTheme);
-      return systemTheme;
-    } catch (e) {
-      return getSystemPreference();
-    }
-  };
-
-  // Apply theme to the document
-  const applyTheme = (theme) => {
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  };
-
-  // Initialize theme
-  const theme = getTheme();
-  applyTheme(theme);
-})();
-`;
