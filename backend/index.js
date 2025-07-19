@@ -69,7 +69,7 @@ const startServer = async () => {
         setTimeout(() => amazonFreshStartTrackingHandler("500064"), 60 * 1000); // For Amazon Fresh
         setTimeout(() => blinkitStartTrackingHandler("500064"), 90 * 1000); // For Blinkit
       } else {
-        setTimeout(() => zeptoStartTrackingHandler("legacy palace"), 0);
+        // setTimeout(() => zeptoStartTrackingHandler("legacy palace"), 0);
       }
     });
   } catch (error) {

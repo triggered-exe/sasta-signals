@@ -479,8 +479,8 @@ const extractProducts = async (page, options = {}) => {
             // Extract product name - look for h3 or similar heading elements
             let productName = "";
             const nameElement = card.querySelector(
-              'div[data-slot-id="productName"]'
-            );
+              'div[data-slot-id="ProductName"]'
+            ) || card.querySelector("[class*='product-name-container']") ;
             if (nameElement) {
               productName = nameElement.textContent.trim();
             }
@@ -569,7 +569,7 @@ const extractProducts = async (page, options = {}) => {
         .filter((product) => product !== null && product.productId);
     });
     const filteredProducts = products.filter(
-      (product) => product !== null && product.productId && product.mrp > 0
+      (product) => product !== null && product.productName && product.productId && product.mrp > 0
     );
     console.log(
       `ZEPTO: Successfully extracted ${filteredProducts.length} products`
