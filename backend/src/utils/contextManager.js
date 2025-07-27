@@ -73,6 +73,7 @@ class ContextManager {
 
       // Memory management: limit concurrent contexts
       if (this.contextMap.size >= this.MAX_CONTEXTS) {
+        console.log("Reached maximum concurrent contexts, cleaning up oldest one");
         const oldestPincode = Array.from(this.contextMap.keys())[0];
         await this.cleanupPincode(oldestPincode);
       }
