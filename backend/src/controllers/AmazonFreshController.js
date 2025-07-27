@@ -5,6 +5,8 @@ import contextManager from "../utils/contextManager.js";
 import { productQueries } from "../utils/productQueries.js";
 import { sendPriceDropNotifications } from "../services/NotificationService.js";
 import { processProducts as globalProcessProducts } from "../utils/productProcessor.js";
+import axios from "axios";
+import * as cheerio from "cheerio";
 
 // Set location for pincode
 const setLocation = async (pincode) => {
@@ -30,14 +32,31 @@ const setLocation = async (pincode) => {
             waitUntil: "domcontentloaded",
         });
 
+        // Refresh the page once
+        await page.reload({ waitUntil: "domcontentloaded" });
+
+        // Click on the update location button to open the modal
+        await page.waitForSelector("#glow-ingress-block", { timeout: 5000 });
+        const updateLocationButton = await page.$("#glow-ingress-block");
+        await updateLocationButton.click();
+
+        // Wait for the modal to appear and set the pincode
+        await page.waitForSelector("#a-popover-1", { timeout: 5000 });
+        // check if the modal visibility is true
+        const modalVisible = await page.$eval("#a-popover-1", (el) => el.style.display !== "none");
+        if (!modalVisible) {
+            throw new Error("Modal is not visible to set location");
+        }
+
+        // Fill the pincode input and apply
         await page.waitForSelector('input[id="GLUXZipUpdateInput"]', { timeout: 5000 });
         await page.fill('input[id="GLUXZipUpdateInput"]', pincode);
 
         const applyButton = await page.waitForSelector("#GLUXZipUpdate", { timeout: 5000 });
         await applyButton.click();
-        await page.waitForTimeout(2000);
+        await page.waitForTimeout(5000);
 
-        // Check if location is serviceable
+        // Check if location is serviceable, or the modal still visible
         const notServiceableElement = await page.$(".a-alert-content");
         if (notServiceableElement) {
             const message = await notServiceableElement.textContent();
@@ -310,6 +329,336 @@ export const startTrackingHandler = async (pincode = "500064") => {
             await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
         } catch (error) {
             console.error("AF: Error in tracking handler:", error);
+            // Wait for 5 minutes before retrying
+            await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
+        }
+    }
+};
+
+// Extract Amazon-specific cookies from context
+const extractAmazonCookies = async (pincode) => {
+    try {
+        // Check if we already have stored Amazon Fresh data
+        if (contextManager.contextMap.has(pincode)) {
+            const contextData = contextManager.contextMap.get(pincode);
+            if (contextData.amazonFreshData) {
+                console.log(`AF-API: Using existing Amazon Fresh cookies for ${pincode}`);
+                return contextData.amazonFreshData;
+            }
+        }
+
+        // Get the context (should already be set up by setLocation)
+        const context = await contextManager.getContext(pincode);
+        
+        // Extract cookies - filter for Amazon-specific cookies only
+        const allCookies = await context.cookies();
+        
+        // Filter for Amazon-specific cookies only
+        const amazonCookies = allCookies.filter(cookie => 
+            cookie.domain.includes('amazon.in') || 
+            cookie.domain.includes('.amazon.in') ||
+            cookie.domain === 'amazon.in'
+        );
+        
+        const cookieString = amazonCookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ');
+
+        // Extract important session data from Amazon cookies
+        const sessionId = amazonCookies.find(cookie => cookie.name === 'session-id')?.value || '';
+ 
+        console.log(`AF-API: Extracted ${amazonCookies.length} Amazon cookies out of ${allCookies.length} total cookies`);
+        
+        // Store Amazon Fresh data in context
+        const amazonFreshData = {
+            cookieString,
+            sessionId,
+            pincode,
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        };
+
+        // Store the data in the context
+        if (contextManager.contextMap.has(pincode)) {
+            contextManager.contextMap.get(pincode).amazonFreshData = amazonFreshData;
+        }
+
+        console.log(`AF-API: Successfully extracted and stored cookies for pincode: ${pincode}`);
+        return amazonFreshData;
+    } catch (error) {
+        console.error(`AF-API: Error extracting cookies for pincode ${pincode}:`, error);
+        throw error;
+    }
+};
+
+// Extract products from HTML using cheerio
+const extractProductsFromHTML = (html) => {
+    const $ = cheerio.load(html);
+    const products = [];
+
+    $('div[data-component-type="s-search-result"]').each((index, element) => {
+        try {
+            const $el = $(element);
+            
+            // Get product title and URL
+            const titleEl = $el.find('h2 span').first();
+            const titleLink = $el.find('a.a-link-normal.s-no-outline').first();
+            
+            // Get price elements
+            const priceEl = $el.find('.a-price[data-a-size="xl"] .a-offscreen').first();
+            const mrpEl = $el.find('.a-price[data-a-strike="true"] .a-offscreen').first();
+            const imageEl = $el.find('.s-image').first();
+            
+            // Extract text values
+            const priceText = priceEl.text().trim();
+            const mrpText = mrpEl.text().trim();
+            
+            // Parse prices
+            const parsePrice = (priceStr) => {
+                const numStr = priceStr.replace(/[₹,]/g, "");
+                return parseFloat(numStr);
+            };
+            
+            const price = parsePrice(priceText);
+            const mrp = parsePrice(mrpText) || price;
+            
+            const product = {
+                productId: $el.attr('data-asin'),
+                productName: titleEl.text().trim(),
+                url: titleLink.attr('href') ? `https://www.amazon.in${titleLink.attr('href')}` : '',
+                imageUrl: imageEl.attr('src') || '',
+                price,
+                mrp,
+                discount: mrp > price ? Math.floor(((mrp - price) / mrp) * 100) : 0,
+                inStock: !$el.find('.s-result-unavailable-section').length,
+            };
+            
+            // Validate the product data
+            if (product.productId && product.productName && !isNaN(product.price) && product.price > 0) {
+                products.push(product);
+            }
+        } catch (err) {
+            console.error("AF-API: Error extracting product:", err);
+        }
+    });
+    
+    return products;
+};
+
+// Search using direct API calls with cookies
+const searchWithCookies = async (amazonFreshData, query, maxPages = 3) => {
+    try {
+        console.log(`AF-API: Searching for "${query}" using direct API calls`);
+        
+        let allProducts = [];
+        let currentPage = 1;
+        
+        while (currentPage <= maxPages) {
+            const searchUrl = `https://www.amazon.in/s?k=${encodeURIComponent(query)}&i=nowstore&page=${currentPage}`;
+            
+            const response = await axios.get(searchUrl, {
+                headers: {
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'User-Agent': amazonFreshData.userAgent,
+                    'Cookie': amazonFreshData.cookieString,
+                    'Upgrade-Insecure-Requests': '1',
+                    'Sec-Fetch-Dest': 'document',
+                    'Sec-Fetch-Mode': 'navigate',
+                    'Sec-Fetch-Site': 'same-origin',
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
+                },
+                timeout: 15000
+            });
+            
+            if (response.status !== 200) {
+                console.error(`AF-API: HTTP ${response.status} for page ${currentPage}`);
+                break;
+            }
+            
+            // Extract products from HTML
+            const products = extractProductsFromHTML(response.data);
+            
+            if (products.length === 0) {
+                console.log(`AF-API: No products found on page ${currentPage}, stopping`);
+                break;
+            }
+            
+            allProducts = allProducts.concat(products);
+            console.log(`AF-API: Found ${products.length} products on page ${currentPage}`);
+            
+            // Check if there's a next page by looking for pagination
+            const $ = cheerio.load(response.data);
+            const nextPageExists = $('.s-pagination-next').length > 0;
+            
+            if (!nextPageExists) {
+                console.log(`AF-API: No next page found, stopping at page ${currentPage}`);
+                break;
+            }
+            
+            currentPage++;
+            
+            // Add delay between requests to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        
+        // Remove duplicates based on productId
+        const uniqueProducts = Array.from(new Map(allProducts.map(item => [item.productId, item])).values());
+        console.log(`AF-API: Found ${uniqueProducts.length} unique products out of ${allProducts.length} for "${query}"`);
+        
+        return uniqueProducts;
+    } catch (error) {
+        console.error(`AF-API: Error searching for "${query}":`, error.message);
+        throw error;
+    }
+};
+
+// New search endpoint using cookies
+export const searchQueryWithCookies = async (req, res, next) => {
+    try {
+        const { query, pincode } = req.body;
+
+        if (!query || !pincode) {
+            throw AppError.badRequest("Query and pincode are required");
+        }
+
+        // First ensure location is set up using existing setLocation function
+        await setLocation(pincode);
+
+        // Check if the location is serviceable
+        if (!contextManager.isWebsiteServiceable(pincode, "amazonFresh")) {
+            throw AppError.badRequest(`Location ${pincode} is not serviceable by Amazon Fresh`);
+        }
+
+        // Extract Amazon cookies for API calls
+        const amazonFreshData = await extractAmazonCookies(pincode);
+
+        // Search using direct API calls
+        const products = await searchWithCookies(amazonFreshData, query, 3);
+
+        // Sort by price
+        products.sort((a, b) => a.price - b.price);
+
+        res.status(200).json({
+            success: true,
+            products: products,
+            total: products.length,
+            method: "cookie-based-api",
+            totalPages: Math.ceil(products.length / products.length),
+            processedPages: Math.ceil(products.length / products.length),
+        });
+    } catch (error) {
+        console.error("AF-API: Amazon Fresh cookie-based search error:", error);
+        
+        // Fallback to browser-based search if API fails
+        console.log("AF-API: Falling back to browser-based search...");
+        try {
+            return await searchQuery(req, res, next);
+        } catch (fallbackError) {
+            console.error("AF-API: Fallback also failed:", fallbackError);
+            next(error);
+        }
+    }
+};
+
+// New tracking handler using cookies
+export const startAmazonTrackingWithoutBrowswer = async (pincode = "500064") => {
+    console.log("AF-API: Starting cookie-based tracking");
+    
+    // Prevent multiple tracking instances
+    if (isTrackingActive) {
+        console.log("AF-API: Tracking is already active");
+        return "Amazon Fresh cookie-based tracking already running";
+    }
+
+    // Start the continuous tracking loop
+    trackPricesWithoutBrowser(pincode).catch(error => {
+        console.error('AF-API: Failed in cookie-based tracking loop:', error);
+    });
+    
+    return "Amazon Fresh cookie-based price tracking started";
+};
+
+// Main tracking function using cookies
+const trackPricesWithoutBrowser = async (pincode = "500064") => {
+    isTrackingActive = true;
+    
+    while (true) {
+        // Skip if it's night time (12 AM to 6 AM IST)
+        if (isNightTimeIST()) {
+            console.log("AF-API: Skipping price tracking during night hours");
+            await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
+            continue;
+        }
+
+        try {
+            const startTime = new Date();
+            console.log("AF-API: Starting cookie-based product search at:", startTime.toLocaleString());
+
+            // First ensure location is set up using existing setLocation function
+            await setLocation(pincode);
+
+            // Extract Amazon cookies for API calls
+            const amazonFreshData = await extractAmazonCookies(pincode);
+
+            // Get all queries from productQueries
+            const queries = [];
+            Object.values(productQueries).forEach((category) => {
+                Object.values(category).forEach((subcategory) => {
+                    subcategory.forEach((query) => {
+                        queries.push(query);
+                    });
+                });
+            });
+
+            console.log(`AF-API: Found ${queries.length} unique search queries`);
+
+            const CONCURRENT_SEARCHES = 1;
+            let totalProcessedProducts = 0;
+
+            // Process queries in sequential batches to avoid overwhelming the API
+            const taskChunks = chunk(queries, CONCURRENT_SEARCHES);
+            
+            for (const taskChunk of taskChunks) {
+                try {
+                    // Run searches sequentially to avoid rate limiting
+                    for (const query of taskChunk) {
+                        console.log(`AF-API: Processing ${query}`);
+                        try {
+                            const products = await searchWithCookies(amazonFreshData, query, 10);
+                            const result = await globalProcessProducts(products, query, {
+                                model: AmazonFreshProduct,
+                                source: "Amazon Fresh (API)",
+                                telegramNotification: true,
+                                emailNotification: false,
+                            });
+                            const processedCount = typeof result === "number" ? result : result.processedCount;
+                            totalProcessedProducts += processedCount;
+                        } catch (error) {
+                            console.error(`AF-API: Error processing ${query}:`, error);
+                        }
+                        
+                        // Add delay between queries to avoid rate limiting
+                        await new Promise((resolve) => setTimeout(resolve, 2000));
+                    }
+                } catch (error) {
+                    console.error("AF-API: Error processing query chunk:", error);
+                }
+
+                // Add delay between chunks
+                await new Promise((resolve) => setTimeout(resolve, 5000));
+            }
+
+            const totalDuration = (Date.now() - startTime) / 1000 / 60; // in minutes
+            console.log(
+                `AF-API: Completed cookie-based crawling. Processed ${totalProcessedProducts} products in ${totalDuration.toFixed(
+                    2
+                )} minutes`
+            );
+
+            // Wait for 5 minutes before next iteration
+            await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
+        } catch (error) {
+            console.error("AF-API: Error in cookie-based tracking handler:", error);
             // Wait for 5 minutes before retrying
             await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
         }
