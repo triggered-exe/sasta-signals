@@ -612,7 +612,7 @@ const trackPricesWithoutBrowser = async (pincode = "500064") => {
 
             console.log(`AF-API: Found ${queries.length} unique search queries`);
 
-            const CONCURRENT_SEARCHES = 1;
+            const CONCURRENT_SEARCHES = 2;
             let totalProcessedProducts = 0;
 
             // Process queries in sequential batches to avoid overwhelming the API
