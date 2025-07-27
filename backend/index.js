@@ -66,7 +66,7 @@ const startServer = async () => {
         setTimeout(() => zeptoStartTrackingHandler("legacy palace"), 0);
         setTimeout(() => BigBasketStartTrackingHandler("500064"), 15 * 1000); // For BigBasket
         setTimeout(() => flipkartStartTrackingHandler("500064"), 30 * 1000); // For Flipkart
-        setTimeout(() => amazonFreshStartTrackingHandler("500064"), 60 * 1000); // For Amazon Fresh
+        setTimeout(() => startAmazonTrackingWithoutBrowswer("500064"), 60 * 1000); // For Amazon Fresh
         setTimeout(() => blinkitStartTrackingHandler("500064"), 90 * 1000); // For Blinkit
       } else {
         setTimeout(() => startAmazonTrackingWithoutBrowswer("500064"), 0);
