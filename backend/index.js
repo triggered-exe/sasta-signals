@@ -63,7 +63,7 @@ const startServer = async () => {
 
       if (process.env.ENVIRONMENT === "production") {
         setTimeout(() => instamartStartTrackingHandler(), 150 * 1000);
-        setTimeout(() => zeptoStartTrackingHandler("legacy palace"), 0);
+        setTimeout(() => zeptoStartTrackingHandler("500064"), 0);
         setTimeout(() => BigBasketStartTrackingHandler("500064"), 15 * 1000); // For BigBasket
         setTimeout(() => flipkartStartTrackingHandler("500064"), 30 * 1000); // For Flipkart
         setTimeout(() => startAmazonTrackingWithoutBrowswer("500064"), 60 * 1000); // For Amazon Fresh

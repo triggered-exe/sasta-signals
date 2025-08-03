@@ -112,7 +112,7 @@ router.get("/deals/all", async (req, res, next) => {
             };
 
             // Get products from this source
-            const products = await Model.find(matchCriteria).sort({ discount: -1 }).limit(50).lean();
+            const products = await Model.find(matchCriteria).sort({ discount: -1, _id: 1 }).limit(50).lean();
 
             // Add source field to each product
             return products.map((product) => ({
