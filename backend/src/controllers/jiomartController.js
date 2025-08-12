@@ -1,6 +1,8 @@
 import { AppError } from "../utils/errorHandling.js";
 import { isNightTimeIST } from "../utils/priceTracking.js";
 import contextManager from "../utils/contextManager.js";
+import { JiomartProduct } from "../models/JiomartProduct.js";
+import { processProducts as globalProcessProducts } from "../utils/productProcessor.js";
 // Removed axios and cheerio; using Playwright context exclusively
 
 const setLocation = async (location) => {
@@ -205,7 +207,7 @@ const filterCategories = (categories) => {
   return allCategories;
 };
 
-const extractProductsFromPage = async (page, url) => {
+const extractProductsFromPage = async (page, url, MAX_SCROLL_ATTEMPTS = 10) => {
   try {
     // Navigate to current page
     await page.goto(url, {
@@ -213,16 +215,162 @@ const extractProductsFromPage = async (page, url) => {
       timeout: 30000,
     });
 
-      // Wait for products to load
-      // can a[class*="plp_product_list"]
-      await page.waitForSelector("a.plp_product_list", {
-        timeout: 10000,
-        state: "attached",
+    // Wait for products to load
+    await page.waitForSelector("a.plp_product_list", {
+      timeout: 10000,
+      state: "attached",
+    });
+
+    // Handle infinite scroll - scroll to load all products
+    let previousProductCount = 0;
+    let currentProductCount = 0;
+    let scrollAttempts = 0;
+    const MAX_NO_NEW_PRODUCTS_ATTEMPTS = 2;
+    let noNewProductsAttempts = 0;
+
+    console.log("JIO: Starting infinite scroll to load all products...");
+
+    while (scrollAttempts < MAX_SCROLL_ATTEMPTS && noNewProductsAttempts < MAX_NO_NEW_PRODUCTS_ATTEMPTS) {
+      // Get current product count
+      currentProductCount = await page.evaluate(() => {
+        const productCards = document.querySelectorAll("a.plp_product_list");
+        return productCards.length;
       });
 
-    // Extract products
+      console.log(`JIO: Scroll attempt ${scrollAttempts + 1}: Found ${currentProductCount} products`);
 
+      // If no new products were loaded, increment the counter
+      if (currentProductCount === previousProductCount && scrollAttempts > 0) {
+        noNewProductsAttempts++;
+        console.log(`JIO: No new products loaded (attempt ${noNewProductsAttempts}/${MAX_NO_NEW_PRODUCTS_ATTEMPTS})`);
+      } else {
+        noNewProductsAttempts = 0; // Reset counter if new products were found
+      }
+
+      // Update previous count
+      previousProductCount = currentProductCount;
+
+      // Scroll to the last product to trigger loading of new products
+      await page.evaluate(() => {
+        const productCards = document.querySelectorAll("a.plp_product_list");
+        if (productCards.length > 0) {
+          const lastProduct = productCards[productCards.length - 1];
+          lastProduct.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      });
+
+      // Wait for new products to load
+      await page.waitForTimeout(3000);
+
+      scrollAttempts++;
+    }
+
+    console.log(`JIO: Finished scrolling. Total products found: ${currentProductCount}`);
+
+    // Extract all products from the page
+    const products = await page.evaluate(() => {
+      const productCards = document.querySelectorAll("a.plp_product_list");
+      const extractedProducts = [];
+
+      productCards.forEach((card) => {
+        try {
+          // Extract product ID from data-objid attribute
+          const productId = card.getAttribute('data-objid');
+          if (!productId) return;
+
+          // Extract product name from title attribute or from the name element
+          let productName = card.getAttribute('title') || '';
+          if (!productName) {
+            const nameElement = card.querySelector('.ml-plp-card-details-name');
+            productName = nameElement ? nameElement.textContent.trim() : '';
+          }
+          if (!productName) return;
+
+          // Extract product URL (relative URL from href)
+          const url = card.getAttribute('href');
+          const fullUrl = url ? `https://www.jiomart.com${url}` : '';
+
+          // Extract image URL
+          let imageUrl = '';
+          const imgElement = card.querySelector('img');
+          if (imgElement) {
+            imageUrl = imgElement.getAttribute('data-src') || imgElement.getAttribute('src') || '';
+          }
+
+          // Extract price information
+          let price = 0;
+          let mrp = 0;
+          
+          const priceElement = card.querySelector('.jm-body-s-bold');
+          if (priceElement) {
+            const priceText = priceElement.textContent.trim();
+            const priceMatch = priceText.match(/₹([\d,]+(?:\.\d+)?)/);
+            if (priceMatch) {
+              price = parseFloat(priceMatch[1].replace(/,/g, ''));
+            }
+          }
+
+          const mrpElement = card.querySelector('.line-through');
+          if (mrpElement) {
+            const mrpText = mrpElement.textContent.trim();
+            const mrpMatch = mrpText.match(/₹([\d,]+(?:\.\d+)?)/);
+            if (mrpMatch) {
+              mrp = parseFloat(mrpMatch[1].replace(/,/g, ''));
+            }
+          }
+
+          // If no MRP found, use price as MRP
+          if (!mrp) mrp = price;
+
+          // Calculate discount
+          const discount = mrp > price ? Math.round(((mrp - price) / mrp) * 100) : 0;
+
+          // Extract weight/variant information
+          let weight = '';
+          const variantElement = card.querySelector('.variant_value');
+          if (variantElement) {
+            weight = variantElement.textContent.trim();
+          }
+
+          // Extract brand from data attributes
+          let brand = '';
+          const gtmElement = card.querySelector('.gtmEvents');
+          if (gtmElement) {
+            brand = gtmElement.getAttribute('data-manu') || '';
+          }
+
+          // Check if product is in stock (assuming in stock if no out of stock indicator)
+          const inStock = !card.textContent.toLowerCase().includes('out of stock');
+
+          // Validate required fields
+          if (!productId || !productName || !price || price <= 0) {
+            return;
+          }
+
+          extractedProducts.push({
+            productId,
+            productName,
+            url: fullUrl,
+            imageUrl,
+            price,
+            mrp,
+            discount,
+            weight,
+            brand,
+            inStock,
+          });
+
+        } catch (error) {
+          console.error('JIO: Error extracting product data:', error);
+        }
+      });
+
+      return extractedProducts;
+    });
+
+    console.log(`JIO: Successfully extracted ${products.length} products from page`);
     return { products };
+
   } catch (error) {
     console.error("JIO: Error extracting products from page:", error);
     return { products: [] };
@@ -287,14 +435,37 @@ export const startTrackingHandler = async (location) => {
               // Extract products using the new function
               const { products } = await extractProductsFromPage(
                 page,
-                category.url,
-                category.name
+                category.url
               );
 
-              totalProcessedProducts += products.length;
-              console.log(
-                `JIO: Processed ${products.length} products for ${category.name}`
-              );
+              if (products.length > 0) {
+                // Add category information to products
+                const enrichedProducts = products.map((product) => ({
+                  ...product,
+                  categoryName: category.category,
+                  subcategoryName: category.subCategory,
+                }));
+
+                // Process and store products
+                const processedCount = await globalProcessProducts(
+                  enrichedProducts,
+                  category.category,
+                  {
+                    model: JiomartProduct,
+                    source: "JioMart",
+                    significantDiscountThreshold: 10,
+                    telegramNotification: true,
+                    emailNotification: false,
+                  }
+                );
+
+                totalProcessedProducts += processedCount;
+                console.log(
+                  `JIO: Processed ${processedCount} products for ${category.name} (${category.subCategory})`
+                );
+              } else {
+                console.log(`JIO: No products found for ${category.name}`);
+              }
             } catch (error) {
               console.error(
                 `JIO: Error processing category ${category.name}:`,
