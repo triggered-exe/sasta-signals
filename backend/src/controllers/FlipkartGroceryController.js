@@ -14,7 +14,6 @@ const setLocation = async (pincode) => {
 
         // Return existing context if already set up and serviceable
         if (
-            contextManager.isWebsiteSet(pincode, "flipkart-grocery") &&
             contextManager.isWebsiteServiceable(pincode, "flipkart-grocery")
         ) {
             console.log(`FK: Using existing serviceable context for ${pincode}`);
