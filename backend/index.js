@@ -13,9 +13,11 @@ import { startTrackingHandler as flipkartStartTrackingHandler } from "./src/cont
 import flipkartGroceryRouter from "./src/routes/api/flipkartGrocery/flipkartGrocery.js";
 import amazonFreshRouter from "./src/routes/api/amazonFresh/amazonFresh.js";
 import { startTrackingHandler as amazonFreshStartTrackingHandler, startAmazonTrackingWithoutBrowswer } from "./src/controllers/AmazonFreshController.js";
+import {startTrackingHandler as jiomartStartTrackingHandler} from "./src/controllers/jiomartController.js"
 import zeptoRouter from "./src/routes/api/zepto/zepto.js";
 import productsRouter from "./src/routes/api/products.js"; // Import the new common products route
 import blinkitRouter from "./src/routes/api/blinkit/blinkit.js";
+import jiomartRouter from "./src/routes/api/jiomart/jiomart.js";
 import { startTrackingHandler as blinkitStartTrackingHandler } from "./src/controllers/BlinkitController.js";
 
 // Load environment variables from .env file
@@ -44,6 +46,7 @@ app.use("/api/zepto", zeptoRouter);
 app.use("/api/flipkart-grocery", flipkartGroceryRouter);
 app.use("/api/amazon-fresh", amazonFreshRouter);
 app.use("/api/blinkit", blinkitRouter);
+app.use("/api/jiomart", jiomartRouter);
 
 // Common products route that aggregates all platforms
 app.use("/api/products", productsRouter);
@@ -69,7 +72,7 @@ const startServer = async () => {
         setTimeout(() => startAmazonTrackingWithoutBrowswer("500064"), 60 * 1000); // For Amazon Fresh
         setTimeout(() => blinkitStartTrackingHandler("500064"), 90 * 1000); // For Blinkit
       } else {
-        setTimeout(() => startAmazonTrackingWithoutBrowswer("500064"), 0);
+        setTimeout(() => jiomartStartTrackingHandler("500064"), 0);
       }
     });
   } catch (error) {

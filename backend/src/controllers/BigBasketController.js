@@ -26,7 +26,6 @@ const setCookiesAganstPincode = async (pincode) => {
 
         // Return existing context if already set up and serviceable
         if (
-            contextManager.isWebsiteSet(pincode, "bigbasket") &&
             contextManager.isWebsiteServiceable(pincode, "bigbasket")
         ) {
             console.log(`BB: Using existing serviceable context for ${pincode}`);
