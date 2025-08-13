@@ -121,10 +121,6 @@ const fetchJiomartCategories = async (context) => {
       const exists = list.some((e) => e.name === name && e.url === href);
       if (!exists) list.push({ name, url: href });
     }
-    console.log(
-      "JIO: Categories fetched successfully",
-      Object.keys(categorized)
-    );
     return categorized;
   } catch (error) {
     console.error("JIO: Error fetching categories:", error);
@@ -152,10 +148,7 @@ const filterCategories = (categories) => {
     );
 
     if (!shouldRemove) {
-      console.log(`Adding: ${category}`);
       filteredCategories[category] = categories[category];
-    } else {
-      console.log(`Skipping: ${category}`);
     }
   });
   const subCategoriesToRemove = [
@@ -179,18 +172,12 @@ const filterCategories = (categories) => {
   Object.keys(filteredCategories).forEach((category) => {
     Object.entries(filteredCategories[category]).forEach(
       ([subCategoryKey, subCategoryValue]) => {
-        console.log("subcategory : ", subCategoryKey);
-        console.log(
-          "all categories : ",
-          filteredCategories[category][subCategoryKey].map((item) => item.name)
-        );
         const shouldRemove = subCategoriesToRemove.some((subCategoryToRemove) =>
           subCategoryKey
             .toLowerCase()
             .includes(subCategoryToRemove.toLowerCase())
         );
         if (!shouldRemove) {
-          console.log(`Adding: ${subCategoryKey}`);
           subCategoryValue.forEach((subCategory) => {
             allCategories.push({
               category,
@@ -207,10 +194,18 @@ const filterCategories = (categories) => {
   return allCategories;
 };
 
-const extractProductsFromPage = async (page, url, MAX_SCROLL_ATTEMPTS = 10) => {
+const extractProductsFromPage = async (page, url, MAX_SCROLL_ATTEMPTS = 25) => {
   try {
-    // Navigate to current page
-    await page.goto(url, {
+    // Ensure products are sorted by discount by appending query param
+    const u = new URL(url);
+    u.searchParams.set(
+      "prod_mart_master_vertical_products_popularity[sortBy]",
+      "prod_mart_master_vertical_products_discount"
+    );
+    let finalUrl = u.toString();
+
+    // Navigate to current page with discount sorting
+    await page.goto(finalUrl, {
       waitUntil: "domcontentloaded",
       timeout: 30000,
     });
@@ -228,21 +223,22 @@ const extractProductsFromPage = async (page, url, MAX_SCROLL_ATTEMPTS = 10) => {
     const MAX_NO_NEW_PRODUCTS_ATTEMPTS = 2;
     let noNewProductsAttempts = 0;
 
-    console.log("JIO: Starting infinite scroll to load all products...");
-
-    while (scrollAttempts < MAX_SCROLL_ATTEMPTS && noNewProductsAttempts < MAX_NO_NEW_PRODUCTS_ATTEMPTS) {
+    while (
+      scrollAttempts < MAX_SCROLL_ATTEMPTS &&
+      noNewProductsAttempts < MAX_NO_NEW_PRODUCTS_ATTEMPTS
+    ) {
       // Get current product count
       currentProductCount = await page.evaluate(() => {
         const productCards = document.querySelectorAll("a.plp_product_list");
         return productCards.length;
       });
 
-      console.log(`JIO: Scroll attempt ${scrollAttempts + 1}: Found ${currentProductCount} products`);
-
       // If no new products were loaded, increment the counter
       if (currentProductCount === previousProductCount && scrollAttempts > 0) {
         noNewProductsAttempts++;
-        console.log(`JIO: No new products loaded (attempt ${noNewProductsAttempts}/${MAX_NO_NEW_PRODUCTS_ATTEMPTS})`);
+        console.log(
+          `JIO: No new products loaded (attempt ${noNewProductsAttempts}/${MAX_NO_NEW_PRODUCTS_ATTEMPTS})`
+        );
       } else {
         noNewProductsAttempts = 0; // Reset counter if new products were found
       }
@@ -255,7 +251,7 @@ const extractProductsFromPage = async (page, url, MAX_SCROLL_ATTEMPTS = 10) => {
         const productCards = document.querySelectorAll("a.plp_product_list");
         if (productCards.length > 0) {
           const lastProduct = productCards[productCards.length - 1];
-          lastProduct.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          lastProduct.scrollIntoView({ behavior: "smooth", block: "center" });
         }
       });
 
@@ -265,8 +261,6 @@ const extractProductsFromPage = async (page, url, MAX_SCROLL_ATTEMPTS = 10) => {
       scrollAttempts++;
     }
 
-    console.log(`JIO: Finished scrolling. Total products found: ${currentProductCount}`);
-
     // Extract all products from the page
     const products = await page.evaluate(() => {
       const productCards = document.querySelectorAll("a.plp_product_list");
@@ -275,47 +269,50 @@ const extractProductsFromPage = async (page, url, MAX_SCROLL_ATTEMPTS = 10) => {
       productCards.forEach((card) => {
         try {
           // Extract product ID from data-objid attribute
-          const productId = card.getAttribute('data-objid');
+          const productId = card.getAttribute("data-objid");
           if (!productId) return;
 
           // Extract product name from title attribute or from the name element
-          let productName = card.getAttribute('title') || '';
+          let productName = card.getAttribute("title") || "";
           if (!productName) {
-            const nameElement = card.querySelector('.ml-plp-card-details-name');
-            productName = nameElement ? nameElement.textContent.trim() : '';
+            const nameElement = card.querySelector(".ml-plp-card-details-name");
+            productName = nameElement ? nameElement.textContent.trim() : "";
           }
           if (!productName) return;
 
           // Extract product URL (relative URL from href)
-          const url = card.getAttribute('href');
-          const fullUrl = url ? `https://www.jiomart.com${url}` : '';
+          const url = card.getAttribute("href");
+          const fullUrl = url ? `https://www.jiomart.com${url}` : "";
 
           // Extract image URL
-          let imageUrl = '';
-          const imgElement = card.querySelector('img');
+          let imageUrl = "";
+          const imgElement = card.querySelector("img");
           if (imgElement) {
-            imageUrl = imgElement.getAttribute('data-src') || imgElement.getAttribute('src') || '';
+            imageUrl =
+              imgElement.getAttribute("data-src") ||
+              imgElement.getAttribute("src") ||
+              "";
           }
 
           // Extract price information
           let price = 0;
           let mrp = 0;
-          
-          const priceElement = card.querySelector('.jm-body-s-bold');
+
+          const priceElement = card.querySelector(".jm-body-s-bold");
           if (priceElement) {
             const priceText = priceElement.textContent.trim();
             const priceMatch = priceText.match(/₹([\d,]+(?:\.\d+)?)/);
             if (priceMatch) {
-              price = parseFloat(priceMatch[1].replace(/,/g, ''));
+              price = parseFloat(priceMatch[1].replace(/,/g, ""));
             }
           }
 
-          const mrpElement = card.querySelector('.line-through');
+          const mrpElement = card.querySelector(".line-through");
           if (mrpElement) {
             const mrpText = mrpElement.textContent.trim();
             const mrpMatch = mrpText.match(/₹([\d,]+(?:\.\d+)?)/);
             if (mrpMatch) {
-              mrp = parseFloat(mrpMatch[1].replace(/,/g, ''));
+              mrp = parseFloat(mrpMatch[1].replace(/,/g, ""));
             }
           }
 
@@ -323,24 +320,27 @@ const extractProductsFromPage = async (page, url, MAX_SCROLL_ATTEMPTS = 10) => {
           if (!mrp) mrp = price;
 
           // Calculate discount
-          const discount = mrp > price ? Math.round(((mrp - price) / mrp) * 100) : 0;
+          const discount =
+            mrp > price ? Math.round(((mrp - price) / mrp) * 100) : 0;
 
           // Extract weight/variant information
-          let weight = '';
-          const variantElement = card.querySelector('.variant_value');
+          let weight = "";
+          const variantElement = card.querySelector(".variant_value");
           if (variantElement) {
             weight = variantElement.textContent.trim();
           }
 
           // Extract brand from data attributes
-          let brand = '';
-          const gtmElement = card.querySelector('.gtmEvents');
+          let brand = "";
+          const gtmElement = card.querySelector(".gtmEvents");
           if (gtmElement) {
-            brand = gtmElement.getAttribute('data-manu') || '';
+            brand = gtmElement.getAttribute("data-manu") || "";
           }
 
           // Check if product is in stock (assuming in stock if no out of stock indicator)
-          const inStock = !card.textContent.toLowerCase().includes('out of stock');
+          const inStock = !card.textContent
+            .toLowerCase()
+            .includes("out of stock");
 
           // Validate required fields
           if (!productId || !productName || !price || price <= 0) {
@@ -359,18 +359,18 @@ const extractProductsFromPage = async (page, url, MAX_SCROLL_ATTEMPTS = 10) => {
             brand,
             inStock,
           });
-
         } catch (error) {
-          console.error('JIO: Error extracting product data:', error);
+          console.error("JIO: Error extracting product data:", error);
         }
       });
 
       return extractedProducts;
     });
 
-    console.log(`JIO: Successfully extracted ${products.length} products from page`);
+    console.log(
+      `JIO: Successfully extracted ${products.length} products from page ${url}`
+    );
     return { products };
-
   } catch (error) {
     console.error("JIO: Error extracting products from page:", error);
     return { products: [] };
@@ -414,7 +414,7 @@ export const startTrackingHandler = async (location) => {
       }
 
       // Process queries in parallel batches
-      const PARALLEL_SEARCHES = 1;
+      const PARALLEL_SEARCHES = 3;
       let totalProcessedProducts = 0;
 
       for (let i = 0; i < filteredCategories.length; i += PARALLEL_SEARCHES) {
@@ -486,15 +486,19 @@ export const startTrackingHandler = async (location) => {
         console.log(
           `JIO: Categories Processed: ${i + currentBatch.length} of ${
             filteredCategories.length
-          } and Time taken: ${new Date().getTime() - startTime.getTime()} ms`
+          } and Time taken: ${(
+            (new Date().getTime() - startTime.getTime()) /
+            60000
+          ).toFixed(2)} minutes`
         );
       }
 
       console.log(`JIO: Total processed products: ${totalProcessedProducts}`);
       console.log(
-        `JIO: Total time taken: ${
-          new Date().getTime() - startTime.getTime()
-        } ms`
+        `JIO: Total time taken: ${(
+          (new Date().getTime() - startTime.getTime()) /
+          60000
+        ).toFixed(2)} minutes`
       );
     } catch (error) {
       // Wait for 5 minutes
