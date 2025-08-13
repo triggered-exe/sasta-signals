@@ -71,6 +71,7 @@ const startServer = async () => {
         setTimeout(() => flipkartStartTrackingHandler("500064"), 30 * 1000); // For Flipkart
         setTimeout(() => startAmazonTrackingWithoutBrowswer("500064"), 60 * 1000); // For Amazon Fresh
         setTimeout(() => blinkitStartTrackingHandler("500064"), 90 * 1000); // For Blinkit
+        setTimeout(() => jiomartStartTrackingHandler("500064"), 120 * 1000); // For JioMart
       } else {
         setTimeout(() => jiomartStartTrackingHandler("500064"), 0);
       }
