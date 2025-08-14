@@ -35,6 +35,13 @@ export const websites = [
     apiEndpoint: "/api/products/flipkart-grocery"
   },
   {
+    name: "JioMart",
+    url: "https://www.jiomart.com",
+    description: "Search and track prices of JioMart products",
+    image: "https://www.jiomart.com/assets/global/new-header-logo-jm.svg",
+    apiEndpoint: "/api/products/jiomart"
+  },
+  {
     name: "Zepto",
     url: "https://zepto.com",
     description: "Track prices of Zepto products",
