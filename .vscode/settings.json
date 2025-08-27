@@ -1,0 +1,53 @@
+{
+  "files.autoSave": "afterDelay",
+  "workbench.iconTheme": "material-icon-theme",
+  "editor.minimap.enabled": false,
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "github.copilot.nextEditSuggestions.enabled": true,
+  "editor.wordWrapColumn": 120,
+  "editor.wordWrap": "wordWrapColumn",
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[html]": {
+    "editor.defaultFormatter": "vscode.html-language-features"
+  },
+  "diffEditor.codeLens": true,
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "amp.url": "https://ampcode.com/",
+  "refactai.completionMaxTokens": 5000,
+  "refactai.xperimental": true,
+  "amazonQ.telemetry": false,
+  "amazonQ.suppressPrompts": {
+    "amazonQChatDisclaimer": true,
+    "amazonQChatPairProgramming": true
+  },
+  "accessibility.voice.speechLanguage": "en-IN",
+  "roo-cline.allowedCommands": [
+    "npm test",
+    "npm install",
+    "tsc",
+    "git log",
+    "git diff",
+    "git show"
+  ],
+  "roo-cline.deniedCommands": [],
+  "github.copilot.enable": {
+    "*": false,
+    "plaintext": false,
+    "markdown": false,
+    "scminput": false
+  },
+  "rapidapi.terminalLink.enabled": false,
+  "diffEditor.hideUnchangedRegions.enabled": true,
+  "[python]": {
+    "diffEditor.ignoreTrimWhitespace": false
+  }
+}
