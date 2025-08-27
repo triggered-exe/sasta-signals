@@ -1,5 +1,6 @@
 {
   "files.autoSave": "afterDelay",
+  "editor.formatOnSave": true,
   "workbench.iconTheme": "material-icon-theme",
   "editor.minimap.enabled": false,
   "[javascript]": {
@@ -30,14 +31,7 @@
     "amazonQChatPairProgramming": true
   },
   "accessibility.voice.speechLanguage": "en-IN",
-  "roo-cline.allowedCommands": [
-    "npm test",
-    "npm install",
-    "tsc",
-    "git log",
-    "git diff",
-    "git show"
-  ],
+  "roo-cline.allowedCommands": ["npm test", "npm install", "tsc", "git log", "git diff", "git show"],
   "roo-cline.deniedCommands": [],
   "github.copilot.enable": {
     "*": false,
