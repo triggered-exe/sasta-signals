@@ -1,9 +1,9 @@
-import { AppError } from "../utils/errorHandling.js";
-import { isNightTimeIST, chunk } from "../utils/priceTracking.js";
 import axios from "axios";
 import { ZeptoProduct } from "../models/ZeptoProduct.js";
-import { processProducts as globalProcessProducts } from "../utils/productProcessor.js";
 import contextManager from "../utils/contextManager.js";
+import { AppError } from "../utils/errorHandling.js";
+import { chunk, isNightTimeIST } from "../utils/priceTracking.js";
+import { processProducts as globalProcessProducts } from "../utils/productProcessor.js";
 
 // Set location for Zepto
 const setLocation = async (location) => {
@@ -13,9 +13,7 @@ const setLocation = async (location) => {
     const context = await contextManager.getContext(location);
 
     // Return existing context if already set up and serviceable
-    if (
-      contextManager.isWebsiteServiceable(location, "zepto")
-    ) {
+    if (contextManager.isWebsiteServiceable(location, "zepto")) {
       console.log(`ZEPTO: Using existing serviceable context for ${location}`);
       return context;
     }
@@ -477,9 +475,9 @@ const extractProducts = async (page, options = {}) => {
 
             // Extract product name - look for h3 or similar heading elements
             let productName = "";
-            const nameElement = card.querySelector(
-              'div[data-slot-id="ProductName"]'
-            ) || card.querySelector("[class*='product-name-container']") ;
+            const nameElement =
+              card.querySelector('div[data-slot-id="ProductName"]') ||
+              card.querySelector("[class*='product-name-container']");
             if (nameElement) {
               productName = nameElement.textContent.trim();
             }
@@ -498,9 +496,9 @@ const extractProducts = async (page, options = {}) => {
             let mrp = 0;
 
             // Look for price in various possible structures
-            const priceContainer =
-              card.querySelector('div[data-slot-id="price"]') ||
-              card.querySelector("[class*='price']");
+            const priceContainer = card.querySelector(
+              'div[data-slot-id="Price"]'
+            );
 
             if (priceContainer) {
               // Current price - first p tag is usually the price
@@ -568,7 +566,11 @@ const extractProducts = async (page, options = {}) => {
         .filter((product) => product !== null && product.productId);
     });
     const filteredProducts = products.filter(
-      (product) => product !== null && product.productName && product.productId && product.mrp > 0
+      (product) =>
+        product !== null &&
+        product.productName &&
+        product.productId &&
+        product.mrp > 0
     );
     console.log(
       `ZEPTO: Successfully extracted ${filteredProducts.length} products`
@@ -613,7 +615,7 @@ export const startTrackingHelper = async (location = "vertex corporate") => {
       );
 
       let totalProcessedProducts = 0;
-      const CHUNK_SIZE = 1; // Process 2 subcategories at a time
+      const CHUNK_SIZE = 2; // Process 2 subcategories at a time
 
       // Process subcategories in chunks using the utility function
       const subcategoryChunks = chunk(allSubcategories, CHUNK_SIZE);

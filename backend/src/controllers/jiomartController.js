@@ -1,7 +1,7 @@
+import { JiomartProduct } from "../models/JiomartProduct.js";
+import contextManager from "../utils/contextManager.js";
 import { AppError } from "../utils/errorHandling.js";
 import { isNightTimeIST } from "../utils/priceTracking.js";
-import contextManager from "../utils/contextManager.js";
-import { JiomartProduct } from "../models/JiomartProduct.js";
 import { processProducts as globalProcessProducts } from "../utils/productProcessor.js";
 // Removed axios and cheerio; using Playwright context exclusively
 
@@ -166,6 +166,7 @@ const filterCategories = (categories) => {
     "Make-Up",
     "Treatments",
     "Tools & Appliances",
+    "Jewellery",
   ];
   // Lets create a single array of categories
   let allCategories = [];
@@ -198,10 +199,10 @@ const extractProductsFromPage = async (page, url, MAX_SCROLL_ATTEMPTS = 25) => {
   try {
     // Ensure products are sorted by discount by appending query param
     const u = new URL(url);
-    u.searchParams.set(
-      "prod_mart_master_vertical_products_popularity[sortBy]",
-      "prod_mart_master_vertical_products_discount"
-    );
+    // u.searchParams.set(
+    //   "prod_mart_master_vertical_products_popularity[sortBy]",
+    //   "prod_mart_master_vertical_products_discount"
+    // );
     let finalUrl = u.toString();
 
     // Navigate to current page with discount sorting
