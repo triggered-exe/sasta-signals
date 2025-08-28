@@ -31,9 +31,7 @@ const setLocation = async (location) => {
 
     // Step 1: check if enable location modal is present and visible
     const enableLocationModal = await page.$("#location_popup");
-    const modalVisible = await enableLocationModal.evaluate(
-      (el) => el.style.display !== "none"
-    );
+    const modalVisible = await enableLocationModal.evaluate((el) => el.style.display !== "none");
     if (modalVisible) {
       // Click on the close modal button
       await page.click("#btn_location_close_icon");
@@ -41,9 +39,7 @@ const setLocation = async (location) => {
 
     // Step 2: check if location input popup with form is present and visible
     const pincodePopup = await page.$("#delivery_popup");
-    const pincodePopupVisible = await pincodePopup.evaluate(
-      (el) => el.style.display !== "none"
-    );
+    const pincodePopupVisible = await pincodePopup.evaluate((el) => el.style.display !== "none");
     if (pincodePopupVisible) {
       // Fill the input , by focusing on the input field
       await page.focus("#rel_pincode");
@@ -51,13 +47,9 @@ const setLocation = async (location) => {
       await page.waitForTimeout(5000); // Wait for 5 seconds
       // Check if the delivery is availale at the location by checking the info message in the modal
       const deliveryInfo = await page.$("#delivery_pin_msg");
-      const deliveryInfoText = await deliveryInfo.evaluate(
-        (el) => el.textContent
-      );
+      const deliveryInfoText = await deliveryInfo.evaluate((el) => el.textContent);
       if (deliveryInfoText.includes("not delivering")) {
-        throw AppError.badRequest(
-          `Location ${location} is not serviceable by JioMart`
-        );
+        throw AppError.badRequest(`Location ${location} is not serviceable by JioMart`);
       }
       await page.keyboard.press("Enter");
       await page.waitForTimeout(5000); // Wait for 5 seconds for page to reload and setup
@@ -93,16 +85,14 @@ const fetchJiomartCategories = async (context) => {
       timeout: 20000,
     });
     // Extract links directly in the page context (no Cheerio needed)
-    const allCategories = await page.$$eval(
-      "a[data-category][data-subcategory]",
-      (els) =>
-        els.map((el) => ({
-          category: el.getAttribute("data-category") || "",
-          subcategory: el.getAttribute("data-subcategory") || "",
-          subSubCategory: (el.textContent || "").trim(),
-          // el.href returns an absolute URL in the browser context
-          url: el.href || null,
-        }))
+    const allCategories = await page.$$eval("a[data-category][data-subcategory]", (els) =>
+      els.map((el) => ({
+        category: el.getAttribute("data-category") || "",
+        subcategory: el.getAttribute("data-subcategory") || "",
+        subSubCategory: (el.textContent || "").trim(),
+        // el.href returns an absolute URL in the browser context
+        url: el.href || null,
+      }))
     );
     // Build nested structure and dedupe entries per subcategory
     // Result shape: { [category]: { [subcategory]: [{ name, url }] } }
@@ -131,15 +121,7 @@ const fetchJiomartCategories = async (context) => {
 };
 
 const filterCategories = (categories) => {
-  const categoriesToRemove = [
-    "lifestyle",
-    "electronics",
-    "fashion",
-    "industrial",
-    "jewellery",
-    "luggage",
-    "furniture",
-  ];
+  const categoriesToRemove = ["lifestyle", "electronics", "fashion", "industrial", "jewellery", "luggage", "furniture"];
 
   let filteredCategories = {};
   Object.keys(categories).forEach((category) => {
@@ -171,25 +153,21 @@ const filterCategories = (categories) => {
   // Lets create a single array of categories
   let allCategories = [];
   Object.keys(filteredCategories).forEach((category) => {
-    Object.entries(filteredCategories[category]).forEach(
-      ([subCategoryKey, subCategoryValue]) => {
-        const shouldRemove = subCategoriesToRemove.some((subCategoryToRemove) =>
-          subCategoryKey
-            .toLowerCase()
-            .includes(subCategoryToRemove.toLowerCase())
-        );
-        if (!shouldRemove) {
-          subCategoryValue.forEach((subCategory) => {
-            allCategories.push({
-              category,
-              subCategory: subCategoryKey,
-              name: subCategory.name,
-              url: subCategory.url,
-            });
+    Object.entries(filteredCategories[category]).forEach(([subCategoryKey, subCategoryValue]) => {
+      const shouldRemove = subCategoriesToRemove.some((subCategoryToRemove) =>
+        subCategoryKey.toLowerCase().includes(subCategoryToRemove.toLowerCase())
+      );
+      if (!shouldRemove) {
+        subCategoryValue.forEach((subCategory) => {
+          allCategories.push({
+            category,
+            subCategory: subCategoryKey,
+            name: subCategory.name,
+            url: subCategory.url,
           });
-        }
+        });
       }
-    );
+    });
   });
 
   return allCategories;
@@ -224,10 +202,7 @@ const extractProductsFromPage = async (page, url, MAX_SCROLL_ATTEMPTS = 25) => {
     const MAX_NO_NEW_PRODUCTS_ATTEMPTS = 2;
     let noNewProductsAttempts = 0;
 
-    while (
-      scrollAttempts < MAX_SCROLL_ATTEMPTS &&
-      noNewProductsAttempts < MAX_NO_NEW_PRODUCTS_ATTEMPTS
-    ) {
+    while (scrollAttempts < MAX_SCROLL_ATTEMPTS && noNewProductsAttempts < MAX_NO_NEW_PRODUCTS_ATTEMPTS) {
       // Get current product count
       currentProductCount = await page.evaluate(() => {
         const productCards = document.querySelectorAll("a.plp_product_list");
@@ -237,9 +212,7 @@ const extractProductsFromPage = async (page, url, MAX_SCROLL_ATTEMPTS = 25) => {
       // If no new products were loaded, increment the counter
       if (currentProductCount === previousProductCount && scrollAttempts > 0) {
         noNewProductsAttempts++;
-        console.log(
-          `JIO: No new products loaded (attempt ${noNewProductsAttempts}/${MAX_NO_NEW_PRODUCTS_ATTEMPTS})`
-        );
+        console.log(`JIO: No new products loaded (attempt ${noNewProductsAttempts}/${MAX_NO_NEW_PRODUCTS_ATTEMPTS})`);
       } else {
         noNewProductsAttempts = 0; // Reset counter if new products were found
       }
@@ -289,10 +262,7 @@ const extractProductsFromPage = async (page, url, MAX_SCROLL_ATTEMPTS = 25) => {
           let imageUrl = "";
           const imgElement = card.querySelector("img");
           if (imgElement) {
-            imageUrl =
-              imgElement.getAttribute("data-src") ||
-              imgElement.getAttribute("src") ||
-              "";
+            imageUrl = imgElement.getAttribute("data-src") || imgElement.getAttribute("src") || "";
           }
 
           // Extract price information
@@ -321,8 +291,7 @@ const extractProductsFromPage = async (page, url, MAX_SCROLL_ATTEMPTS = 25) => {
           if (!mrp) mrp = price;
 
           // Calculate discount
-          const discount =
-            mrp > price ? Math.round(((mrp - price) / mrp) * 100) : 0;
+          const discount = mrp > price ? Math.round(((mrp - price) / mrp) * 100) : 0;
 
           // Extract weight/variant information
           let weight = "";
@@ -339,9 +308,7 @@ const extractProductsFromPage = async (page, url, MAX_SCROLL_ATTEMPTS = 25) => {
           }
 
           // Check if product is in stock (assuming in stock if no out of stock indicator)
-          const inStock = !card.textContent
-            .toLowerCase()
-            .includes("out of stock");
+          const inStock = !card.textContent.toLowerCase().includes("out of stock");
 
           // Validate required fields
           if (!productId || !productName || !price || price <= 0) {
@@ -368,9 +335,7 @@ const extractProductsFromPage = async (page, url, MAX_SCROLL_ATTEMPTS = 25) => {
       return extractedProducts;
     });
 
-    console.log(
-      `JIO: Successfully extracted ${products.length} products from page ${url}`
-    );
+    console.log(`JIO: Successfully extracted ${products.length} products from page ${url}`);
     return { products };
   } catch (error) {
     console.error("JIO: Error extracting products from page:", error);
@@ -395,10 +360,7 @@ export const startTrackingHandler = async (location) => {
       }
 
       const startTime = new Date();
-      console.log(
-        "JIO: Starting product search at:",
-        startTime.toLocaleString()
-      );
+      console.log("JIO: Starting product search at:", startTime.toLocaleString());
 
       // Setup the context for the location
       const context = await setLocation(location);
@@ -408,9 +370,7 @@ export const startTrackingHandler = async (location) => {
       const filteredCategories = await filterCategories(categories);
       // Check if the location is serviceable
       if (!contextManager.isWebsiteServiceable(location, "jiomart-grocery")) {
-        console.log(
-          `JIO: Location ${location} is not serviceable, stopping crawler`
-        );
+        console.log(`JIO: Location ${location} is not serviceable, stopping crawler`);
         break;
       }
 
@@ -421,9 +381,7 @@ export const startTrackingHandler = async (location) => {
       for (let i = 0; i < filteredCategories.length; i += PARALLEL_SEARCHES) {
         const currentBatch = filteredCategories.slice(i, i + PARALLEL_SEARCHES);
         console.log(
-          `JIO: Processing categories ${i + 1} to ${
-            i + currentBatch.length
-          } of ${filteredCategories.length}`
+          `JIO: Processing categories ${i + 1} to ${i + currentBatch.length} of ${filteredCategories.length}`
         );
 
         const batchPromises = currentBatch.map(async (category) => {
@@ -434,10 +392,7 @@ export const startTrackingHandler = async (location) => {
               page = await context.newPage();
 
               // Extract products using the new function
-              const { products } = await extractProductsFromPage(
-                page,
-                category.url
-              );
+              const { products } = await extractProductsFromPage(page, category.url);
 
               if (products.length > 0) {
                 // Add category information to products
@@ -448,46 +403,32 @@ export const startTrackingHandler = async (location) => {
                 }));
 
                 // Process and store products
-                const processedCount = await globalProcessProducts(
-                  enrichedProducts,
-                  category.category,
-                  {
-                    model: JiomartProduct,
-                    source: "JioMart",
-                    significantDiscountThreshold: 10,
-                    telegramNotification: true,
-                    emailNotification: false,
-                  }
-                );
+                const processedCount = await globalProcessProducts(enrichedProducts, category.category, {
+                  model: JiomartProduct,
+                  source: "JioMart",
+                  significantDiscountThreshold: 10,
+                  telegramNotification: true,
+                  emailNotification: false,
+                });
 
                 totalProcessedProducts += processedCount;
-                console.log(
-                  `JIO: Processed ${processedCount} products for ${category.name} (${category.subCategory})`
-                );
+                console.log(`JIO: Processed ${processedCount} products for ${category.name} (${category.subCategory})`);
               } else {
                 console.log(`JIO: No products found for ${category.name}`);
               }
             } catch (error) {
-              console.error(
-                `JIO: Error processing category ${category.name}:`,
-                error
-              );
+              console.error(`JIO: Error processing category ${category.name}:`, error);
             } finally {
               if (page) await page.close();
             }
           } catch (error) {
-            console.error(
-              `JIO: Error processing category ${category.name}:`,
-              error
-            );
+            console.error(`JIO: Error processing category ${category.name}:`, error);
           }
         });
 
         await Promise.all(batchPromises);
         console.log(
-          `JIO: Categories Processed: ${i + currentBatch.length} of ${
-            filteredCategories.length
-          } and Time taken: ${(
+          `JIO: Categories Processed: ${i + currentBatch.length} of ${filteredCategories.length} and Time taken: ${(
             (new Date().getTime() - startTime.getTime()) /
             60000
           ).toFixed(2)} minutes`
@@ -496,15 +437,63 @@ export const startTrackingHandler = async (location) => {
 
       console.log(`JIO: Total processed products: ${totalProcessedProducts}`);
       console.log(
-        `JIO: Total time taken: ${(
-          (new Date().getTime() - startTime.getTime()) /
-          60000
-        ).toFixed(2)} minutes`
+        `JIO: Total time taken: ${((new Date().getTime() - startTime.getTime()) / 60000).toFixed(2)} minutes`
       );
     } catch (error) {
       // Wait for 5 minutes
       await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
       console.error("JIO: Error in crawler:", error);
+    }
+  }
+};
+
+// Search endpoint handler for Jiomart
+export const searchProducts = async (req, res, next) => {
+  let page = null;
+  try {
+    const { query, location } = req.body;
+
+    if (!query || !location) {
+      throw AppError.badRequest("Query and location are required");
+    }
+
+    console.log(`JIO: Starting search for "${query}" in location ${location}`);
+
+    // Get or create context for the location
+    const context = await setLocation(location);
+
+    // Check if the location is serviceable
+    if (!contextManager.isWebsiteServiceable(location, "jiomart-grocery")) {
+      throw AppError.badRequest(`Location ${location} is not serviceable by JioMart`);
+    }
+
+    // Create a new page for search
+    page = await context.newPage();
+
+    // Navigate to search page
+    const searchUrl = `https://www.jiomart.com/search?q=${encodeURIComponent(query)}`;
+    console.log(`JIO: Navigating to search URL: ${searchUrl}`);
+
+    // Extract products from the page using existing function
+    const { products } = await extractProductsFromPage(page, searchUrl, 5);
+
+    console.log(`JIO: Found ${products.length} products for query "${query}"`);
+
+    res.status(200).json({
+      success: true,
+      products: products,
+      total: products.length,
+      query: query,
+      location: location,
+    });
+  } catch (error) {
+    console.error("JIO: Search error:", error);
+    next(
+      error instanceof AppError ? error : AppError.internalError(`Failed to search JioMart products: ${error.message}`)
+    );
+  } finally {
+    if (page) {
+      await page.close();
     }
   }
 };
