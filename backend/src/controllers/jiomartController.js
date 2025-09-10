@@ -249,7 +249,7 @@ const extractProductsFromPage = async (page, url, MAX_SCROLL_ATTEMPTS = 25) => {
           // Extract product name from title attribute or from the name element
           let productName = card.getAttribute("title") || "";
           if (!productName) {
-            const nameElement = card.querySelector(".ml-plp-card-details-name");
+            const nameElement = card.querySelector(".plp-card-details-name");
             productName = nameElement ? nameElement.textContent.trim() : "";
           }
           if (!productName) return;
@@ -269,7 +269,8 @@ const extractProductsFromPage = async (page, url, MAX_SCROLL_ATTEMPTS = 25) => {
           let price = 0;
           let mrp = 0;
 
-          const priceElement = card.querySelector(".jm-body-s-bold");
+          // Extract current price - look for the first price element (non-crossed out)
+          const priceElement = card.querySelector(".plp-card-details-price .jm-heading-xxs");
           if (priceElement) {
             const priceText = priceElement.textContent.trim();
             const priceMatch = priceText.match(/₹([\d,]+(?:\.\d+)?)/);
@@ -278,7 +279,8 @@ const extractProductsFromPage = async (page, url, MAX_SCROLL_ATTEMPTS = 25) => {
             }
           }
 
-          const mrpElement = card.querySelector(".line-through");
+          // Extract MRP (crossed out price)
+          const mrpElement = card.querySelector(".plp-card-details-price .line-through");
           if (mrpElement) {
             const mrpText = mrpElement.textContent.trim();
             const mrpMatch = mrpText.match(/₹([\d,]+(?:\.\d+)?)/);
@@ -299,6 +301,14 @@ const extractProductsFromPage = async (page, url, MAX_SCROLL_ATTEMPTS = 25) => {
           if (variantElement) {
             weight = variantElement.textContent.trim();
           }
+          
+          // Fallback: try to extract from product name if weight not found
+          if (!weight && productName) {
+            const weightMatch = productName.match(/(\d+(?:\.\d+)?\s*(?:kg|g|ml|l|gm|gram|liter|litre))/i);
+            if (weightMatch) {
+              weight = weightMatch[1];
+            }
+          }
 
           // Extract brand from data attributes
           let brand = "";
@@ -309,7 +319,6 @@ const extractProductsFromPage = async (page, url, MAX_SCROLL_ATTEMPTS = 25) => {
 
           // Check if product is in stock (assuming in stock if no out of stock indicator)
           const inStock = !card.textContent.toLowerCase().includes("out of stock");
-
           // Validate required fields
           if (!productId || !productName || !price || price <= 0) {
             return;
