@@ -10,9 +10,7 @@ router.get('/', (req, res) => {
 });
 
 router.post('/search', BigBasketController.searchProducts);
-router.post('/search-crawler', BigBasketController.searchProductsUsingCrawler);
 router.get('/categories', BigBasketController.fetchCategories);
 router.post('/start-tracking', BigBasketController.startTracking);
-router.post('/cleanup', BigBasketController.cleanupBrowser);
 
 export default router; 
