@@ -3,8 +3,6 @@ import * as InstamartController from '../../../controllers/InstamartController.j
 
 const router = express.Router();
 
-router.get("/store-data", InstamartController.getStoreData);
-router.post("/subcategory-products", InstamartController.getSubcategoryProducts);
 router.post("/track-prices", InstamartController.trackPrices);
 router.post("/search", InstamartController.search);
 

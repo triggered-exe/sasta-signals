@@ -1,15 +1,13 @@
 import axios from "axios";
 import { AppError } from "../utils/errorHandling.js";
 import { InstamartProduct } from "../models/InstamartProduct.js";
-import { HALF_HOUR, ONE_HOUR, PAGE_SIZE } from "../utils/constants.js";
 import { Resend } from "resend";
 import { isNightTimeIST, chunk } from "../utils/priceTracking.js";
-import { sendPriceDropNotifications } from "../services/NotificationService.js";
 import { processProducts as globalProcessProducts } from "../utils/productProcessor.js";
+import contextManager from "../utils/contextManager.js";
 
 const placesData = {};
-const CATEGORY_CHUNK_SIZE = 3;
-const SUBCATEGORY_CHUNK_SIZE = 2;
+const CATEGORY_CHUNK_SIZE = 2;
 // Constants and configuration for Instamart API requests
 const INSTAMART_HEADERS = {
     accept: "*/*",
@@ -35,58 +33,191 @@ let isTrackingActive = false;
 // Initialize Resend client (replace MailerSend initialization)
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-// Controller to fetch and return all product categories
-export const getStoreData = async (req, res, next) => {
-    try {
-        const categories = await fetchProductCategories();
-        console.log("INSTAMART:sending categories", categories?.length);
-        res.status(200).json(categories);
-    } catch (error) {
-        next(error);
+// Set location for pincode using web scraping (similar to other controllers)
+const setLocation = async (location) => {
+  let page = null;
+  try {
+    // Get or create context
+    const context = await contextManager.getContext(location);
+
+    // If Instamart is already set up for this pincode, return the context
+    if (contextManager.isWebsiteServiceable(location, "instamart")) {
+      console.log(`IM: Using existing serviceable context for ${location}`);
+      return context;
     }
+
+    // Set up Instamart for this context
+    page = await context.newPage();
+
+    // Navigate to Instamart
+    await page.goto("https://www.swiggy.com", { waitUntil: "domcontentloaded" });
+
+    // Wait for the page to be fully loaded
+    await page.waitForTimeout(3000);
+
+    // Look for location selector - this will need to be updated with correct selectors
+    console.log("IM: Setting location...");
+
+    // Try to find and click location selector
+    try {
+
+      // Fill the pincode using the correct selector from HTML structure
+      const pincodeInput = await page.waitForSelector('input[id="location"]', {
+        timeout: 4000,
+      });
+      if (pincodeInput) {
+        console.log("IM: Pincode input field found");
+
+        await pincodeInput.fill(location);
+
+        // Wait for suggestions to appear
+        await page.waitForTimeout(3000);
+
+        // Check if suggestions are visible - looking for the dropdown structure you provided
+        const firstSuggestion = await page.waitForSelector('div._2BgUI[role="button"]', {
+          timeout: 5000,
+        });
+
+        if (firstSuggestion) {
+          // Click the first suggestion (skip "Use my current location" and "Search Result" header)
+          firstSuggestion.click();
+
+          await page.waitForTimeout(5000);
+
+          // Check whether a div with text (Shop groceries on Instamart) exists if not its not serviceable
+          const shopGroceriesDiv = await page.$("//div[text()='Shop groceries on Instamart']");
+          if (!shopGroceriesDiv) {
+            throw AppError.badRequest(`IM: Delivery not available for pincode: ${location}`);
+          }
+        } else {
+          // If no suggestion then the address is not serviceable
+          throw AppError.badRequest(`IM: Delivery not available for pincode: ${location}`);
+        }
+      } else {
+        throw new Error("IM: Pincode input field not found");
+      }
+    } catch (error) {
+      console.error("IM: Error setting location:", error);
+      contextManager.markServiceability(location, "instamart", false);
+      throw AppError.badRequest(`IM: Could not set location for pincode: ${location}`);
+    }
+
+    // Mark as serviceable and register the website
+    contextManager.markServiceability(location, "instamart", true);
+    contextManager.contextMap.get(location).websites.add("instamart");
+    console.log(`IM: Successfully set up for pincode: ${location}`);
+
+    await page.close();
+    return context;
+  } catch (error) {
+    if (page) await page.close();
+    contextManager.markServiceability(location, "instamart", false);
+    console.error(`IM: Error setting pincode ${location}:`, error);
+    throw error;
+  }
 };
 
-// Controller to fetch products within a specific subcategory
-export const getSubcategoryProducts = async (req, res, next) => {
-    try {
-        const { filterId, filterName, categoryName, offset = 0 } = req.body;
-
-        if (!filterId || !filterName || !categoryName) {
-            throw AppError.badRequest("Missing required parameters");
-        }
-
-        const response = await axios.post(
-            `https://www.swiggy.com/api/instamart/category-listing/filter`,
-            { facets: {}, sortAttribute: "" },
-            {
-                params: {
-                    filterId,
-                    storeId: "1311100",
-                    primaryStoreId: "1311100",
-                    secondaryStoreId: "",
-                    type: "Speciality taxonomy 1",
-                    pageNo: 0,
-                    limit: 20,
-                    offset,
-                    filterName,
-                    categoryName,
-                },
-                headers: INSTAMART_HEADERS,
-            }
-        );
-        if (!response.data || !response.data.data) {
-            console.error("INSTAMART:Swiggy API Response:", response?.data);
-            throw AppError.serviceUnavailable("Failed to fetch products from Swiggy");
-        }
-
-        res.status(200).json(response.data);
-    } catch (error) {
-        if (!(error instanceof AppError)) {
-            console.error("INSTAMART:Unexpected Error:", error);
-            error = new AppError("An unexpected error occurred", 500);
-        }
-        next(error);
+// Extract browser data (cookies, storeId, lat/lng) from the browser context
+const extractBrowserData = async (location, refresh = false) => {
+  try {
+    // Check if we already have cached browser data for this location
+    if (placesData[location] && placesData[location].cookies && placesData[location].storeId && !refresh) {
+      console.log(`IM: Using cached browser data for location ${location}`);
+      return {
+        cookies: placesData[location].cookies,
+        storeId: placesData[location].storeId,
+        lat: placesData[location].lat || 0,
+        lng: placesData[location].lng || 0
+      };
     }
+
+    // Get the context for this location (should already be set up by setLocation)
+    const context = await contextManager.getContext(location);
+    
+    // Check if the location is serviceable
+    if (!contextManager.isWebsiteServiceable(location, "instamart")) {
+      throw AppError.badRequest(`IM: Location ${location} is not serviceable`);
+    }
+
+    let page = null;
+    try {
+      page = await context.newPage();
+      
+      // Navigate to Instamart to get the cookies and store data
+      await page.goto("https://www.swiggy.com/instamart", { waitUntil: "domcontentloaded" });
+      await page.waitForTimeout(3000);
+
+      //  Store id is not available in the above page, so we need to extract it from the page source. the above was loaded so that the cookies are set properly.
+
+      await page.goto("view-source:https://www.swiggy.com/instamart", { waitUntil: "domcontentloaded" });
+
+      // Extract cookies from the browser
+      const cookies = await page.context().cookies();
+      const cookieString = cookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ');
+      console.log("IM: Extracted cookies from browser");
+
+      // Extract store ID from the HTML response
+      const html = await page.content();
+      const storeIdMatch = html.match(/"storeId":"(\d+)"/);
+      
+      if (!storeIdMatch || !storeIdMatch[1]) {
+        throw new Error("IM: Could not extract storeId from webpage");
+      }
+
+      const storeId = storeIdMatch[1];
+      console.log("IM: Extracted store ID from webpage:", storeId);
+
+      // Extract lat/lng from cookies or page data
+      let lat, lng;
+      const userLocationCookie = cookies.find(cookie => cookie.name === 'userLocation');
+      if (userLocationCookie) {
+        try {
+          const locationData = JSON.parse(decodeURIComponent(userLocationCookie.value));
+          lat = locationData.lat;
+          lng = locationData.lng;
+          console.log("IM: Extracted lat/lng from cookies:", lat, lng);
+        } catch (e) {
+          console.log("IM: Could not parse userLocation cookie, will extract from page");
+        }
+      }
+
+      // If we couldn't get lat/lng from cookies, try to extract from page
+      if (!lat || !lng) {
+        const latLngMatch = html.match(/"lat":([^,]+),"lng":([^}]+)/);
+        if (latLngMatch) {
+          lat = parseFloat(latLngMatch[1]);
+          lng = parseFloat(latLngMatch[2]);
+          console.log("IM: Extracted lat/lng from page:", lat, lng);
+        }
+      }
+
+      const browserData = {
+        cookies: cookieString,
+        storeId: storeId,
+        lat: lat || 0,
+        lng: lng || 0
+      };
+
+      // Update placesData cache with the extracted browser data
+      if (!placesData[location]) {
+        placesData[location] = {};
+      }
+      
+      placesData[location] = {
+        ...placesData[location],
+        ...browserData
+      };
+
+      console.log(`IM: Successfully cached browser data for location ${location}`);
+      return browserData;
+
+    } finally {
+      if (page) await page.close();
+    }
+  } catch (error) {
+    console.error("IM: Error extracting browser data:", error);
+    throw AppError.internalError("Failed to extract browser data");
+  }
 };
 
 // Controller to start periodic price tracking
@@ -110,8 +241,9 @@ export const startTrackingHandler = async () => {
 };
 
 // Process categories linearly instead of in parallel
-const fetchProductsForCategoriesChunk = async (categoryChunk, storeId, cookie, address = "500064") => {
+const fetchProductsForCategoriesChunk = async (categoryChunk, location) => {
     try {
+        const { storeId, cookies } = await extractBrowserData(location, false);
         // Common headers to use across all API calls
         const headers = {
             accept: "*/*",
@@ -120,7 +252,7 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, storeId, cookie, a
             "content-type": "application/json",
             "user-agent":
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
-            cookie: cookie, // Already using the full cookie from fetchProductCategories
+            cookie: cookies, // Already using the full cookie from fetchProductCategories
             referer: "https://www.swiggy.com/instamart",
             priority: "u=1, i",
             matcher: "ea8778ebaf9d9bde8ab7ag7",
@@ -186,27 +318,28 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, storeId, cookie, a
                                 } = response.data?.data || {};
 
                                 // Check if the response is empty and rate limit is hit
-                                if (!response.data.data) {
-                                    if (!allProducts.length) {
-                                        retryCount++;
-                                        if (retryCount > MAX_RETRIES) {
-                                            console.log(
-                                                `IM: Max retries (${MAX_RETRIES}) reached for subcategory ${subCategory.name}`
-                                            );
-                                            break;
-                                        }
-                                        // Wait for progressively longer times between retries (1m, 2m, 3m)
-                                        const waitTime = retryCount * 60 * 1000;
-
-                                        console.log(
-                                            `IM: Rate limit hit (attempt ${retryCount}/${MAX_RETRIES}), waiting for ${waitTime / 1000
-                                            } seconds before retry...`
-                                        );
-                                        await new Promise((resolve) => setTimeout(resolve, waitTime));
-                                        continue; // Retry the same request
-                                    } else {
-                                        break; // Only break if we have some products already
+                                if (!response.data?.data) {
+                                    // If the response status is 202 , then it means the cookies are expired and we have to refresh them
+                                    if(response.status === 202){
+                                        const { cookies : refreshedCookies } = await extractBrowserData(location, true);
+                                        headers.cookie = refreshedCookies;
                                     }
+                                    retryCount++;
+                                    if (retryCount > MAX_RETRIES) {
+                                        console.log(
+                                            `IM: Max retries (${MAX_RETRIES}) reached for subcategory ${subCategory.name}`
+                                        );
+                                        break;
+                                    }
+                                    // Wait for progressively longer times between retries (1m, 2m, 3m)
+                                    const waitTime = retryCount * 60 * 1000;
+
+                                    console.log(
+                                        `IM: Rate limit hit (attempt ${retryCount}/${MAX_RETRIES}), waiting for ${waitTime / 1000
+                                        } seconds before retry...`
+                                    );
+                                    await new Promise((resolve) => setTimeout(resolve, waitTime));
+                                    continue; // Retry the same request
                                 }
 
                                 // Extract products from PRODUCT_LIST widgets
@@ -242,7 +375,7 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, storeId, cookie, a
                                 "length",
                                 allProducts.length
                             );
-                            const updatedCount = await processProducts(allProducts, category, subCategory, address);
+                            const updatedCount = await processProducts(allProducts, category, subCategory, location);
                             console.log(`IM: Extracted products ${updatedCount} products in ${subCategory.name}`);
                         }
                     } catch (error) {
@@ -264,7 +397,7 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, storeId, cookie, a
 };
 
 // Main function to track product prices across all categories
-export const trackProductPrices = async (address = "500064") => {
+export const trackProductPrices = async (location = "500064") => {
     // Prevent multiple tracking instances
     if (isTrackingActive) {
         console.log("INSTAMART: Tracking is already active");
@@ -285,7 +418,16 @@ export const trackProductPrices = async (address = "500064") => {
 
             console.log("INSTAMART: Starting new tracking cycle at:", new Date().toISOString());
 
-            const { categories, storeId, cookie } = await fetchProductCategories(address);
+            // Setup the context for the location
+            const context = await setLocation(location);
+
+            // Check if the location is serviceable
+            if (!contextManager.isWebsiteServiceable(location, "instamart")) {
+                console.log(`BB: Location ${location} is not serviceable, stopping crawler`);
+                break;
+            }
+
+            const { categories, storeId, cookie } = await fetchProductCategories(location);
 
             if (!categories?.length) {
                 console.error("INSTAMART: No categories found or invalid categories data");
@@ -298,7 +440,7 @@ export const trackProductPrices = async (address = "500064") => {
             const categoryChunks = chunk(categories, CATEGORY_CHUNK_SIZE);
 
             for (const categoryChunk of categoryChunks) {
-                await fetchProductsForCategoriesChunk(categoryChunk, storeId, cookie, address);
+                await fetchProductsForCategoriesChunk(categoryChunk, location);
             }
 
             console.log("INSTAMART: Tracking cycle completed at:", new Date().toISOString());
@@ -313,15 +455,118 @@ export const trackProductPrices = async (address = "500064") => {
     }
 };
 
-// Fetches all product categories from Instamart API
-const fetchProductCategories = async (address = "500064") => {
+// Fetches all product categories from Instamart API using browser cookies
+const fetchProductCategories = async (location = "500064") => {
     try {
-        if (placesData[address]) {
-            return placesData[address];
+        // Check if we already have cached categories for this location
+        if (placesData[location] && placesData[location].categories) {
+            console.log(`IM: Using cached categories for location ${location}`);
+            return placesData[location];
         }
+
+        // Extract browser data (cookies, storeId, lat/lng)
+        const { cookies, storeId } = await extractBrowserData(location, true);
+
+        // Get the context for this location to make API calls
+        const context = await contextManager.getContext(location);
+        let page = null;
+
+        try {
+            page = await context.newPage();
+
+            const categoriesResponse = await axios.get(`https://www.swiggy.com/api/instamart/layout`, {
+                params: {
+                    layoutId: "3742",
+                    limit: "40",
+                    pageNo: "0",
+                    serviceLine: "INSTAMART",
+                    customerPage: "STORES_MENU",
+                    hasMasthead: "false",
+                    storeId: storeId,
+                    primaryStoreId: storeId,
+                    secondaryStoreId: "",
+                },
+                headers: {
+                    accept: "*/*",
+                    "accept-language": "en-US,en;q=0.9",
+                    "content-type": "application/json",
+                    "user-agent":
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+                    cookie: cookies,
+                },
+            });
+
+            if (!categoriesResponse.data?.data?.widgets) {
+                throw new Error("Failed to fetch categories");
+            }
+            
+            const widgets = categoriesResponse.data.data.widgets.filter(
+                (widget) => widget.widgetInfo?.widgetType === "TAXONOMY"
+            );
+
+            // From widgets get the categories
+            const allCategoriesWithSubCategories = widgets.flatMap((widget) =>
+                widget.data.map((category) => ({
+                    nodeId: category.nodeId,
+                    name: category.displayName,
+                    taxonomyType: widget.widgetInfo.taxonomyType,
+                    subCategories: category.nodes.map((node) => ({
+                        nodeId: node.nodeId,
+                        name: node.displayName,
+                        image: node.imageId,
+                        productCount: node.productCount,
+                    })),
+                }))
+            );
+
+            // Filter out categories with certain names
+            const unwantedCategories = ["pet supplies", "puja", "grooming", "cleaning essentials", "sexual wellness", "women", "feminine", "girls", "jewellery", "kitchen", "purse", "decor", "hair-color",
+                "fish", "kids", "boys", "toys", "unlisted", "books", "pet-care", "elderly", "cleaning-essentials",
+                "home-needs", "makeup", "home",
+                "lips", "face", "eyes", "nail", "beauty", "gardening"]
+            const filteredCategories = allCategoriesWithSubCategories.filter((category => {
+                // Check if the category name contains any unwanted keywords
+                if (unwantedCategories.some(unwanted => category.name.toLowerCase().includes(unwanted))) {
+                    return false;
+                }
+                return true
+            })).map((category) => {
+                // Filter subcategories for unwanted keywords
+                const filteredSubCategories = category.subCategories.filter(subCategory => {
+                    return !unwantedCategories.some(unwanted => subCategory.name.toLowerCase().includes(unwanted));
+                });
+                // Return a new category object with filtered subcategories
+                return {
+                    ...category,
+                    subCategories: filteredSubCategories
+                };
+            });
+
+            // Update placesData with categories (merge with existing browser data)
+            placesData[location] = {
+                ...placesData[location], // Keep existing browser data
+                categories: filteredCategories,
+            };
+
+            console.log(`IM: Successfully cached categories for location ${location}`);
+            return placesData[location];
+
+        } finally {
+            if (page) await page.close();
+        }
+    } catch (error) {
+        console.error("IM: Error fetching categories with browser cookies:", error);
+        throw AppError.internalError("Failed to fetch categories");
+    }
+};
+
+// Legacy: Fetches all product categories from Instamart API (original implementation)
+const fetchProductCategoriesLegacy = async (location = "500064") => {
+    try {
+
         // Step1: Get the place suggestions using the pincode/address
         const placeResponse = await axios.get(`https://www.swiggy.com/mapi/misc/place-autocomplete`, {
-            params: { input: address },
+            params: { input: location },
             headers: {
                 __fetch_req__: "true",
                 accept: "*/*",
@@ -463,7 +708,7 @@ const fetchProductCategories = async (address = "500064") => {
                     };
                 });
 
-                placesData[address] = {
+                placesData[location] = {
                     categories: filteredCategories,
                     storeId: storeId,
                     cookie: fullCookie,
@@ -471,7 +716,7 @@ const fetchProductCategories = async (address = "500064") => {
                     lng,
                 };
 
-                return placesData[address];
+                return placesData[location];
             } else {
                 console.log("INSTAMART: No storeId in response");
             }
@@ -485,7 +730,7 @@ const fetchProductCategories = async (address = "500064") => {
 };
 
 // Process multiple products and their variations in bulk
-const processProducts = async (products, category, subcategory, address = "500064") => {
+const processProducts = async (products, category, subcategory, location = "500064") => {
     try {
         // Flatten all variations into a single array and transform to standard format
         const transformedProducts = products.flatMap(
@@ -510,7 +755,7 @@ const processProducts = async (products, category, subcategory, address = "50006
                         quantity: variation.quantity,
                         unit: variation.unit_of_measure,
                         weight: variation.sku_quantity_with_combo || variation.weight_in_grams || 0,
-                        url: `https://www.swiggy.com/instamart/item/${product.product_id}?storeId=${placesData[address].storeId}`,
+                        url: `https://www.swiggy.com/instamart/item/${product.product_id}?storeId=${placesData[location].storeId}`,
                         // Additional Instamart-specific fields
                         categoryId: category.nodeId,
                         subcategoryId: subcategory.nodeId,
