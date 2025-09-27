@@ -82,7 +82,7 @@ class ContextManager {
       const browser = await this.initBrowser();
       const context = await browser.newContext({
         // Set the User-Agent
-      // userAgent: ipadUserAgent,
+      userAgent: ipadUserAgent,
       // Emulate the screen size of an iPad (portrait mode)
       viewport: { width: 1280, height: 1024 },
       });

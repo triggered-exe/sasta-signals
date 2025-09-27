@@ -511,6 +511,7 @@ const extractProducts = async (page, options = {}) => {
     return filteredProducts;
   } catch (error) {
     console.error(`ZEPTO: Error extracting products:`, error);
+    await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
     return [];
   }
 };
@@ -596,6 +597,7 @@ export const startTrackingHelper = async (location = "vertex corporate") => {
                   `Zepto: Error processing ${subcategory.categoryName} > ${subcategory.subcategoryName}:`,
                   error
                 );
+                await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
                 return 0;
               }
             })

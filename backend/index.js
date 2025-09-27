@@ -68,15 +68,15 @@ const startServer = async () => {
       console.log(`Server is running on port - ${port}`);
 
       if (process.env.ENVIRONMENT === "production") {
-        setTimeout(() => instamartStartTrackingHandler(), 150 * 1000);
-        setTimeout(() => zeptoStartTrackingHandler("500064"), 0);
+        setTimeout(() => instamartStartTrackingHandler("500064"), 0);
+        setTimeout(() => zeptoStartTrackingHandler("500064"), 150 * 1000);
         setTimeout(() => BigBasketStartTrackingHandler("500064"), 15 * 1000); // For BigBasket
         setTimeout(() => flipkartStartTrackingHandler("500064"), 30 * 1000); // For Flipkart
         setTimeout(() => startAmazonTrackingWithoutBrowswer("500064"), 60 * 1000); // For Amazon Fresh
         setTimeout(() => blinkitStartTrackingHandler("500064"), 90 * 1000); // For Blinkit
         setTimeout(() => jiomartStartTrackingHandler("500064"), 120 * 1000); // For JioMart
       } else {
-        setTimeout(() => instamartStartTrackingHandler("500064"), 0);
+        setTimeout(() => BigBasketStartTrackingHandler("500064"), 0); // For BigBasket
       }
     });
   } catch (error) {

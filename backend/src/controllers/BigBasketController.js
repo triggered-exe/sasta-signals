@@ -291,6 +291,7 @@ const extractProductsFromPage = async (page, category = null, maxScrollAttempts 
   } catch (error) {
     const contextInfo = category ? `category ${category.name}` : "page";
     console.error(`BB: Error fetching products for ${contextInfo}:`, error);
+    await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
     return [];
   }
 };
