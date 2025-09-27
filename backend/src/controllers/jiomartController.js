@@ -173,7 +173,7 @@ const filterCategories = (categories) => {
   return allCategories;
 };
 
-const extractProductsFromPage = async (page, url, MAX_SCROLL_ATTEMPTS = 25) => {
+const extractProductsFromPageLegacy = async (page, url, MAX_SCROLL_ATTEMPTS = 25) => {
   try {
     // Ensure products are sorted by discount by appending query param
     const u = new URL(url);
@@ -301,7 +301,7 @@ const extractProductsFromPage = async (page, url, MAX_SCROLL_ATTEMPTS = 25) => {
           if (variantElement) {
             weight = variantElement.textContent.trim();
           }
-          
+
           // Fallback: try to extract from product name if weight not found
           if (!weight && productName) {
             const weightMatch = productName.match(/(\d+(?:\.\d+)?\s*(?:kg|g|ml|l|gm|gram|liter|litre))/i);
@@ -352,6 +352,161 @@ const extractProductsFromPage = async (page, url, MAX_SCROLL_ATTEMPTS = 25) => {
   }
 };
 
+// The below functioanlity work for desktop view of browser not mobile or ipad view
+const extractProductsFromPage = async (page, url, MAX_LOAD_MORE_ATTEMPTS = 5) => {
+  try {
+    // Navigate to the page
+    await page.goto(url, {
+      waitUntil: "domcontentloaded",
+      timeout: 30000,
+    });
+
+    // Wait for initial products to load
+    await page.waitForSelector("a.plp_product_list", {
+      timeout: 10000,
+      state: "attached",
+    });
+
+    let loadMoreAttempts = 0;
+    let previousHitsLength = 0;
+    const MAX_NO_NEW_PRODUCTS_ATTEMPTS = 2;
+    let noNewProductsAttempts = 0;
+
+    while (loadMoreAttempts < MAX_LOAD_MORE_ATTEMPTS && noNewProductsAttempts < MAX_NO_NEW_PRODUCTS_ATTEMPTS) {
+
+      // Get current hits length from window.hits object
+      const currentHitsLength = await page.evaluate(() => {
+        if (!window.hits || typeof window.hits !== 'object') {
+          return 0;
+        }
+        return Object.values(window.hits).reduce((total, page) => {
+          return total + (Array.isArray(page) ? page.length : 0);
+        }, 0);
+      });
+
+      // If no new products were loaded, increment the counter
+      if (currentHitsLength === previousHitsLength && loadMoreAttempts > 0) {
+        noNewProductsAttempts++;
+        console.log(`JIO: No new products loaded (attempt ${noNewProductsAttempts}/${MAX_NO_NEW_PRODUCTS_ATTEMPTS})`);
+      } else {
+        // If new products were found, and if the new products loaded are less than 12 then we have reached the end , since we have fetched the less products than the limit per page
+        if (currentHitsLength - previousHitsLength < 12) {
+          console.log("JIO: less than 12 new products loaded, stopping pagination");
+          break;
+        }
+        noNewProductsAttempts = 0; // Reset counter if new products were found
+      }
+
+      // Update previous count
+      previousHitsLength = currentHitsLength;
+
+      // Set up response promise before clicking
+      const responsePromise = page.waitForResponse(response =>
+        response.url().includes('/queries') && response.request().method() === 'POST'
+      );
+
+      // Click the load more button inside the browser context
+      const clickResult = await page.evaluate(() => {
+        const loadMoreButton = document.querySelector('.ais-InfiniteHits-loadMore');
+        if (loadMoreButton && !loadMoreButton.classList.contains('ais-InfiniteHits-loadMore--disabled')) {
+          loadMoreButton.click();
+          return true;
+        }
+        return false;
+      });
+
+      if (clickResult) {
+        console.log(`JIO: Clicked load more button (attempt ${++loadMoreAttempts})`);
+      } else {
+        console.log("JIO: Load more button not found or disabled, stopping pagination");
+        break;
+      }
+
+      // Wait for the response to complete
+      try {
+        await responsePromise;
+        console.log("JIO: Load more response received");
+      } catch (error) {
+        console.log("JIO: Timeout waiting for load more response, continuing...");
+      }
+
+      // Wait a bit for the UI to update
+      await page.waitForTimeout(1000);
+
+    }
+
+    // Extract products from window.hits object
+    const products = await page.evaluate(() => {
+      const extractedProducts = [];
+
+      if (!window.hits || typeof window.hits !== 'object') {
+        console.log("JIO: window.hits not found or not an object");
+        return extractedProducts;
+      }
+
+      // Flatten all hits (pages) into a single array of products
+      const allProducts = [];
+      Object.values(window.hits).forEach(page => {
+        if (Array.isArray(page)) {
+          allProducts.push(...page);
+        }
+      });
+
+      allProducts.forEach((product) => {
+        try {
+          // Extract required fields from the product object
+          const productId = product.product_code || product.objectID;
+          const productName = product.display_name;
+          const price = parseFloat(product.selling_price || product.sell_price_value || 0);
+          const mrp = parseFloat(product.mrp || 0);
+          const weight = product.size || "";
+          const brand = product.brand || "";
+          const inStock = product.in_stock === 1 && product.in_stock === 1;
+
+          if (mrp === 0 || price === 0) {
+            return;
+          }
+          const discount = mrp > price ? Number((((mrp - price) / mrp) * 100).toFixed(2)) : 0;
+
+          // Build full URL
+          const fullUrl = product.url_path ? `https://www.jiomart.com${product.url_path}` : "";
+
+          // Get image URL
+          const imageUrl = product.image_url || "";
+
+          // Validate required fields
+          if (!productId || !productName || !price || price <= 0) {
+            return;
+          }
+
+          extractedProducts.push({
+            productId: productId.toString(),
+            productName,
+            url: fullUrl,
+            imageUrl,
+            price,
+            mrp: mrp || price,
+            discount,
+            weight,
+            brand,
+            inStock,
+          });
+        } catch (error) {
+          console.error("JIO: Error extracting product data from window.hits:", error);
+        }
+      });
+
+      return extractedProducts;
+    });
+
+    console.log(`JIO: Successfully extracted ${products.length} products from page ${url} using window.hits`);
+    return { products };
+  } catch (error) {
+    console.error("JIO: Error extracting products from page:", error);
+    return { products: [] };
+  }
+};
+
 let isJioMartCrawlerRunning = false;
 export const startTrackingHandler = async (location) => {
   if (isJioMartCrawlerRunning) {
@@ -384,7 +539,7 @@ export const startTrackingHandler = async (location) => {
       }
 
       // Process queries in parallel batches
-      const PARALLEL_SEARCHES = 3;
+      const PARALLEL_SEARCHES = 1;
       let totalProcessedProducts = 0;
 
       for (let i = 0; i < filteredCategories.length; i += PARALLEL_SEARCHES) {
