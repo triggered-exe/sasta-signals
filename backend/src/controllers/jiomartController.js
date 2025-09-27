@@ -660,12 +660,12 @@ export const startTrackingHandler = async (location) => {
   while (true) {
     try {
       // Skip if it's night time (12 AM to 6 AM IST)
-      // if (isNightTimeIST()) {
-      //   console.log("JIO: Skipping price tracking during night hours");
-      //   // Wait for 5 minutes before checking night time status again
-      //   await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
-      //   continue;
-      // }
+      if (isNightTimeIST()) {
+        console.log("JIO: Skipping price tracking during night hours");
+        // Wait for 5 minutes before checking night time status again
+        await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
+        continue;
+      }
 
       const startTime = new Date();
       console.log("JIO: Starting product search at:", startTime.toLocaleString());
