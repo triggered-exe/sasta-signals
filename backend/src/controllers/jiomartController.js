@@ -1,3 +1,4 @@
+// Watch the video https://youtu.be/WP-S1QolVvU which is recorded for the future reference
 import { JiomartProduct } from "../models/JiomartProduct.js";
 import contextManager from "../utils/contextManager.js";
 import { AppError } from "../utils/errorHandling.js";
@@ -352,13 +353,13 @@ const extractProductsFromPageLegacy = async (page, url, MAX_SCROLL_ATTEMPTS = 25
   }
 };
 
-// The below functioanlity work for desktop view of browser not mobile or ipad view
-const extractProductsFromPage = async (page, url, MAX_LOAD_MORE_ATTEMPTS = 5) => {
+// The below functioanlity work for desktop view of browser not mobile or ipad view and can run only one category at a time
+const extractProductsFromPage = async (page, url, MAX_LOAD_MORE_ATTEMPTS = 15) => {
   try {
     // Navigate to the page
     await page.goto(url, {
       waitUntil: "domcontentloaded",
-      timeout: 30000,
+      timeout: 15000,
     });
 
     // Wait for initial products to load
@@ -416,7 +417,7 @@ const extractProductsFromPage = async (page, url, MAX_LOAD_MORE_ATTEMPTS = 5) =>
       });
 
       if (clickResult) {
-        console.log(`JIO: Clicked load more button (attempt ${++loadMoreAttempts})`);
+        // console.log(`JIO: Clicked load more button (attempt ${++loadMoreAttempts})`);
       } else {
         console.log("JIO: Load more button not found or disabled, stopping pagination");
         break;
@@ -425,13 +426,13 @@ const extractProductsFromPage = async (page, url, MAX_LOAD_MORE_ATTEMPTS = 5) =>
       // Wait for the response to complete
       try {
         await responsePromise;
-        console.log("JIO: Load more response received");
+        // console.log("JIO: Load more response received");
       } catch (error) {
         console.log("JIO: Timeout waiting for load more response, continuing...");
       }
 
       // Wait a bit for the UI to update
-      await page.waitForTimeout(1000);
+      await page.waitForTimeout(500);
 
     }
 
@@ -461,7 +462,19 @@ const extractProductsFromPage = async (page, url, MAX_LOAD_MORE_ATTEMPTS = 5) =>
           const mrp = parseFloat(product.mrp || 0);
           const weight = product.size || "";
           const brand = product.brand || "";
-          const inStock = product.in_stock === 1 && product.in_stock === 1;
+          const inStock = true;
+          // Check for the product card for the details about out of stock
+          const productCard = document.querySelector('a[href*="' + product.url_path + '"]');
+          if (productCard) {
+            console.log("JIO: Product card found", product.url_path);
+            if (productCard.textContent.toLowerCase().includes("out of stock")) {
+              inStock = false;
+            }
+          }else{
+            inStock = false;
+            console.log("JIO: Product card not found", product.url_path);
+          }
+
 
           if (mrp === 0 || price === 0) {
             return;
@@ -472,7 +485,7 @@ const extractProductsFromPage = async (page, url, MAX_LOAD_MORE_ATTEMPTS = 5) =>
           const fullUrl = product.url_path ? `https://www.jiomart.com${product.url_path}` : "";
 
           // Get image URL
-          const imageUrl = product.image_url || "";
+          const imageUrl = `https://www.jiomart.com/images/product/original/${product.image_path}`
 
           // Validate required fields
           if (!productId || !productName || !price || price <= 0) {
@@ -499,8 +512,139 @@ const extractProductsFromPage = async (page, url, MAX_LOAD_MORE_ATTEMPTS = 5) =>
       return extractedProducts;
     });
 
-    console.log(`JIO: Successfully extracted ${products.length} products from page ${url} using window.hits`);
-    return { products };
+    // Extract variants for each product by clicking variant dropdown buttons
+    // console.log("JIO: Starting variant extraction...");
+    const variantDropdownButtons = await page.$$(".variant_dropdown");
+    console.log(`JIO: Found ${variantDropdownButtons.length} variant dropdown buttons`);
+
+    const extractedVariants = [];
+    const processedProductIds = new Set();
+
+    for (let i = 0; i < variantDropdownButtons.length; i++) {
+      try {
+        // Click on the variant dropdown button inside browser context
+        const clickResult = await page.evaluate((index) => {
+          const buttons = document.querySelectorAll('.variant_dropdown');
+          if (buttons[index]) {
+            buttons[index].click();
+            return true;
+          }
+          return false;
+        }, i);
+
+        if (clickResult) {
+          // console.log(`JIO: Clicked variant dropdown ${i + 1}/${variantDropdownButtons.length}`);
+        } else {
+          console.log(`JIO: Failed to click variant dropdown ${i + 1}, skipping`);
+          continue;
+        }
+
+        // Wait for the modal to open and variant_data to be populated
+        await page.waitForTimeout(1000);
+
+        // Extract variant data
+        const variants = await page.evaluate(() => {
+          const variantProducts = [];
+          console.log("JIO: variant_data", variant_data);
+          if (variant_data && Array.isArray(variant_data)) {
+            variant_data.forEach((variant) => {
+              try {
+                const productId = variant.product_code || variant.objectID;
+                const productName = variant.display_name;
+                let price = parseFloat(variant.selling_price || variant.sell_price_value || 0);
+                let mrp = parseFloat(variant.mrp || 0);
+                const weight = variant.size || "";
+                const brand = variant.brand || "";
+                // For instock check div 
+                let variantProductCard = document.querySelector('a[href*="' + variant.url_path + '"]');
+                let inStock = true;
+                if (variantProductCard) {
+                  console.log("JIO: Variant product card found", variant.url_path);
+                  // Check if it contains text "out of stock"
+                  if (variantProductCard.textContent.toLowerCase().includes("out of stock")) {
+                    inStock = false;
+                  }
+                }else{
+                  console.log("JIO: Variant product card not found", variant.url_path);
+                }
+
+                if (mrp === 0 || price === 0) {
+                  // Try to find from the buybox
+                  if (variant.buybox_mrp && Object.keys(variant.buybox_mrp).length > 0) {
+                    const availableKey = Object.keys(variant.buybox_mrp).find(key => variant.buybox_mrp[key].available);
+
+                    if (availableKey) {
+                      const availableProduct = variant.buybox_mrp[availableKey];
+                      mrp = availableProduct.mrp;
+                      price = availableProduct.price;
+                    }
+                  }
+
+                  if (mrp <= 0 || price <= 0) {
+                    console.log("JIO: Invalid variant data", productId, productName, price);
+                    return;
+                  }
+                }
+                const discount = mrp > price ? Number((((mrp - price) / mrp) * 100).toFixed(2)) : 0;
+
+                // Build full URL
+                const fullUrl = variant.url_path ? `https://www.jiomart.com${variant.url_path}` : "";
+
+                // Get image URL
+                const imageUrl = `https://www.jiomart.com/images/product/original/${variant.image_path}`
+
+                // Validate required fields
+                if (!productId || !productName || !price || price <= 0 || mrp <= 0) {
+                  return;
+                }
+
+                variantProducts.push({
+                  productId: productId.toString(),
+                  productName,
+                  url: fullUrl,
+                  imageUrl,
+                  price,
+                  mrp: mrp || price,
+                  discount,
+                  weight,
+                  brand,
+                  inStock,
+                });
+              } catch (error) {
+                console.error("JIO: Error extracting variant data:", error);
+              }
+            });
+          }
+
+          return variantProducts;
+        });
+
+        // Add variants that haven't been processed yet
+        variants.forEach(variant => {
+          if (!processedProductIds.has(variant.productId)) {
+            extractedVariants.push(variant);
+            processedProductIds.add(variant.productId);
+          }
+        });
+
+        // console.log(`JIO: Extracted ${variants.length} variants from dropdown ${i + 1}`);
+      } catch (error) {
+        console.error(`JIO: Error processing variant dropdown ${i + 1}:`, error);
+        // Try to close any open modal
+        try {
+          await page.keyboard.press('Escape');
+        } catch (closeError) {
+          // Ignore close errors
+        }
+      }
+    }
+
+    // Combine main products with variants
+    const allProducts = [...products, ...extractedVariants];
+    console.log(`JIO: Total products extracted: ${products.length} main products + ${extractedVariants.length} variants = ${allProducts.length} total`);
+
+    console.log(`JIO: Successfully extracted ${allProducts.length} products from page ${url} using window.hits and variants`);
+    return { products: allProducts };
   } catch (error) {
     console.error("JIO: Error extracting products from page:", error);
     return { products: [] };
@@ -516,12 +660,12 @@ export const startTrackingHandler = async (location) => {
   while (true) {
     try {
       // Skip if it's night time (12 AM to 6 AM IST)
-      if (isNightTimeIST()) {
-        console.log("JIO: Skipping price tracking during night hours");
-        // Wait for 5 minutes before checking night time status again
-        await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
-        continue;
-      }
+      // if (isNightTimeIST()) {
+      //   console.log("JIO: Skipping price tracking during night hours");
+      //   // Wait for 5 minutes before checking night time status again
+      //   await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
+      //   continue;
+      // }
 
       const startTime = new Date();
       console.log("JIO: Starting product search at:", startTime.toLocaleString());
