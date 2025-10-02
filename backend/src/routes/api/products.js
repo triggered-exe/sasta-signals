@@ -47,11 +47,12 @@ router.get("/:source", async (req, res, next) => {
             sortOrder = "price",
             priceDropped = "false",
             notUpdated = "false",
+            search = "",
         } = req.query;
 
         const skip = (parseInt(page) - 1) * parseInt(pageSize);
         const sortCriteria = buildSortCriteria(sortOrder);
-        const matchCriteria = buildMatchCriteria(priceDropped, notUpdated);
+        const matchCriteria = buildMatchCriteria(priceDropped, notUpdated, search);
 
         const totalProducts = await Model.countDocuments(matchCriteria);
         const products = await Model.aggregate([

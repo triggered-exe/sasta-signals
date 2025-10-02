@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import axios from "axios";
-import { FaSpinner } from 'react-icons/fa';
+import { FaSpinner, FaSearch, FaTimes, FaFilter, FaSortAmountDown } from 'react-icons/fa';
 import { PAGE_SIZE } from "@/utils/constants";
 import Pagination from "./Pagination";
 
@@ -13,13 +13,29 @@ export default function PriceTracker({ apiEndpoint }) {
     const [notUpdated, setNotUpdated] = useState(false);
     const [totalPages, setTotalPages] = useState(1);
     const [isLoading, setIsLoading] = useState(false);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
     const prevApiEndpointRef = useRef(apiEndpoint);
 
     // Add refs to track and cancel requests
     const abortControllerRef = useRef(null);
     const requestIdRef = useRef(0);
 
-    const fetchProducts = useCallback(async (page, endpoint, sort, dropped, notUpd) => {
+    // Debounce search query to avoid too many API calls
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearchQuery(searchQuery);
+        }, 500); // 500ms delay
+
+        return () => clearTimeout(timer);
+    }, [searchQuery]);
+
+    // Reset to page 1 when debounced search query changes
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [debouncedSearchQuery]);
+
+    const fetchProducts = useCallback(async (page, endpoint, sort, dropped, notUpd, search = "") => {
         // Cancel any existing request
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
@@ -42,7 +58,8 @@ export default function PriceTracker({ apiEndpoint }) {
                     pageSize: PAGE_SIZE,
                     sortOrder: sort,
                     priceDropped: dropped.toString(),
-                    notUpdated: notUpd.toString()
+                    notUpdated: notUpd.toString(),
+                    search: search
                 },
                 signal: abortController.signal
             });
@@ -79,14 +96,14 @@ export default function PriceTracker({ apiEndpoint }) {
             setCurrentPage(1);
             // Fetch products only if currentPage is 1 Since for other pages, the useEffect for currentPage will trigger
             if (currentPage === 1) {
-                fetchProducts(1, apiEndpoint, sortOrder, priceDropped, notUpdated);
+                fetchProducts(1, apiEndpoint, sortOrder, priceDropped, notUpdated, debouncedSearchQuery);
             }
             prevApiEndpointRef.current = apiEndpoint;
         } else {
             // Other parameters changed - fetch current page
-            fetchProducts(currentPage, apiEndpoint, sortOrder, priceDropped, notUpdated);
+            fetchProducts(currentPage, apiEndpoint, sortOrder, priceDropped, notUpdated, debouncedSearchQuery);
         }
-    }, [currentPage, apiEndpoint, sortOrder, priceDropped, notUpdated, fetchProducts]);
+    }, [currentPage, apiEndpoint, sortOrder, priceDropped, notUpdated, debouncedSearchQuery, fetchProducts]);
 
     // Cleanup function to cancel any pending requests on unmount
     useEffect(() => {
@@ -110,6 +127,11 @@ export default function PriceTracker({ apiEndpoint }) {
 
     const handleNotUpdatedChange = (e) => {
         setNotUpdated(e.target.checked);
+        setCurrentPage(1);
+    };
+
+    const handleSearchChange = (e) => {
+        setSearchQuery(e.target.value);
         setCurrentPage(1);
     };
 
@@ -185,45 +207,121 @@ export default function PriceTracker({ apiEndpoint }) {
                 </div>
             )}
 
-            {/* Filter Section */}
-            <div className="mb-6 bg-white/90 dark:bg-gray-800/90 p-6 rounded-xl shadow-lg backdrop-blur-md border border-gray-200/50 dark:border-gray-700/50">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:space-x-4 mb-4 sm:mb-0">
-                        <label htmlFor="sortOrder" className="font-semibold text-gray-700 dark:text-gray-200 mb-2 sm:mb-0">
-                            Sort By:
-                        </label>
-                        <select
-                            id="sortOrder"
-                            className="p-2 border rounded-lg bg-white/80 dark:bg-gray-700/80 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200 hover:bg-gray-50 dark:hover:bg-gray-600 backdrop-blur-sm"
-                            value={sortOrder}
-                            onChange={handleSortChange}
-                        >
-                            <option value="price">Price (Low to High)</option>
-                            <option value="price_desc">Price (High to Low)</option>
-                            <option value="discount">Discount (High to Low)</option>
-                        </select>
-                    </div>
+            {/* Modern Professional Filter Section */}
+            <div className="mb-8 bg-gradient-to-r from-white/95 to-gray-50/95 dark:from-gray-800/95 dark:to-gray-900/95 rounded-2xl shadow-xl backdrop-blur-lg border border-gray-200/30 dark:border-gray-700/30 overflow-hidden">
+                {/* Header */}
+                <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 dark:from-blue-600/20 dark:to-purple-600/20 px-6 py-4 border-b border-gray-200/20 dark:border-gray-700/20">
                     <div className="flex items-center space-x-3">
-                        <input
-                            type="checkbox"
-                            id="priceDropped"
-                            checked={priceDropped}
-                            onChange={handlePriceDroppedChange}
-                            className="h-5 w-5 text-blue-600 bg-white/80 dark:bg-gray-700/80 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500 cursor-pointer transition-colors"
-                        />
-                        <label htmlFor="priceDropped" className="font-semibold text-gray-700 dark:text-gray-200 cursor-pointer select-none">
-                            Recently Dropped
+                        <div className="p-2 bg-blue-500/20 dark:bg-blue-600/30 rounded-lg">
+                            <FaFilter className="text-blue-600 dark:text-blue-400 text-lg" />
+                        </div>
+                        <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
+                            Filter & Search Products
+                        </h3>
+                    </div>
+                </div>
+
+                {/* Single Row Filter Controls */}
+                <div className="p-6">
+                    <div className="flex flex-col lg:flex-row lg:items-center lg:space-x-4 space-y-4 lg:space-y-0">
+                        {/* Search Section */}
+                        <div className="flex-1 min-w-0">
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                    <FaSearch className="h-4 w-4 text-gray-400 dark:text-gray-500" />
+                                </div>
+                                <input
+                                    type="text"
+                                    id="searchQuery"
+                                    value={searchQuery}
+                                    onChange={handleSearchChange}
+                                    placeholder="Search products..."
+                                    className="w-full pl-11 pr-12 py-3 bg-white/80 dark:bg-gray-700/80 border border-gray-300/50 dark:border-gray-600/50 rounded-xl text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200 shadow-sm hover:shadow-md"
+                                />
+                                {searchQuery && (
+                                    <button
+                                        onClick={() => setSearchQuery("")}
+                                        className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                                        title="Clear search"
+                                    >
+                                        <FaTimes className="h-4 w-4" />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Sort Section */}
+                        <div className="flex items-center space-x-2">
+                            <FaSortAmountDown className="text-gray-600 dark:text-gray-400 text-sm" />
+                            <div className="relative">
+                                <select
+                                    id="sortOrder"
+                                    value={sortOrder}
+                                    onChange={handleSortChange}
+                                    className="py-3 px-4 pr-10 bg-white/80 dark:bg-gray-700/80 border border-gray-300/50 dark:border-gray-600/50 rounded-xl text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200 shadow-sm hover:shadow-md appearance-none cursor-pointer min-w-[140px]"
+                                >
+                                    <option value="discount">🔥 Discount</option>
+                                    <option value="price">💰 Price ↑</option>
+                                    <option value="price_desc">💎 Price ↓</option>
+                                </select>
+                                <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none">
+                                    <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Price Dropped Filter */}
+                        <label className="flex items-center space-x-2 cursor-pointer group">
+                            <div className="relative">
+                                <input
+                                    type="checkbox"
+                                    id="priceDropped"
+                                    checked={priceDropped}
+                                    onChange={handlePriceDroppedChange}
+                                    className="sr-only"
+                                />
+                                <div className={`w-5 h-5 rounded-md border-2 transition-all duration-200 ${priceDropped
+                                    ? 'bg-green-500 border-green-500 dark:bg-green-600 dark:border-green-600'
+                                    : 'border-gray-300 dark:border-gray-600 group-hover:border-green-400'
+                                    }`}>
+                                    {priceDropped && (
+                                        <svg className="w-3 h-3 text-white absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                        </svg>
+                                    )}
+                                </div>
+                            </div>
+                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                                Price Dropped (2hrs)
+                            </span>
                         </label>
 
-                        <input
-                            type="checkbox"
-                            id="notUpdated"
-                            checked={notUpdated}
-                            onChange={handleNotUpdatedChange}
-                            className="h-5 w-5 text-blue-600 bg-white/80 dark:bg-gray-700/80 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500 cursor-pointer ml-4 transition-colors"
-                        />
-                        <label htmlFor="notUpdated" className="font-semibold text-gray-700 dark:text-gray-200 cursor-pointer select-none">
-                            Not Updated (2+ Days)
+                        {/* Not Updated Filter */}
+                        <label className="flex items-center space-x-2 cursor-pointer group">
+                            <div className="relative">
+                                <input
+                                    type="checkbox"
+                                    id="notUpdated"
+                                    checked={notUpdated}
+                                    onChange={handleNotUpdatedChange}
+                                    className="sr-only"
+                                />
+                                <div className={`w-5 h-5 rounded-md border-2 transition-all duration-200 ${notUpdated
+                                    ? 'bg-orange-500 border-orange-500 dark:bg-orange-600 dark:border-orange-600'
+                                    : 'border-gray-300 dark:border-gray-600 group-hover:border-orange-400'
+                                    }`}>
+                                    {notUpdated && (
+                                        <svg className="w-3 h-3 text-white absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                        </svg>
+                                    )}
+                                </div>
+                            </div>
+                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                                Stale Data (2+ days)
+                            </span>
                         </label>
                     </div>
                 </div>
