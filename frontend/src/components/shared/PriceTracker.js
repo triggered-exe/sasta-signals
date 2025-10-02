@@ -15,7 +15,23 @@ export default function PriceTracker({ apiEndpoint }) {
     const [isLoading, setIsLoading] = useState(false);
     const prevApiEndpointRef = useRef(apiEndpoint);
 
-    const fetchProducts = (async (page, endpoint, sort, dropped, notUpd) => {
+    // Add refs to track and cancel requests
+    const abortControllerRef = useRef(null);
+    const requestIdRef = useRef(0);
+
+    const fetchProducts = useCallback(async (page, endpoint, sort, dropped, notUpd) => {
+        // Cancel any existing request
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+
+        // Create new abort controller for this request
+        const abortController = new AbortController();
+        abortControllerRef.current = abortController;
+
+        // Generate unique request ID
+        const currentRequestId = ++requestIdRef.current;
+
         setIsLoading(true);
         setError(null);
 
@@ -27,20 +43,32 @@ export default function PriceTracker({ apiEndpoint }) {
                     sortOrder: sort,
                     priceDropped: dropped.toString(),
                     notUpdated: notUpd.toString()
-                }
+                },
+                signal: abortController.signal
             });
 
-            const { data, totalPages } = response.data;
-            setProducts(data);
-            setTotalPages(totalPages);
+            // Only update state if this is still the most recent request
+            if (currentRequestId === requestIdRef.current && !abortController.signal.aborted) {
+                const { data, totalPages } = response.data;
+                setProducts(data);
+                setTotalPages(totalPages);
+            }
         } catch (err) {
-            console.log(err);
-            setError("Failed to fetch products");
-            setProducts([]);
+            // Only handle error if this is still the most recent request and not aborted
+            if (currentRequestId === requestIdRef.current && !abortController.signal.aborted) {
+                console.log(err);
+                if (err.name !== 'CanceledError') {
+                    setError("Failed to fetch products");
+                    setProducts([]);
+                }
+            }
         } finally {
-            setIsLoading(false);
+            // Only update loading state if this is still the most recent request
+            if (currentRequestId === requestIdRef.current && !abortController.signal.aborted) {
+                setIsLoading(false);
+            }
         }
-    });
+    }, []);
 
     // Single useEffect to handle all changes with proper logic
     useEffect(() => {
@@ -58,7 +86,17 @@ export default function PriceTracker({ apiEndpoint }) {
             // Other parameters changed - fetch current page
             fetchProducts(currentPage, apiEndpoint, sortOrder, priceDropped, notUpdated);
         }
-    }, [currentPage, apiEndpoint, sortOrder, priceDropped, notUpdated]);
+    }, [currentPage, apiEndpoint, sortOrder, priceDropped, notUpdated, fetchProducts]);
+
+    // Cleanup function to cancel any pending requests on unmount
+    useEffect(() => {
+        return () => {
+            // This runs ONCE when component UNMOUNTS
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+            }
+        };
+    }, []);
 
     const handleSortChange = (e) => {
         setSortOrder(e.target.value);

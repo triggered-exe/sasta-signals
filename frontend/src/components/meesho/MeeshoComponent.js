@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import MeeshoProducts from './MeeshoProducts';
 import axios from 'axios';
 
@@ -9,12 +9,29 @@ const MeeshoComponent = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  // Add refs to track and cancel requests
+  const abortControllerRef = useRef(null);
+  const requestIdRef = useRef(0);
+
   const handleSearchSubmit = async (e) => {
     e.preventDefault();
     if (!searchQuery.trim()) {
       setError('Please enter a search query');
       return;
     }
+
+    // Cancel any existing request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    // Create new abort controller for this request
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
+    // Generate unique request ID
+    const currentRequestId = ++requestIdRef.current;
+
     setIsLoading(true); // Start loading
     setError(null);
 
@@ -30,20 +47,32 @@ const MeeshoComponent = () => {
           'Cache-Control': 'no-cache',
           'Pragma': 'no-cache',
           'Expires': '0',
-        }
+        },
+        signal: abortController.signal
       });
 
-      const productsWithDiscount = response.data.map(product => {
-        const { normalDiscount, specialDiscount, specialPrice, difference } = calculateDiscount(product);
-        return { ...product, normalDiscount, specialDiscount, specialPrice, difference };
-      });
+      // Only update state if this is still the most recent request
+      if (currentRequestId === requestIdRef.current && !abortController.signal.aborted) {
+        const productsWithDiscount = response.data.map(product => {
+          const { normalDiscount, specialDiscount, specialPrice, difference } = calculateDiscount(product);
+          return { ...product, normalDiscount, specialDiscount, specialPrice, difference };
+        });
 
-      setProducts(sortProducts(productsWithDiscount, sortOption));
+        setProducts(sortProducts(productsWithDiscount, sortOption));
+      }
     } catch (error) {
-      setError('Failed to fetch Meesho products. Please try again.');
-      console.error('Error fetching Meesho products:', error);
+      // Only handle error if this is still the most recent request and not aborted
+      if (currentRequestId === requestIdRef.current && !abortController.signal.aborted) {
+        if (error.name !== 'CanceledError') {
+          setError('Failed to fetch Meesho products. Please try again.');
+          console.error('Error fetching Meesho products:', error);
+        }
+      }
     } finally {
-      setIsLoading(false); // End loading
+      // Only update loading state if this is still the most recent request
+      if (currentRequestId === requestIdRef.current && !abortController.signal.aborted) {
+        setIsLoading(false); // End loading
+      }
     }
   };
 
@@ -109,6 +138,15 @@ const MeeshoComponent = () => {
       }, 0);
     }
   };
+
+  // Cleanup function to cancel any pending requests on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
 
   return (
     <div>
