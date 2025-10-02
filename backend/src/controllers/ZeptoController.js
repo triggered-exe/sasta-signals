@@ -541,7 +541,10 @@ export const startTrackingHelper = async (location = "vertex corporate") => {
         return acc.concat(category.subcategories);
       }, []);
 
-      console.log(`Zepto: Found ${allSubcategories.length} subcategories to process`);
+      // Randomize the order of subcategories before processing
+      allSubcategories.sort(() => Math.random() - 0.5);
+
+      console.log(`Zepto: Found ${allSubcategories.length} subcategories to process (randomized order)`);
 
       let totalProcessedProducts = 0;
       const CHUNK_SIZE = 2; // Process 2 subcategories at a time

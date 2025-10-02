@@ -375,6 +375,8 @@ const extractProductsFromPage = async (page, url, MAX_LOAD_MORE_ATTEMPTS = 15) =
 
     while (loadMoreAttempts < MAX_LOAD_MORE_ATTEMPTS && noNewProductsAttempts < MAX_NO_NEW_PRODUCTS_ATTEMPTS) {
 
+      loadMoreAttempts++;
+
       // Get current hits length from window.hits object
       const currentHitsLength = await page.evaluate(() => {
         if (!window.hits || typeof window.hits !== 'object') {
@@ -386,12 +388,12 @@ const extractProductsFromPage = async (page, url, MAX_LOAD_MORE_ATTEMPTS = 15) =
       });
 
       // If no new products were loaded, increment the counter
-      if (currentHitsLength === previousHitsLength && loadMoreAttempts > 0) {
+      if (currentHitsLength === previousHitsLength && loadMoreAttempts > 1) {
         noNewProductsAttempts++;
         console.log(`JIO: No new products loaded (attempt ${noNewProductsAttempts}/${MAX_NO_NEW_PRODUCTS_ATTEMPTS})`);
       } else {
         // If new products were found, and if the new products loaded are less than 12 then we have reached the end , since we have fetched the less products than the limit per page
-        if (currentHitsLength - previousHitsLength < 12) {
+        if (currentHitsLength - previousHitsLength < 12 && loadMoreAttempts > 1) {
           console.log("JIO: less than 12 new products loaded, stopping pagination");
           break;
         }
@@ -401,34 +403,64 @@ const extractProductsFromPage = async (page, url, MAX_LOAD_MORE_ATTEMPTS = 15) =
       // Update previous count
       previousHitsLength = currentHitsLength;
 
-      // Set up response promise before clicking
-      const responsePromise = page.waitForResponse(response =>
-        response.url().includes('/queries') && response.request().method() === 'POST'
-      );
-
-      // Click the load more button inside the browser context
+      // Check if load more button exists and is clickable BEFORE setting up response promise
       const clickResult = await page.evaluate(() => {
         const loadMoreButton = document.querySelector('.ais-InfiniteHits-loadMore');
         if (loadMoreButton && !loadMoreButton.classList.contains('ais-InfiniteHits-loadMore--disabled')) {
-          loadMoreButton.click();
           return true;
         }
         return false;
       });
 
-      if (clickResult) {
-        // console.log(`JIO: Clicked load more button (attempt ${++loadMoreAttempts})`);
-      } else {
+      if (!clickResult) {
         console.log("JIO: Load more button not found or disabled, stopping pagination");
         break;
       }
 
-      // Wait for the response to complete
+      // Click the load more button first
+      await page.evaluate(() => {
+        const loadMoreButton = document.querySelector('.ais-InfiniteHits-loadMore');
+        loadMoreButton.click();
+      });
+
+      // console.log(`JIO: Clicked load more button (attempt ${++loadMoreAttempts})`);
+
+      // Wait for the response with improved error handling
       try {
+        // Set up response promise after clicking
+        const responsePromise = page.waitForResponse(response =>
+          response.url().includes('/queries') && response.request().method() === 'POST',
+          { timeout: 5000 } // Increased to 15 seconds
+        );
+
         await responsePromise;
         // console.log("JIO: Load more response received");
       } catch (error) {
-        console.log("JIO: Timeout waiting for load more response, continuing...");
+        if (error.name === 'TimeoutError') {
+          console.log("JIO: Timeout waiting for load more response, checking if products were loaded anyway...");
+
+          // Check if new products were actually loaded despite the timeout
+          const currentHitsAfterTimeout = await page.evaluate(() => {
+            if (!window.hits || typeof window.hits !== 'object') {
+              return 0;
+            }
+            return Object.values(window.hits).reduce((total, page) => {
+              return total + (Array.isArray(page) ? page.length : 0);
+            }, 0);
+          });
+
+          if (currentHitsAfterTimeout > previousHitsLength) {
+            console.log("JIO: Products were loaded despite timeout, continuing...");
+            previousHitsLength = currentHitsAfterTimeout;
+            noNewProductsAttempts = 0; // Reset since we got new products
+          } else {
+            console.log("JIO: No new products loaded after timeout, incrementing no-new-products counter");
+            noNewProductsAttempts++;
+          }
+        } else {
+          console.log("JIO: Error waiting for load more response:", error.message);
+          noNewProductsAttempts++;
+        }
       }
 
       // Wait a bit for the UI to update
@@ -453,13 +485,21 @@ const extractProductsFromPage = async (page, url, MAX_LOAD_MORE_ATTEMPTS = 15) =
         }
       });
 
+      // Helper function to parse price strings with commas
+      const parsePrice = (priceValue) => {
+        if (!priceValue) return 0;
+        const priceStr = priceValue.toString();
+        // Remove commas and parse as float
+        return parseFloat(priceStr.replace(/,/g, "")) || 0;
+      };
+
       allProducts.forEach((product) => {
         try {
           // Extract required fields from the product object
           const productId = product.product_code || product.objectID;
           const productName = product.display_name;
-          const price = parseFloat(product.selling_price || product.sell_price_value || 0);
-          const mrp = parseFloat(product.mrp || 0);
+          const price = parsePrice(product.selling_price);
+          const mrp = parsePrice(product.mrp);
           const weight = product.size || "";
           const brand = product.brand || "";
           const inStock = true;
@@ -470,13 +510,13 @@ const extractProductsFromPage = async (page, url, MAX_LOAD_MORE_ATTEMPTS = 15) =
             if (productCard.textContent.toLowerCase().includes("out of stock")) {
               inStock = false;
             }
-          }else{
+          } else {
             inStock = false;
             console.log("JIO: Product card not found", product.url_path);
           }
 
 
-          if (mrp === 0 || price === 0) {
+          if (mrp <= 0 || price <= 0) {
             return;
           }
           const discount = mrp > price ? Number((((mrp - price) / mrp) * 100).toFixed(2)) : 0;
@@ -520,7 +560,11 @@ const extractProductsFromPage = async (page, url, MAX_LOAD_MORE_ATTEMPTS = 15) =
     const extractedVariants = [];
     const processedProductIds = new Set();
 
-    for (let i = 0; i < variantDropdownButtons.length; i++) {
+    // Limit variant extraction to avoid excessive processing time
+    const maxVariantButtons = Math.min(variantDropdownButtons.length, 20);
+    console.log(`JIO: Processing ${maxVariantButtons} variant dropdown buttons (limited for performance)`);
+
+    for (let i = 0; i < maxVariantButtons; i++) {
       try {
         // Click on the variant dropdown button inside browser context
         const clickResult = await page.evaluate((index) => {
@@ -546,13 +590,22 @@ const extractProductsFromPage = async (page, url, MAX_LOAD_MORE_ATTEMPTS = 15) =
         const variants = await page.evaluate(() => {
           const variantProducts = [];
           console.log("JIO: variant_data", variant_data);
+
+          // Helper function to parse price strings with commas
+          const parsePrice = (priceValue) => {
+            if (!priceValue) return 0;
+            const priceStr = priceValue.toString();
+            // Remove commas and parse as float
+            return parseFloat(priceStr.replace(/,/g, "")) || 0;
+          };
+
           if (variant_data && Array.isArray(variant_data)) {
             variant_data.forEach((variant) => {
               try {
                 const productId = variant.product_code || variant.objectID;
                 const productName = variant.display_name;
-                let price = parseFloat(variant.selling_price || variant.sell_price_value || 0);
-                let mrp = parseFloat(variant.mrp || 0);
+                let price = parsePrice(variant.selling_price || variant.sell_price_value);
+                let mrp = parsePrice(variant.mrp);
                 const weight = variant.size || "";
                 const brand = variant.brand || "";
                 // For instock check div 
@@ -564,7 +617,7 @@ const extractProductsFromPage = async (page, url, MAX_LOAD_MORE_ATTEMPTS = 15) =
                   if (variantProductCard.textContent.toLowerCase().includes("out of stock")) {
                     inStock = false;
                   }
-                }else{
+                } else {
                   console.log("JIO: Variant product card not found", variant.url_path);
                 }
 
@@ -641,6 +694,12 @@ const extractProductsFromPage = async (page, url, MAX_LOAD_MORE_ATTEMPTS = 15) =
 
     // Combine main products with variants
     const allProducts = [...products, ...extractedVariants];
+
+    // Check if any product price is less than 5 ruppes
+    const productsWithPriceLessThan5 = allProducts.filter(product => product.price < 2);
+    if (productsWithPriceLessThan5.length > 0) {
+      console.log(`JIO: Products with price less than 5 ruppes: ${productsWithPriceLessThan5.length}`);
+    }
     console.log(`JIO: Total products extracted: ${products.length} main products + ${extractedVariants.length} variants = ${allProducts.length} total`);
 
     console.log(`JIO: Successfully extracted ${allProducts.length} products from page ${url} using window.hits and variants`);
@@ -675,12 +734,14 @@ export const startTrackingHandler = async (location) => {
 
       const categories = await fetchJiomartCategories(context);
 
-      const filteredCategories = await filterCategories(categories);
+      let filteredCategories = await filterCategories(categories);
       // Check if the location is serviceable
       if (!contextManager.isWebsiteServiceable(location, "jiomart-grocery")) {
         console.log(`JIO: Location ${location} is not serviceable, stopping crawler`);
         break;
       }
+      // lets shuffle the filteredCategories
+      filteredCategories = filteredCategories.sort(() => Math.random() - 0.5);
 
       // Process queries in parallel batches
       const PARALLEL_SEARCHES = 1;
