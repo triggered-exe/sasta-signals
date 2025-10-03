@@ -9,7 +9,7 @@ export default function PriceTracker({ apiEndpoint }) {
     const [error, setError] = useState(null);
     const [currentPage, setCurrentPage] = useState(1);
     const [sortOrder, setSortOrder] = useState("discount");
-    const [priceDropped, setPriceDropped] = useState(true);
+    const [timePeriod, setTimePeriod] = useState("1");
     const [notUpdated, setNotUpdated] = useState(false);
     const [totalPages, setTotalPages] = useState(1);
     const [isLoading, setIsLoading] = useState(false);
@@ -35,7 +35,7 @@ export default function PriceTracker({ apiEndpoint }) {
         setCurrentPage(1);
     }, [debouncedSearchQuery]);
 
-    const fetchProducts = useCallback(async (page, endpoint, sort, dropped, notUpd, search = "") => {
+    const fetchProducts = useCallback(async (page, endpoint, sort, timePeriod, notUpd, search = "") => {
         // Cancel any existing request
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
@@ -57,7 +57,7 @@ export default function PriceTracker({ apiEndpoint }) {
                     page: page,
                     pageSize: PAGE_SIZE,
                     sortOrder: sort,
-                    priceDropped: dropped.toString(),
+                    timePeriod: timePeriod,
                     notUpdated: notUpd.toString(),
                     search: search
                 },
@@ -96,14 +96,14 @@ export default function PriceTracker({ apiEndpoint }) {
             setCurrentPage(1);
             // Fetch products only if currentPage is 1 Since for other pages, the useEffect for currentPage will trigger
             if (currentPage === 1) {
-                fetchProducts(1, apiEndpoint, sortOrder, priceDropped, notUpdated, debouncedSearchQuery);
+                fetchProducts(1, apiEndpoint, sortOrder, timePeriod, notUpdated, debouncedSearchQuery);
             }
             prevApiEndpointRef.current = apiEndpoint;
         } else {
             // Other parameters changed - fetch current page
-            fetchProducts(currentPage, apiEndpoint, sortOrder, priceDropped, notUpdated, debouncedSearchQuery);
+            fetchProducts(currentPage, apiEndpoint, sortOrder, timePeriod, notUpdated, debouncedSearchQuery);
         }
-    }, [currentPage, apiEndpoint, sortOrder, priceDropped, notUpdated, debouncedSearchQuery, fetchProducts]);
+    }, [currentPage, apiEndpoint, sortOrder, timePeriod, notUpdated, debouncedSearchQuery, fetchProducts]);
 
     // Cleanup function to cancel any pending requests on unmount
     useEffect(() => {
@@ -120,8 +120,8 @@ export default function PriceTracker({ apiEndpoint }) {
         setCurrentPage(1);
     };
 
-    const handlePriceDroppedChange = (e) => {
-        setPriceDropped(e.target.checked);
+    const handleTimePeriodChange = (e) => {
+        setTimePeriod(e.target.value);
         setCurrentPage(1);
     };
 
@@ -272,31 +272,32 @@ export default function PriceTracker({ apiEndpoint }) {
                             </div>
                         </div>
 
-                        {/* Price Dropped Filter */}
-                        <label className="flex items-center space-x-2 cursor-pointer group">
+                        {/* Time Period Filter */}
+                        <div className="flex items-center space-x-2">
+                            <label htmlFor="timePeriod" className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                                Price Dropped:
+                            </label>
                             <div className="relative">
-                                <input
-                                    type="checkbox"
-                                    id="priceDropped"
-                                    checked={priceDropped}
-                                    onChange={handlePriceDroppedChange}
-                                    className="sr-only"
-                                />
-                                <div className={`w-5 h-5 rounded-md border-2 transition-all duration-200 ${priceDropped
-                                    ? 'bg-green-500 border-green-500 dark:bg-green-600 dark:border-green-600'
-                                    : 'border-gray-300 dark:border-gray-600 group-hover:border-green-400'
-                                    }`}>
-                                    {priceDropped && (
-                                        <svg className="w-3 h-3 text-white absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" fill="currentColor" viewBox="0 0 20 20">
-                                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                        </svg>
-                                    )}
+                                <select
+                                    id="timePeriod"
+                                    value={timePeriod}
+                                    onChange={handleTimePeriodChange}
+                                    className="py-3 px-4 pr-10 bg-white/80 dark:bg-gray-700/80 border border-gray-300/50 dark:border-gray-600/50 rounded-xl text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200 shadow-sm hover:shadow-md appearance-none cursor-pointer min-w-[140px]"
+                                >
+                                    <option value="all">All Time</option>
+                                    <option value="1">Last 1 Hour</option>
+                                    <option value="2">Last 2 Hours</option>
+                                    <option value="6">Last 6 Hours</option>
+                                    <option value="12">Last 12 Hours</option>
+                                    <option value="24">Last 24 Hours</option>
+                                </select>
+                                <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none">
+                                    <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                    </svg>
                                 </div>
                             </div>
-                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                                Price Dropped (2hrs)
-                            </span>
-                        </label>
+                        </div>
 
                         {/* Not Updated Filter */}
                         <label className="flex items-center space-x-2 cursor-pointer group">

@@ -33,7 +33,7 @@ export const buildSortCriteria = (sortOrder) => {
 };
 
 // Helper function to build MongoDB match criteria for filtering products
-export const buildMatchCriteria = (priceDropped, notUpdated, searchQuery) => {
+export const buildMatchCriteria = (timePeriod, notUpdated, searchQuery) => {
   const criteria = {};
 
   // Add search criteria if search query is provided
@@ -44,14 +44,19 @@ export const buildMatchCriteria = (priceDropped, notUpdated, searchQuery) => {
     };
   }
 
-  if (priceDropped === "true") {
-    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
-    criteria.priceDroppedAt = {
-      $exists: true,
-      $type: "date",
-      $gte: twoHoursAgo,
-    };
+  // Handle time period for price drops
+  if (timePeriod && timePeriod !== "all") {
+    const hours = parseInt(timePeriod);
+    if (!isNaN(hours) && hours > 0) {
+      const timeAgo = new Date(Date.now() - hours * 60 * 60 * 1000);
+      criteria.priceDroppedAt = {
+        $exists: true,
+        $type: "date",
+        $gte: timeAgo,
+      };
+    }
   }
+
   if (notUpdated === "true") {
     return {
       ...criteria,
