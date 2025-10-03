@@ -228,6 +228,7 @@ export const searchQuery = async (req, res, next) => {
     const allProducts = await extractProducts(page, {
       query,
       maxScrollAttempts: 5,
+      maxRetries: 3, // Add retry configuration for search
     });
 
     // Sort by price
@@ -268,6 +269,15 @@ export const searchQuery = async (req, res, next) => {
       });
     }
 
+    // Handle retryable errors (502 Bad Gateway and Something went wrong)
+    if (error.message && (error.message.includes("502_BAD_GATEWAY") || error.message.includes("SOMETHING_WENT_WRONG"))) {
+      return res.status(502).json({
+        success: false,
+        message: "Server temporarily unavailable. Please try again in a few moments.",
+        products: [],
+      });
+    }
+
     next(error);
   } finally {
     if (page) await page.close();
@@ -287,11 +297,65 @@ export const startTracking = async (req, res, next) => {
   }
 };
 
+// Function to check for retryable errors (502 Bad Gateway and Something went wrong)
+const checkForRetryableError = async (page) => {
+  try {
+    // Check for 502 Bad Gateway error
+    const errorElement = await page.$('h1');
+    if (errorElement) {
+      const errorText = await errorElement.textContent();
+      if (errorText && errorText.includes('502 Bad Gateway')) {
+        return { hasError: true, errorType: '502_BAD_GATEWAY' };
+      }
+    }
+
+    // Check for "Something went wrong" error
+    const somethingWrongElement = await page.$('h3.font-heading');
+    if (somethingWrongElement) {
+      const headingText = await somethingWrongElement.textContent();
+      if (headingText && headingText.includes('Something went wrong')) {
+        return { hasError: true, errorType: 'SOMETHING_WENT_WRONG' };
+      }
+    }
+
+    return { hasError: false, errorType: null };
+  } catch (error) {
+    return { hasError: false, errorType: null };
+  }
+};
+
+// Function to check for "No Products" message
+const checkForNoProducts = async (page) => {
+  try {
+    // Check for the specific "Sorry! No Products" message
+    const noProductsElement = await page.$('h3.font-heading');
+    if (noProductsElement) {
+      const headingText = await noProductsElement.textContent();
+      if (headingText && headingText.includes('Sorry! No Products')) {
+        return true;
+      }
+    }
+
+    // Also check for the description text
+    const descriptionElement = await page.$('p.font-body');
+    if (descriptionElement) {
+      const descriptionText = await descriptionElement.textContent();
+      if (descriptionText && descriptionText.includes('There are no products available')) {
+        return true;
+      }
+    }
+
+    return false;
+  } catch (error) {
+    return false;
+  }
+};
+
 // Function to extract products from a page, either by search or direct URL
 const extractProducts = async (page, options = {}) => {
-  try {
-    const { query = "", maxScrollAttempts = 15, url = null } = options;
+  const { query = "", maxScrollAttempts = 15, url = null, retryCount = 0, maxRetries = 2 } = options;
 
+  try {
     // If URL is provided, navigate to it directly
     if (url) {
       await page.goto(url, { waitUntil: "networkidle" });
@@ -307,6 +371,24 @@ const extractProducts = async (page, options = {}) => {
       throw new Error("Either URL or search query must be provided");
     }
 
+    // Check for retryable errors (502 Bad Gateway and Something went wrong)
+    const errorCheck = await checkForRetryableError(page);
+    if (errorCheck.hasError) {
+      console.log(`ZEPTO: ${errorCheck.errorType} error detected for ${url || query}, retry ${retryCount + 1}/${maxRetries}`);
+
+      if (retryCount < maxRetries) {
+        // Exponential backoff: wait 2^retryCount seconds
+        const waitTime = Math.pow(2, retryCount) * 1000;
+        console.log(`ZEPTO: Waiting ${waitTime}ms before retry...`);
+        await page.waitForTimeout(waitTime);
+
+        // Retry with increased retry count
+        return await extractProducts(page, { ...options, retryCount: retryCount + 1 });
+      } else {
+        throw new Error(`${errorCheck.errorType} error persisted after ${maxRetries} retries for ${url || query}`);
+      }
+    }
+
     // Wait for products to load or check if no results
     try {
       await page.waitForSelector("a div[data-is-out-of-stock]", {
@@ -314,7 +396,14 @@ const extractProducts = async (page, options = {}) => {
       });
       console.log(`ZEPTO: Products found for ${url || query}`);
     } catch (error) {
-      console.log(`ZEPTO: No products found for ${url || query} - checking for no results message`);
+      // Double-check if it's the "No Products" case before throwing error
+      const hasNoProducts = await checkForNoProducts(page);
+      if (hasNoProducts) {
+        console.log(`ZEPTO: No products available for ${url || query} - returning empty array`);
+        return [];
+      }
+
+      console.log(`ZEPTO: No products found for ${url || query} - this might be a loading issue`);
       throw new Error(`No products found for ${url || query}`);
     }
 
@@ -574,6 +663,7 @@ export const startTrackingHelper = async (location = "vertex corporate") => {
                 const products = await extractProducts(pages[index], {
                   url: subcategory.url,
                   maxScrollAttempts: subcategory.url.includes("fitness") ? 25 : 15,
+                  maxRetries: 2, // Add retry configuration for tracking
                 });
 
                 // Transform products to include category information
