@@ -31,9 +31,18 @@ export const sendTelegramMessage = async (droppedProducts, source, minDiscountTh
             return;
         }
 
+        // Remove duplicates based on productId
+        const uniqueFilteredProducts = filteredProducts.filter((product, index, self) =>
+            index === self.findIndex(p => p.productId === product.productId)
+        );
+
+        if (uniqueFilteredProducts.length !== filteredProducts.length) {
+            console.log(`${source}: Removed ${filteredProducts.length - uniqueFilteredProducts.length} duplicate products from Telegram notification`);
+        }
+
         // Chunk products into groups of 10-15 for readability
-        const productChunks = chunk(filteredProducts, 10);
-        console.log(`${source}: Sending Telegram messages for ${filteredProducts.length} products`);
+        const productChunks = chunk(uniqueFilteredProducts, 10);
+        console.log(`${source}: Sending Telegram messages for ${uniqueFilteredProducts.length} products`);
 
         for (let i = 0; i < productChunks.length; i++) {
             const products = productChunks[i];
@@ -65,7 +74,7 @@ export const sendTelegramMessage = async (droppedProducts, source, minDiscountTh
             }
         }
 
-        console.log(`${source}: Sent notifications for ${filteredProducts.length} products`);
+        console.log(`${source}: Sent notifications for ${uniqueFilteredProducts.length} products`);
     } catch (error) {
         console.error(`${source}: Error sending Telegram message:`, error?.response?.data || error);
         throw error;
@@ -86,9 +95,18 @@ export const sendEmailWithDroppedProducts = async (droppedProducts, source) => {
             return;
         }
 
+        // Remove duplicates based on productId
+        const uniqueDroppedProducts = droppedProducts.filter((product, index, self) =>
+            index === self.findIndex(p => p.productId === product.productId)
+        );
+
+        if (uniqueDroppedProducts.length !== droppedProducts.length) {
+            console.log(`${source}: Removed ${droppedProducts.length - uniqueDroppedProducts.length} duplicate products from email notification`);
+        }
+
         // Chunk products into groups of 10 for better email rendering
-        const productChunks = chunk(droppedProducts, 10);
-        console.log(`${source}: Sending email for ${droppedProducts.length} products in ${productChunks.length} chunks`);
+        const productChunks = chunk(uniqueDroppedProducts, 10);
+        console.log(`${source}: Sending email for ${uniqueDroppedProducts.length} products in ${productChunks.length} chunks`);
 
         for (let i = 0; i < productChunks.length; i++) {
             const products = productChunks[i];
@@ -139,7 +157,7 @@ export const sendEmailWithDroppedProducts = async (droppedProducts, source) => {
             }
         }
 
-        console.log(`${source}: Email notifications sent successfully`);
+        console.log(`${source}: Email notifications sent successfully for ${uniqueDroppedProducts.length} unique products`);
     } catch (error) {
         console.error(`${source}: Error sending email:`, error);
         throw error;
