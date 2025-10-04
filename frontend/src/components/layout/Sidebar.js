@@ -40,17 +40,8 @@ export default function Sidebar({
         };
     }, [isMenuExpanded, toggleMenuExpansion]);
 
-    const handleMouseEnter = () => {
-        if (!isMenuExpanded) {
-            toggleMenuExpansion();
-        }
-    };
-
-    const handleMouseLeave = () => {
-        if (isMenuExpanded) {
-            toggleMenuExpansion();
-        }
-    };
+    // Remove auto-expand on hover for more professional behavior
+    // Users will manually control the sidebar state
 
     // Handle website selection
     const handleWebsiteClick = (websiteName) => {
@@ -60,56 +51,62 @@ export default function Sidebar({
     return (
         <div
             ref={sidebarRef}
-            onMouseEnter={handleMouseEnter}
-            onMouseLeave={handleMouseLeave}
-            className={`fixed top-16 h-[calc(100vh-64px)] transition-all duration-300 
-                ${isMenuExpanded ? 'w-[250px]' : 'w-[70px]'} 
-                bg-white dark:bg-gray-800 text-gray-800 dark:text-white
-                z-50 border-r border-gray-200 dark:border-gray-700`}
+            className={`fixed top-16 h-[calc(100vh-64px)] transition-all duration-300 ease-in-out
+                ${isMenuExpanded ? 'w-[280px]' : 'w-[70px]'} 
+                bg-background text-foreground
+                z-50 border-r border-border shadow-lg`}
         >
-            {/* Expand/collapse toggle button */}
-            <div className="border-b border-gray-200 dark:border-gray-700 py-3 px-4 flex items-center justify-between">
-                {isMenuExpanded && <span className="font-medium text-gray-700 dark:text-gray-300">Websites</span>}
+            {/* Header with toggle button */}
+            <div className="border-b border-border py-4 px-4 flex items-center justify-between">
+                {isMenuExpanded && (
+                    <h2 className="font-semibold text-lg text-foreground transition-opacity duration-300">
+                        Websites
+                    </h2>
+                )}
                 <Button
                     onClick={toggleMenuExpansion}
                     variant="ghost"
                     size="icon"
-                    className={`rounded-full ${isMenuExpanded ? '' : 'mx-auto'}`}
+                    className={`rounded-lg transition-all duration-200 hover:bg-accent ${isMenuExpanded ? '' : 'mx-auto'}`}
                     aria-label={isMenuExpanded ? "Collapse menu" : "Expand menu"}
                 >
-                    {isMenuExpanded ? <FaArrowLeft size={14} /> : <FaArrowRight size={14} />}
+                    {isMenuExpanded ? <FaArrowLeft size={16} /> : <FaArrowRight size={16} />}
                 </Button>
             </div>
 
-            <div className={`overflow-y-auto h-[calc(100%-120px)] ${isMenuExpanded ? 'px-6' : 'px-2'} py-4`}>
-                <div className="space-y-3">
+            <div className={`overflow-y-auto h-[calc(100%-140px)] ${isMenuExpanded ? 'px-4' : 'px-2'} py-4`}>
+                <div className="space-y-2">
                     {websites.map((website) => (
                         <Button
                             key={website.name}
                             variant={selectedWebsite === website.name ? "secondary" : "ghost"}
-                            className={`w-full p-3 text-left rounded-lg transition-all duration-200 flex items-center h-auto
-                                ${isMenuExpanded ? '' : 'justify-center'} border`}
+                            className={`w-full h-12 text-left rounded-lg transition-all duration-200 flex items-center group
+                                ${isMenuExpanded ? 'px-4' : 'justify-center px-2'} 
+                                ${selectedWebsite === website.name
+                                    ? 'bg-secondary text-secondary-foreground shadow-sm'
+                                    : 'hover:bg-accent hover:text-accent-foreground'
+                                }`}
                             onClick={() => handleWebsiteClick(website.name)}
                             title={!isMenuExpanded ? website.name : ''}
                         >
                             <div className={`${isMenuExpanded ? 'mr-3' : ''} ${selectedWebsite === website.name
-                                ? 'text-blue-500 dark:text-blue-400'
-                                : 'text-gray-500 dark:text-gray-400'}`}>
+                                ? 'text-primary'
+                                : 'text-muted-foreground group-hover:text-foreground'}`}>
                                 {websiteIcons[website.name] || <FaShoppingBasket className="text-xl" />}
                             </div>
 
                             {isMenuExpanded && (
-                                <div className="flex-1">
-                                    <h3 className="text-lg font-medium text-gray-800 dark:text-gray-200">
+                                <div className="flex-1 min-w-0">
+                                    <h3 className="text-sm font-medium text-foreground truncate">
                                         {website.name}
                                     </h3>
                                 </div>
                             )}
 
                             {isMenuExpanded && (
-                                <FaChevronRight className={`transition-transform duration-200 ${selectedWebsite === website.name
-                                    ? "text-blue-500 dark:text-blue-400"
-                                    : "text-gray-400 dark:text-gray-500"
+                                <FaChevronRight className={`transition-transform duration-200 text-muted-foreground group-hover:text-foreground ${selectedWebsite === website.name
+                                    ? "text-primary"
+                                    : ""
                                     }`} />
                             )}
                         </Button>
@@ -118,22 +115,22 @@ export default function Sidebar({
             </div>
 
             {/* Dark mode toggle at bottom of sidebar */}
-            <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+            <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-border bg-background">
                 <Button
                     onClick={toggleDarkMode}
                     variant="ghost"
-                    className="w-full p-2 rounded-lg flex items-center justify-center h-auto"
+                    className="w-full h-12 rounded-lg flex items-center justify-center group hover:bg-accent"
                     aria-label="Toggle dark mode"
                     title="Toggle dark mode"
                 >
                     <span className="dark:hidden">
-                        <FaMoon className="text-gray-600" />
+                        <FaMoon className="text-muted-foreground group-hover:text-foreground" />
                     </span>
                     <span className="hidden dark:inline">
-                        <FaSun className="text-yellow-300" />
+                        <FaSun className="text-muted-foreground group-hover:text-foreground" />
                     </span>
                     {isMenuExpanded && (
-                        <span className="ml-2">
+                        <span className="ml-3 text-sm font-medium text-muted-foreground group-hover:text-foreground">
                             <span className="dark:hidden">Dark Mode</span>
                             <span className="hidden dark:inline">Light Mode</span>
                         </span>
