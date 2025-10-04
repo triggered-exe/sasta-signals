@@ -152,8 +152,8 @@ const MeeshoComponent = () => {
   }, []);
 
   return (
-    <div>
-      <h3 className="text-xl font-semibold mb-4">Search Meesho Products</h3>
+    <div className="w-full">
+      <h3 className="text-xl font-semibold mb-4 text-foreground">Search Meesho Products</h3>
       <form onSubmit={handleSearchSubmit} className="mb-4">
         <div className="flex flex-col sm:flex-row gap-2">
           <Input
@@ -187,8 +187,8 @@ const MeeshoComponent = () => {
       </form>
       {isLoading && (
         <>
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
-            <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-blue-500 bg-white"></div>
+          <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-[9999]">
+            <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-primary bg-card shadow-lg"></div>
           </div>
         </>
       )}

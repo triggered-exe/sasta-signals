@@ -146,7 +146,7 @@ export default function PriceTracker({ apiEndpoint }) {
 
     const renderProductCard = (product) => (
         <div key={product._id} className="w-1/2 sm:w-1/3 md:w-1/3 lg:w-1/4 xl:w-1/5 2xl:w-1/6 p-1 sm:p-2 md:p-3">
-            <Card className={`group h-full flex flex-col transition-all duration-300 hover:shadow-lg hover:-translate-y-1 ${!product.inStock ? 'opacity-70' : ''}`}>
+            <Card className={`group h-full flex flex-col transition-all duration-300 hover:shadow-lg hover:-translate-y-1 animate-scale-in ${!product.inStock ? 'opacity-70' : ''}`}>
                 <CardHeader className="p-0">
                     <div className="relative w-full pt-[100%]">
                         <a
@@ -208,7 +208,7 @@ export default function PriceTracker({ apiEndpoint }) {
     );
 
     return (
-        <div className="container mx-auto px-4">
+        <div className="w-full">
             {/* Error Display */}
             {error && (
                 <Card className="mb-6 border-destructive bg-destructive/10">
@@ -222,10 +222,10 @@ export default function PriceTracker({ apiEndpoint }) {
             )}
 
             {/* Modern Professional Filter Section */}
-            <Card className="mb-8 shadow-lg">
-                <CardHeader className="bg-gradient-to-r from-primary/10 to-primary/20 border-b">
+            <Card className="mb-8 shadow-lg border-border/50 animate-slide-up">
+                <CardHeader className="bg-gradient-to-r from-primary/5 via-primary/10 to-primary/5 border-b border-border/50">
                     <div className="flex items-center space-x-3">
-                        <div className="p-2 bg-primary/20 rounded-lg">
+                        <div className="p-2 bg-primary/20 rounded-lg shadow-sm">
                             <FaFilter className="text-primary text-lg" />
                         </div>
                         <h3 className="text-lg font-semibold text-foreground">
@@ -329,7 +329,7 @@ export default function PriceTracker({ apiEndpoint }) {
             </Card>
 
             {/* Products Grid */}
-            <div className="flex flex-wrap -mx-1 sm:-mx-2 md:-mx-3 mb-20">
+            <div className="flex flex-wrap -mx-1 sm:-mx-2 md:-mx-3 mb-20 min-h-[400px]">
                 {isLoading ? (
                     <Card className="w-full">
                         <CardContent className="p-8 text-center">
@@ -353,7 +353,7 @@ export default function PriceTracker({ apiEndpoint }) {
             </div>
 
             {/* Pagination Controls */}
-            <div className="fixed bottom-0 inset-x-0 ml-[70px] bg-background/95 shadow-lg p-2 backdrop-blur-sm border-t border-border">
+            <div className="fixed bottom-0 inset-x-0 ml-[70px] bg-background/95 shadow-lg p-2 backdrop-blur-sm border-t border-border/50">
                 <div className="container mx-auto px-4">
                     <Card className="shadow-none border-0 bg-transparent">
                         <CardContent className="p-2">

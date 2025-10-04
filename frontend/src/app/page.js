@@ -18,13 +18,13 @@ export default function Home() {
     if (!currentWebsite) {
       return (
         <div className="flex flex-col items-center justify-center h-[70vh] text-center">
-          <GiShoppingBag className="text-6xl text-gray-300 dark:text-gray-600 mb-4" />
-          <p className="text-xl text-gray-500 dark:text-gray-400">Select a website to view price tracking data</p>
+          <GiShoppingBag className="text-6xl text-muted-foreground mb-4" />
+          <p className="text-xl text-muted-foreground">Select a website to view price tracking data</p>
         </div>
       );
     }
 
-    if(currentWebsite.name === "Meesho"){
+    if (currentWebsite.name === "Meesho") {
       return <MeeshoComponent />;
     }
 

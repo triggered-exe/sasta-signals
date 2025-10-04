@@ -35,7 +35,7 @@ export default function AppLayout({ children, selectedWebsite, setSelectedWebsit
     };
 
     return (
-        <div className="flex flex-col min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+        <div className="flex flex-col min-h-screen bg-background">
             <Header />
 
             <div className="flex flex-1 relative">
@@ -47,8 +47,8 @@ export default function AppLayout({ children, selectedWebsite, setSelectedWebsit
                     setSelectedWebsite={setSelectedWebsite}
                 />
 
-                <main className="flex-1 ml-[70px]">
-                    <div className="p-4 transition-all duration-300 bg-white/70 dark:bg-gray-900/50 text-gray-800 dark:text-white shadow-sm rounded-lg">
+                <main className="flex-1 ml-[70px] bg-background">
+                    <div className="min-h-[calc(100vh-64px)] p-6">
                         {children}
                     </div>
                 </main>
