@@ -1,6 +1,6 @@
 import express from 'express';
-import { 
-    startTracking, 
+import {
+    startTracking,
     searchProductsUsingCrawler,
     startTrackingHandler,
 } from '../../../controllers/FlipkartGroceryController.js';
@@ -14,4 +14,4 @@ router.post('/search', searchProductsUsingCrawler);
 
 router.post('/start-crawler', startTrackingHandler);
 
-export default router; 
+export default router;

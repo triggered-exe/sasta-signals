@@ -28,7 +28,7 @@ const setLocation = async (pincode) => {
       timeout: 30000, // 30 second timeout
     });
 
-    await page.waitForTimeout(3000); // Increased timeout
+    await page.waitForTimeout(4000); // Increased timeout
 
     // Set location
     console.log(`FK: Setting location for ${pincode}...`);
@@ -386,6 +386,117 @@ export const startTrackingHandler = async (pincode = "500064") => {
     }
   }
 };
+
+// Function to extract categories from Flipkart Grocery
+const extractCategories = async (pincode = "500064") => {
+  let page = null;
+  try {
+    // Get or create context with setLocation
+    const context = await setLocation(pincode);
+
+    // Check if the location is serviceable
+    if (!contextManager.isWebsiteServiceable(pincode, "flipkart-grocery")) {
+      throw AppError.badRequest(`Location ${pincode} is not serviceable by Flipkart Grocery`);
+    }
+
+    page = await context.newPage();
+
+    // Navigate to the main grocery page
+    console.log("FK: Navigating to main grocery page...");
+    await page.goto("https://www.flipkart.com/grocery-supermart-store?marketplace=GROCERY", {
+      waitUntil: "domcontentloaded",
+      timeout: 30000,
+    });
+
+    // Wait for categories to load and find category links
+    await page.waitForSelector("a[href*='/grocery/']", { timeout: 5000 });
+
+    // Find category links that have the proper structure (not pagination)
+    const categoryLinks = await page.$$("a[href*='/grocery/']");
+    let categoryLinkToClick = null;
+
+    for (const link of categoryLinks) {
+      const href = await link.getAttribute("href");
+      const text = await link.textContent();
+
+      // Look for category links that have the structure /grocery/category/subcategory/pr
+      if (href && href.includes('/grocery/') && href.includes('/pr?') && text && text.length > 3) {
+        const urlMatch = href.match(/\/grocery\/([^\/]+)\/([^\/]+)\/pr/);
+        if (urlMatch) {
+          categoryLinkToClick = link;
+          break;
+        }
+      }
+    }
+
+    if (!categoryLinkToClick) {
+      throw new Error("No suitable category link found to click");
+    }
+
+    // Get the href from the category link
+    const categoryHref = await categoryLinkToClick.getAttribute("href");
+    const currentUrl = categoryHref.startsWith("http") ? categoryHref : "https://www.flipkart.com" + categoryHref;
+    console.log("FK: Navigated to:", currentUrl);
+
+    // Navigate to view-source to get raw HTML
+    const viewSourceUrl = "view-source:" + currentUrl;
+    await page.goto(viewSourceUrl, { waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(2000);
+
+    // Extract categories from the raw HTML source
+    const categories = await page.evaluate(() => {
+      const preElement = document.querySelector("pre");
+      const html = preElement ? preElement.textContent : document.body.textContent;
+
+      const categorySet = new Set();
+
+      // Look for category URLs in the HTML
+      const urlRegex = /https:\/\/www\.flipkart\.com\/grocery\/[^\/]+\/[^\/]+\/pr\?[^"']*/g;
+      const urls = html.match(urlRegex) || [];
+
+      urls.forEach(url => {
+        // Extract category info from URL
+        const urlMatch = url.match(/\/grocery\/([^\/]+)\/([^\/]+)\/pr/);
+        if (urlMatch) {
+          const category = urlMatch[1].replace(/-/g, ' ');
+          const subcategory = urlMatch[2].replace(/-/g, ' ');
+
+          // Try to find the name in the HTML around this URL
+          const urlIndex = html.indexOf(url);
+          if (urlIndex > 0) {
+            // Look for text before the URL that might be the category name
+            const beforeText = html.substring(Math.max(0, urlIndex - 200), urlIndex);
+            const nameMatch = beforeText.match(/([^<>]*?)["']?\s*$/);
+            const name = nameMatch ? nameMatch[1].trim() : subcategory;
+
+            if (name && name.length > 2 && !/^\d+$/.test(name) && name.toLowerCase() !== 'next') {
+              categorySet.add(JSON.stringify({
+                category,
+                subcategory,
+                url: url,
+                name: name.length > 50 ? subcategory : name
+              }));
+            }
+          }
+        }
+      });
+
+      return Array.from(categorySet).map(item => JSON.parse(item));
+    });
+
+    console.log(`FK: Extracted ${categories.length} categories from view-source`);
+    return categories;
+
+  } catch (error) {
+    console.error("FK: Error extracting categories:", error);
+    throw error;
+  } finally {
+    if (page) {
+      await page.close();
+    }
+  }
+};
+
 
 const processProducts = async (products) => {
   try {
