@@ -1,14 +1,22 @@
-import { Pagination as MUIPagination } from '@mui/material';
 import { useEffect } from 'react';
+import {
+    Pagination,
+    PaginationContent,
+    PaginationEllipsis,
+    PaginationItem,
+    PaginationLink,
+    PaginationNext,
+    PaginationPrevious,
+} from "@/components/ui/pagination";
 
-export default function Pagination({
+export default function CustomPagination({
     currentPage,
     totalPages,
     onPageChange
 }) {
-    const handleChange = (event, value) => {
-        if (value >= 1 && value <= totalPages) {
-            onPageChange(value);
+    const handlePageChange = (page) => {
+        if (page >= 1 && page <= totalPages) {
+            onPageChange(page);
             // Scroll to top when page changes
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
@@ -18,7 +26,7 @@ export default function Pagination({
     useEffect(() => {
         const handleKeyDown = (event) => {
             // Only handle arrow keys if not typing in an input or textarea
-            if (event.target.tagName.toLowerCase() === 'input' || 
+            if (event.target.tagName.toLowerCase() === 'input' ||
                 event.target.tagName.toLowerCase() === 'textarea') {
                 return;
             }
@@ -30,10 +38,10 @@ export default function Pagination({
 
             switch (event.key) {
                 case 'ArrowLeft':
-                    handleChange(null, Math.max(1, currentPage - 1));
+                    handlePageChange(Math.max(1, currentPage - 1));
                     break;
                 case 'ArrowRight':
-                    handleChange(null, Math.min(totalPages, currentPage + 1));
+                    handlePageChange(Math.min(totalPages, currentPage + 1));
                     break;
                 default:
                     break;
@@ -51,27 +59,72 @@ export default function Pagination({
 
     if (totalPages <= 1) return null;
 
+    // Generate page numbers to display
+    const getPageNumbers = () => {
+        const pages = [];
+        const maxVisible = window.innerWidth < 640 ? 3 : 5;
+
+        if (totalPages <= maxVisible) {
+            for (let i = 1; i <= totalPages; i++) {
+                pages.push(i);
+            }
+        } else {
+            const start = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+            const end = Math.min(totalPages, start + maxVisible - 1);
+
+            if (start > 1) {
+                pages.push(1);
+                if (start > 2) pages.push('ellipsis-start');
+            }
+
+            for (let i = start; i <= end; i++) {
+                pages.push(i);
+            }
+
+            if (end < totalPages) {
+                if (end < totalPages - 1) pages.push('ellipsis-end');
+                pages.push(totalPages);
+            }
+        }
+
+        return pages;
+    };
+
+    const pageNumbers = getPageNumbers();
+
     return (
-        <div className="flex justify-center mt-2 mb-1">
-            <MUIPagination
-                count={totalPages}
-                page={currentPage}
-                onChange={handleChange}
-                variant="outlined"
-                shape="rounded"
-                size="medium"
-                siblingCount={window.innerWidth < 640 ? 0 : 1}
-                boundaryCount={window.innerWidth < 640 ? 1 : 2}
-                className="[&_.MuiPaginationItem-root]:text-gray-900 dark:[&_.MuiPaginationItem-root]:text-gray-200 
-                          [&_.MuiPaginationItem-root]:border-gray-300 dark:[&_.MuiPaginationItem-root]:border-gray-600 
-                          [&_.Mui-selected]:bg-blue-500 dark:[&_.Mui-selected]:bg-blue-600 
-                          [&_.Mui-selected]:text-white dark:[&_.Mui-selected]:text-white 
-                          [&_.Mui-selected:hover]:bg-blue-600 dark:[&_.Mui-selected:hover]:bg-blue-700
-                          [&_.MuiPaginationItem-root:hover]:bg-gray-100 dark:[&_.MuiPaginationItem-root:hover]:bg-gray-700
-                          [&_.MuiPaginationItem-root]:text-sm sm:[&_.MuiPaginationItem-root]:text-base
-                          [&_.MuiPaginationItem-root]:min-w-[32px] sm:[&_.MuiPaginationItem-root]:min-w-[40px]
-                          [&_.MuiPaginationItem-root]:h-8 sm:[&_.MuiPaginationItem-root]:h-10"
-            />
-        </div>
+        <Pagination>
+            <PaginationContent>
+                <PaginationItem>
+                    <PaginationPrevious
+                        onClick={() => handlePageChange(currentPage - 1)}
+                        className={currentPage <= 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                    />
+                </PaginationItem>
+
+                {pageNumbers.map((page, index) => (
+                    <PaginationItem key={index}>
+                        {page === 'ellipsis-start' || page === 'ellipsis-end' ? (
+                            <PaginationEllipsis />
+                        ) : (
+                            <PaginationLink
+                                onClick={() => handlePageChange(page)}
+                                isActive={currentPage === page}
+                                className="cursor-pointer"
+                            >
+                                {page}
+                            </PaginationLink>
+                        )}
+                    </PaginationItem>
+                ))}
+
+                <PaginationItem>
+                    <PaginationNext
+                        onClick={() => handlePageChange(currentPage + 1)}
+                        className={currentPage >= totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                    />
+                </PaginationItem>
+            </PaginationContent>
+        </Pagination>
     );
 } 

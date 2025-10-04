@@ -2,10 +2,12 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import axios from "axios";
 import { FaSpinner, FaSearch, FaTimes, FaFilter, FaSortAmountDown } from 'react-icons/fa';
 import { PAGE_SIZE } from "@/utils/constants";
-import Pagination from "./Pagination";
+import CustomPagination from "./Pagination";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 
 export default function PriceTracker({ apiEndpoint }) {
     const [products, setProducts] = useState([]);
@@ -144,60 +146,64 @@ export default function PriceTracker({ apiEndpoint }) {
 
     const renderProductCard = (product) => (
         <div key={product._id} className="w-1/2 sm:w-1/3 md:w-1/3 lg:w-1/4 xl:w-1/5 2xl:w-1/6 p-1 sm:p-2 md:p-3">
-            <div className={`group ${!product.inStock ? 'opacity-70' : ''} bg-white/90 dark:bg-gray-800/90 rounded-lg sm:rounded-xl shadow-md sm:shadow-lg overflow-hidden backdrop-blur-md border border-gray-200/50 dark:border-gray-700/50 transition-all duration-300 hover:shadow-xl hover:-translate-y-1 h-full flex flex-col`}>
-                <div className="relative w-full pt-[100%]">
-                    <a
-                        href={product.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="absolute inset-0"
-                    >
-                        <img
-                            src={product.imageUrl || '/assets/images/no-image.png'}
-                            alt={product.productName}
-                            className={`absolute inset-0 w-full h-full object-contain bg-white dark:bg-gray-900 p-2 ${!product.inStock ? 'grayscale' : ''}`}
-                            loading="lazy"
-                        />
-                        <span className="absolute top-1 sm:top-2 left-1 sm:left-2 bg-white/95 dark:bg-gray-800/95 text-gray-900 dark:text-gray-100 px-1.5 sm:px-2 py-0.5 sm:py-1 text-xs sm:text-sm font-bold rounded-lg backdrop-blur-sm shadow-sm">
-                            ₹{product.price}
-                        </span>
-                        {product.discount > 0 && (
-                            <span className="absolute top-1 sm:top-2 right-1 sm:right-2 bg-green-500/95 dark:bg-green-600/95 text-white font-semibold text-xs sm:text-sm px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-lg backdrop-blur-sm shadow-sm">
-                                {product.discount}%
-                            </span>
-                        )}
-                        {!product.inStock && (
-                            <div className="absolute inset-0 flex items-center justify-center">
-                                <span className="bg-red-500/90 text-white px-2 py-1 text-sm font-bold rounded-lg transform rotate-[-20deg] shadow-lg">
-                                    Out of Stock
-                                </span>
+            <Card className={`group h-full flex flex-col transition-all duration-300 hover:shadow-lg hover:-translate-y-1 ${!product.inStock ? 'opacity-70' : ''}`}>
+                <CardHeader className="p-0">
+                    <div className="relative w-full pt-[100%]">
+                        <a
+                            href={product.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="absolute inset-0"
+                        >
+                            <img
+                                src={product.imageUrl || '/assets/images/no-image.png'}
+                                alt={product.productName}
+                                className={`absolute inset-0 w-full h-full object-contain bg-background p-2 ${!product.inStock ? 'grayscale' : ''}`}
+                                loading="lazy"
+                            />
+                            <div className="absolute top-2 left-2">
+                                <Badge variant="secondary" className="text-xs font-bold">
+                                    ₹{product.price}
+                                </Badge>
                             </div>
-                        )}
-                        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/95 via-black/80 to-transparent text-white p-2 sm:p-3 backdrop-blur-[2px]">
-                            <p className="text-xs sm:text-sm font-medium line-clamp-2">{product.productName}</p>
-                        </div>
-                    </a>
-                </div>
-                <div className="p-1.5 sm:p-2 md:p-3">
-                    <div className="flex flex-wrap gap-1 sm:gap-1.5 md:gap-2">
-                        <div className="text-[10px] sm:text-xs bg-gray-100/80 dark:bg-gray-700/80 px-1.5 sm:px-2 md:px-3 py-0.5 sm:py-1 md:py-1.5 rounded-md sm:rounded-lg backdrop-blur-sm">
-                            <span className="font-medium dark:text-gray-200">
-                                {product.weight && <span>{product.weight}</span>}
-                            </span>
+                            {product.discount > 0 && (
+                                <div className="absolute top-2 right-2">
+                                    <Badge variant="default" className="text-xs font-semibold bg-green-500 hover:bg-green-600">
+                                        {product.discount}%
+                                    </Badge>
+                                </div>
+                            )}
+                            {!product.inStock && (
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                    <Badge variant="destructive" className="text-sm font-bold transform rotate-[-20deg]">
+                                        Out of Stock
+                                    </Badge>
+                                </div>
+                            )}
+                            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/95 via-black/80 to-transparent text-white p-3">
+                                <p className="text-xs sm:text-sm font-medium line-clamp-2">{product.productName}</p>
+                            </div>
+                        </a>
+                    </div>
+                </CardHeader>
+                <CardContent className="p-3 flex-1">
+                    <div className="flex flex-wrap gap-2">
+                        <Badge variant="outline" className="text-xs">
+                            {product.weight && <span>{product.weight}</span>}
                             {product.mrp > product.price && (
-                                <span className="ml-1 sm:ml-1.5 text-gray-500 dark:text-gray-400 line-through">
+                                <span className="ml-2 text-muted-foreground line-through">
                                     ₹{product.mrp}
                                 </span>
                             )}
-                        </div>
+                        </Badge>
                         {product.brand && (
-                            <div className="text-[10px] sm:text-xs bg-gray-100/80 dark:bg-gray-700/80 px-1.5 sm:px-2 md:px-3 py-0.5 sm:py-1 md:py-1.5 rounded-md sm:rounded-lg backdrop-blur-sm">
-                                <span className="font-medium dark:text-gray-200">{product.brand}</span>
-                            </div>
+                            <Badge variant="outline" className="text-xs">
+                                {product.brand}
+                            </Badge>
                         )}
                     </div>
-                </div>
-            </div>
+                </CardContent>
+            </Card>
         </div>
     );
 
@@ -205,27 +211,30 @@ export default function PriceTracker({ apiEndpoint }) {
         <div className="container mx-auto px-4">
             {/* Error Display */}
             {error && (
-                <div className="bg-red-100/90 dark:bg-red-900/50 border-l-4 border-red-500 text-red-700 dark:text-red-300 p-4 mb-6 rounded-r-lg backdrop-blur-sm" role="alert">
-                    <p>{error}</p>
-                </div>
+                <Card className="mb-6 border-destructive bg-destructive/10">
+                    <CardContent className="p-4">
+                        <div className="flex items-center space-x-2">
+                            <div className="w-2 h-2 bg-destructive rounded-full"></div>
+                            <p className="text-destructive font-medium">{error}</p>
+                        </div>
+                    </CardContent>
+                </Card>
             )}
 
             {/* Modern Professional Filter Section */}
-            <div className="mb-8 bg-gradient-to-r from-white/95 to-gray-50/95 dark:from-gray-800/95 dark:to-gray-900/95 rounded-2xl shadow-xl backdrop-blur-lg border border-gray-200/30 dark:border-gray-700/30 overflow-hidden">
-                {/* Header */}
-                <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 dark:from-blue-600/20 dark:to-purple-600/20 px-6 py-4 border-b border-gray-200/20 dark:border-gray-700/20">
+            <Card className="mb-8 shadow-lg">
+                <CardHeader className="bg-gradient-to-r from-primary/10 to-primary/20 border-b">
                     <div className="flex items-center space-x-3">
-                        <div className="p-2 bg-blue-500/20 dark:bg-blue-600/30 rounded-lg">
-                            <FaFilter className="text-blue-600 dark:text-blue-400 text-lg" />
+                        <div className="p-2 bg-primary/20 rounded-lg">
+                            <FaFilter className="text-primary text-lg" />
                         </div>
-                        <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
+                        <h3 className="text-lg font-semibold text-foreground">
                             Filter & Search Products
                         </h3>
                     </div>
-                </div>
+                </CardHeader>
 
-                {/* Single Row Filter Controls */}
-                <div className="p-6">
+                <CardContent className="p-6">
                     <div className="flex flex-col lg:flex-row lg:items-center lg:space-x-4 space-y-4 lg:space-y-0">
                         {/* Search Section */}
                         <div className="flex-1 min-w-0">
@@ -316,33 +325,45 @@ export default function PriceTracker({ apiEndpoint }) {
                             </span>
                         </label>
                     </div>
-                </div>
-            </div>
+                </CardContent>
+            </Card>
 
             {/* Products Grid */}
             <div className="flex flex-wrap -mx-1 sm:-mx-2 md:-mx-3 mb-20">
                 {isLoading ? (
-                    <div className="w-full text-center p-6 text-gray-500 dark:text-gray-400">
-                        <FaSpinner className="animate-spin inline-block mr-2 text-2xl" />
-                        <span className="text-lg">Loading...</span>
-                    </div>
+                    <Card className="w-full">
+                        <CardContent className="p-8 text-center">
+                            <div className="flex items-center justify-center space-x-2 text-muted-foreground">
+                                <FaSpinner className="animate-spin text-2xl" />
+                                <span className="text-lg">Loading products...</span>
+                            </div>
+                        </CardContent>
+                    </Card>
                 ) : products.length > 0 ? (
                     products.map(renderProductCard)
                 ) : (
-                    <div className="w-full text-center p-8 text-gray-500 dark:text-gray-400 text-lg">
-                        No products available.
-                    </div>
+                    <Card className="w-full">
+                        <CardContent className="p-8 text-center">
+                            <div className="text-muted-foreground text-lg">
+                                No products available.
+                            </div>
+                        </CardContent>
+                    </Card>
                 )}
             </div>
 
             {/* Pagination Controls */}
-            <div className="fixed bottom-0 inset-x-0 ml-[70px] bg-white/95 dark:bg-gray-800/95 shadow-lg p-1.5 sm:p-2 backdrop-blur-sm border-t border-gray-200/50 dark:border-gray-700/50">
-                <div className="container mx-auto px-2 sm:px-4">
-                    <Pagination
-                        currentPage={currentPage}
-                        totalPages={totalPages}
-                        onPageChange={handlePageChange}
-                    />
+            <div className="fixed bottom-0 inset-x-0 ml-[70px] bg-background/95 shadow-lg p-2 backdrop-blur-sm border-t border-border">
+                <div className="container mx-auto px-4">
+                    <Card className="shadow-none border-0 bg-transparent">
+                        <CardContent className="p-2">
+                            <CustomPagination
+                                currentPage={currentPage}
+                                totalPages={totalPages}
+                                onPageChange={handlePageChange}
+                            />
+                        </CardContent>
+                    </Card>
                 </div>
             </div>
         </div>
