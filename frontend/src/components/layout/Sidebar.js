@@ -53,13 +53,13 @@ export default function Sidebar({
             ref={sidebarRef}
             className={`fixed top-16 h-[calc(100vh-64px)] transition-all duration-300 ease-in-out animate-fade-in
                 ${isMenuExpanded ? 'w-[280px]' : 'w-[70px]'} 
-                bg-sidebar text-sidebar-foreground
-                z-50 border-r border-sidebar-border shadow-lg`}
+                bg-card text-card-foreground
+                z-50 border-r border-border shadow-lg`}
         >
             {/* Header with toggle button */}
-            <div className="border-b border-sidebar-border py-4 px-4 flex items-center justify-between">
+            <div className="border-b border-border py-4 px-4 flex items-center justify-between">
                 {isMenuExpanded && (
-                    <h2 className="font-semibold text-lg text-sidebar-foreground transition-opacity duration-300">
+                    <h2 className="font-semibold text-lg text-card-foreground transition-opacity duration-300">
                         Websites
                     </h2>
                 )}
@@ -67,7 +67,7 @@ export default function Sidebar({
                     onClick={toggleMenuExpansion}
                     variant="ghost"
                     size="icon"
-                    className={`rounded-lg transition-all duration-200 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${isMenuExpanded ? '' : 'mx-auto'}`}
+                    className={`rounded-lg transition-all duration-200 hover:bg-accent hover:text-accent-foreground ${isMenuExpanded ? '' : 'mx-auto'}`}
                     aria-label={isMenuExpanded ? "Collapse menu" : "Expand menu"}
                 >
                     {isMenuExpanded ? <FaArrowLeft size={16} /> : <FaArrowRight size={16} />}
@@ -84,14 +84,14 @@ export default function Sidebar({
                                 ${isMenuExpanded ? 'px-4' : 'justify-center px-2'} 
                                 ${selectedWebsite === website.name
                                     ? 'bg-primary/20 text-primary border border-primary/30 shadow-sm'
-                                    : 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                                    : 'hover:bg-accent hover:text-accent-foreground'
                                 }`}
                             onClick={() => handleWebsiteClick(website.name)}
                             title={!isMenuExpanded ? website.name : ''}
                         >
                             <div className={`${isMenuExpanded ? 'mr-3' : ''} ${selectedWebsite === website.name
                                 ? 'text-primary'
-                                : 'text-sidebar-foreground group-hover:text-sidebar-accent-foreground'}`}>
+                                : 'text-card-foreground group-hover:text-accent-foreground'}`}>
                                 {websiteIcons[website.name] || <FaShoppingBasket className="text-xl" />}
                             </div>
 
@@ -99,7 +99,7 @@ export default function Sidebar({
                                 <div className="flex-1 min-w-0">
                                     <h3 className={`text-sm font-medium truncate ${selectedWebsite === website.name
                                         ? 'text-primary'
-                                        : 'text-sidebar-foreground'}`}>
+                                        : 'text-card-foreground'}`}>
                                         {website.name}
                                     </h3>
                                 </div>
@@ -108,7 +108,7 @@ export default function Sidebar({
                             {isMenuExpanded && (
                                 <FaChevronRight className={`transition-transform duration-200 ${selectedWebsite === website.name
                                     ? "text-primary"
-                                    : "text-sidebar-foreground group-hover:text-sidebar-accent-foreground"
+                                    : "text-card-foreground group-hover:text-accent-foreground"
                                     }`} />
                             )}
                         </Button>
@@ -117,22 +117,22 @@ export default function Sidebar({
             </div>
 
             {/* Dark mode toggle at bottom of sidebar */}
-            <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-sidebar-border bg-sidebar">
+            <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-border bg-card">
                 <Button
                     onClick={toggleDarkMode}
                     variant="ghost"
-                    className="w-full h-12 rounded-lg flex items-center justify-center group hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    className="w-full h-12 rounded-lg flex items-center justify-center group hover:bg-accent hover:text-accent-foreground"
                     aria-label="Toggle dark mode"
                     title="Toggle dark mode"
                 >
                     <span className="dark:hidden">
-                        <FaMoon className="text-sidebar-foreground group-hover:text-sidebar-accent-foreground" />
+                        <FaMoon className="text-card-foreground group-hover:text-accent-foreground" />
                     </span>
                     <span className="hidden dark:inline">
-                        <FaSun className="text-sidebar-foreground group-hover:text-sidebar-accent-foreground" />
+                        <FaSun className="text-card-foreground group-hover:text-accent-foreground" />
                     </span>
                     {isMenuExpanded && (
-                        <span className="ml-3 text-sm font-medium text-sidebar-foreground group-hover:text-sidebar-accent-foreground">
+                        <span className="ml-3 text-sm font-medium text-card-foreground group-hover:text-accent-foreground">
                             <span className="dark:hidden">Dark Mode</span>
                             <span className="hidden dark:inline">Light Mode</span>
                         </span>
