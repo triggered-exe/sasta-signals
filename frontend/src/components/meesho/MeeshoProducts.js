@@ -8,9 +8,9 @@ const MeeshoProducts = ({ products }) => {
         const productUrl = `https://www.meesho.com/s/p/${product.product_id}`;
 
         return (
-          <div 
-            key={`${product.product_id}-${index}`} 
-            className="border p-3 rounded-lg hover:shadow-lg transition-shadow duration-200 w-48 relative"
+          <div
+            key={`${product.product_id}-${index}`}
+            className="border border-border p-3 rounded-lg hover:shadow-lg transition-shadow duration-200 w-48 relative bg-card"
           >
             <a href={productUrl} target="_blank" rel="noopener noreferrer">
               <div className="relative">
@@ -32,23 +32,23 @@ const MeeshoProducts = ({ products }) => {
                   {product.specialPrice && `₹${product.specialPrice}`}
                 </div>
               </div>
-              <h3 className="font-semibold mb-1 text-sm truncate">
+              <h3 className="font-semibold mb-1 text-sm truncate text-foreground">
                 {product.name || "Unnamed Product"}
               </h3>
-              <div className="flex justify-between text-sm mb-1 font-semibold text-gray-600">
+              <div className="flex justify-between text-sm mb-1 font-semibold text-muted-foreground">
                 <span>Price: ₹{product.min_product_price}</span>
                 {product.specialPrice && <span>Special Price: ₹{product.specialPrice}</span>}
               </div>
               {/* <div className="flex justify-between text-sm mb-1">
-                <span className="text-gray-500">Original Price: ₹{product.original_price}</span>
+                <span className="text-muted-foreground">Original Price: ₹{product.original_price}</span>
               </div> */}
-              {/* <p className="text-xs text-gray-500 mb-2">{product.description}</p> */}
+              {/* <p className="text-xs text-muted-foreground mb-2">{product.description}</p> */}
               <div className="flex items-center mb-2">
                 <span className="text-yellow-500 mr-1">★</span>
                 <span>{product.catalog_reviews_summary?.average_rating}</span>
-                <span className="text-gray-500 text-sm ml-1">({product?.catalog_reviews_summary?.rating_count} ratings)</span>
+                <span className="text-muted-foreground text-sm ml-1">({product?.catalog_reviews_summary?.rating_count} ratings)</span>
               </div>
-              <div className="text-sm text-gray-600">
+              <div className="text-sm text-muted-foreground">
                 Shipping: ₹{product.shipping?.charges || 'Free'}
               </div>
             </a>
