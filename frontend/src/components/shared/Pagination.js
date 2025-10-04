@@ -17,8 +17,7 @@ export default function CustomPagination({
     const handlePageChange = (page) => {
         if (page >= 1 && page <= totalPages) {
             onPageChange(page);
-            // Scroll to top when page changes
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            // Scroll behavior is handled by the parent component
         }
     };
 
@@ -38,10 +37,14 @@ export default function CustomPagination({
 
             switch (event.key) {
                 case 'ArrowLeft':
-                    handlePageChange(Math.max(1, currentPage - 1));
+                    if (currentPage > 1) {
+                        handlePageChange(currentPage - 1);
+                    }
                     break;
                 case 'ArrowRight':
-                    handlePageChange(Math.min(totalPages, currentPage + 1));
+                    if (currentPage < totalPages) {
+                        handlePageChange(currentPage + 1);
+                    }
                     break;
                 default:
                     break;

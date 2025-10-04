@@ -21,6 +21,7 @@ export default function PriceTracker({ apiEndpoint }) {
     const [searchQuery, setSearchQuery] = useState("");
     const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
     const prevApiEndpointRef = useRef(apiEndpoint);
+    const productGridRef = useRef(null);
 
     // Add refs to track and cancel requests
     const abortControllerRef = useRef(null);
@@ -142,6 +143,14 @@ export default function PriceTracker({ apiEndpoint }) {
 
     const handlePageChange = (newPage) => {
         setCurrentPage(newPage);
+        // Scroll to the top of the product grid when page changes
+        // Use a small delay to ensure the new products have loaded
+        setTimeout(() => {
+            console.log("Scrolling to the top of the product grid", productGridRef.current);
+            if (productGridRef.current) {
+                productGridRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }, 100);
     };
 
     const renderProductCard = (product) => (
@@ -329,7 +338,7 @@ export default function PriceTracker({ apiEndpoint }) {
             </Card>
 
             {/* Products Grid */}
-            <div className="flex flex-wrap -mx-1 sm:-mx-2 md:-mx-3 mb-20 min-h-[400px]">
+            <div ref={productGridRef} className="flex flex-wrap -mx-1 sm:-mx-2 md:-mx-3 mb-20 min-h-[400px]">
                 {isLoading ? (
                     <Card className="w-full">
                         <CardContent className="p-8 text-center">
