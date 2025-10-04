@@ -3,6 +3,7 @@ import axios from "axios";
 import { FaSpinner, FaSearch, FaTimes, FaFilter, FaSortAmountDown } from 'react-icons/fa';
 import { PAGE_SIZE } from "@/utils/constants";
 import Pagination from "./Pagination";
+import { Button } from "@/components/ui/button";
 
 export default function PriceTracker({ apiEndpoint }) {
     const [products, setProducts] = useState([]);
@@ -239,13 +240,15 @@ export default function PriceTracker({ apiEndpoint }) {
                                     className="w-full pl-11 pr-12 py-3 bg-white/80 dark:bg-gray-700/80 border border-gray-300/50 dark:border-gray-600/50 rounded-xl text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200 shadow-sm hover:shadow-md"
                                 />
                                 {searchQuery && (
-                                    <button
+                                    <Button
                                         onClick={() => setSearchQuery("")}
-                                        className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="absolute inset-y-0 right-0 h-8 w-8 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
                                         title="Clear search"
                                     >
                                         <FaTimes className="h-4 w-4" />
-                                    </button>
+                                    </Button>
                                 )}
                             </div>
                         </div>

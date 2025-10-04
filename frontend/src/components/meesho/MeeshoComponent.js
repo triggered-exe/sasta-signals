@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import MeeshoProducts from './MeeshoProducts';
 import axios from 'axios';
+import { Button } from '@/components/ui/button';
 
 const MeeshoComponent = () => {
   const [sortOption, setSortOption] = useState('special');
@@ -173,13 +174,13 @@ const MeeshoComponent = () => {
               <option value="difference">Difference (Special - Normal)</option>
             </select>
           </div>
-          <button
+          <Button
             type="submit"
-            className="whitespace-nowrap bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
             disabled={isLoading}
+            className="whitespace-nowrap"
           >
             {isLoading ? 'Searching...' : 'Search'}
-          </button>
+          </Button>
         </div>
       </form>
       {isLoading && (
