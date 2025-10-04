@@ -46,7 +46,7 @@ export const buildMatchCriteria = (timePeriod, notUpdated, searchQuery) => {
 
   // Handle time period for price drops
   if (timePeriod && timePeriod !== "all") {
-    const hours = parseInt(timePeriod);
+    const hours = parseFloat(timePeriod);
     if (!isNaN(hours) && hours > 0) {
       const timeAgo = new Date(Date.now() - hours * 60 * 60 * 1000);
       criteria.priceDroppedAt = {

@@ -156,7 +156,7 @@ export default function PriceTracker({ apiEndpoint }) {
     const renderProductCard = (product) => (
         <div key={product._id} className="w-1/2 sm:w-1/3 md:w-1/3 lg:w-1/4 xl:w-1/5 2xl:w-1/6 p-1 sm:p-2 md:p-3">
             <Card className={`group h-full flex flex-col transition-all duration-300 hover:shadow-lg hover:-translate-y-1 animate-scale-in ${!product.inStock ? 'opacity-70' : ''}`}>
-                <CardHeader className="p-0">
+                <CardHeader className="p-0 overflow-hidden rounded-t-xl">
                     <div className="relative w-full pt-[100%]">
                         <a
                             href={product.url}
@@ -299,6 +299,7 @@ export default function PriceTracker({ apiEndpoint }) {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">All Time</SelectItem>
+                                    <SelectItem value="0.5">Last 30 Minutes</SelectItem>
                                     <SelectItem value="1">Last 1 Hour</SelectItem>
                                     <SelectItem value="2">Last 2 Hours</SelectItem>
                                     <SelectItem value="6">Last 6 Hours</SelectItem>
