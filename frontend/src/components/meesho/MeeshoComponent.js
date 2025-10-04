@@ -2,6 +2,8 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import MeeshoProducts from './MeeshoProducts';
 import axios from 'axios';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const MeeshoComponent = () => {
   const [sortOption, setSortOption] = useState('special');
@@ -154,25 +156,25 @@ const MeeshoComponent = () => {
       <h3 className="text-xl font-semibold mb-4">Search Meesho Products</h3>
       <form onSubmit={handleSearchSubmit} className="mb-4">
         <div className="flex flex-col sm:flex-row gap-2">
-          <input
+          <Input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search for products..."
-            className="flex-1 p-2 border rounded"
+            className="flex-1"
           />
           <div className="flex items-center whitespace-nowrap">
             <label htmlFor="sortOption" className="mr-2">Sort by:</label>
-            <select
-              id="sortOption"
-              value={sortOption}
-              onChange={handleSortChange}
-              className="p-2 border rounded"
-            >
-              <option value="special">Special Discount</option>
-              <option value="normal">Normal Discount</option>
-              <option value="difference">Difference (Special - Normal)</option>
-            </select>
+            <Select value={sortOption} onValueChange={setSortOption}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Sort by..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="special">Special Discount</SelectItem>
+                <SelectItem value="normal">Normal Discount</SelectItem>
+                <SelectItem value="difference">Difference (Special - Normal)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <Button
             type="submit"

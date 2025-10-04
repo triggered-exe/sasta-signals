@@ -4,6 +4,8 @@ import { FaSpinner, FaSearch, FaTimes, FaFilter, FaSortAmountDown } from 'react-
 import { PAGE_SIZE } from "@/utils/constants";
 import Pagination from "./Pagination";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export default function PriceTracker({ apiEndpoint }) {
     const [products, setProducts] = useState([]);
@@ -116,13 +118,13 @@ export default function PriceTracker({ apiEndpoint }) {
         };
     }, []);
 
-    const handleSortChange = (e) => {
-        setSortOrder(e.target.value);
+    const handleSortChange = (value) => {
+        setSortOrder(value);
         setCurrentPage(1);
     };
 
-    const handleTimePeriodChange = (e) => {
-        setTimePeriod(e.target.value);
+    const handleTimePeriodChange = (value) => {
+        setTimePeriod(value);
         setCurrentPage(1);
     };
 
@@ -228,23 +230,23 @@ export default function PriceTracker({ apiEndpoint }) {
                         {/* Search Section */}
                         <div className="flex-1 min-w-0">
                             <div className="relative">
-                                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                    <FaSearch className="h-4 w-4 text-gray-400 dark:text-gray-500" />
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <FaSearch className="h-4 w-4 text-muted-foreground" />
                                 </div>
-                                <input
+                                <Input
                                     type="text"
                                     id="searchQuery"
                                     value={searchQuery}
                                     onChange={handleSearchChange}
                                     placeholder="Search products..."
-                                    className="w-full pl-11 pr-12 py-3 bg-white/80 dark:bg-gray-700/80 border border-gray-300/50 dark:border-gray-600/50 rounded-xl text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200 shadow-sm hover:shadow-md"
+                                    className="pl-10 pr-10 h-12 text-base"
                                 />
                                 {searchQuery && (
                                     <Button
                                         onClick={() => setSearchQuery("")}
                                         variant="ghost"
                                         size="icon"
-                                        className="absolute inset-y-0 right-0 h-8 w-8 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                                        className="absolute inset-y-0 right-0 h-8 w-8 text-muted-foreground hover:text-foreground"
                                         title="Clear search"
                                     >
                                         <FaTimes className="h-4 w-4" />
@@ -255,51 +257,37 @@ export default function PriceTracker({ apiEndpoint }) {
 
                         {/* Sort Section */}
                         <div className="flex items-center space-x-2">
-                            <FaSortAmountDown className="text-gray-600 dark:text-gray-400 text-sm" />
-                            <div className="relative">
-                                <select
-                                    id="sortOrder"
-                                    value={sortOrder}
-                                    onChange={handleSortChange}
-                                    className="py-3 px-4 pr-10 bg-white/80 dark:bg-gray-700/80 border border-gray-300/50 dark:border-gray-600/50 rounded-xl text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200 shadow-sm hover:shadow-md appearance-none cursor-pointer min-w-[140px]"
-                                >
-                                    <option value="discount">🔥 Discount</option>
-                                    <option value="price">💰 Price ↑</option>
-                                    <option value="price_desc">💎 Price ↓</option>
-                                </select>
-                                <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none">
-                                    <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                    </svg>
-                                </div>
-                            </div>
+                            <FaSortAmountDown className="text-muted-foreground text-sm" />
+                            <Select value={sortOrder} onValueChange={handleSortChange}>
+                                <SelectTrigger className="w-[180px] h-12">
+                                    <SelectValue placeholder="Sort by..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="discount">🔥 Discount</SelectItem>
+                                    <SelectItem value="price">💰 Price ↑</SelectItem>
+                                    <SelectItem value="price_desc">💎 Price ↓</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
 
                         {/* Time Period Filter */}
                         <div className="flex items-center space-x-2">
-                            <label htmlFor="timePeriod" className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                            <label htmlFor="timePeriod" className="text-sm font-medium text-muted-foreground whitespace-nowrap">
                                 Price Dropped:
                             </label>
-                            <div className="relative">
-                                <select
-                                    id="timePeriod"
-                                    value={timePeriod}
-                                    onChange={handleTimePeriodChange}
-                                    className="py-3 px-4 pr-10 bg-white/80 dark:bg-gray-700/80 border border-gray-300/50 dark:border-gray-600/50 rounded-xl text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200 shadow-sm hover:shadow-md appearance-none cursor-pointer min-w-[140px]"
-                                >
-                                    <option value="all">All Time</option>
-                                    <option value="1">Last 1 Hour</option>
-                                    <option value="2">Last 2 Hours</option>
-                                    <option value="6">Last 6 Hours</option>
-                                    <option value="12">Last 12 Hours</option>
-                                    <option value="24">Last 24 Hours</option>
-                                </select>
-                                <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none">
-                                    <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                    </svg>
-                                </div>
-                            </div>
+                            <Select value={timePeriod} onValueChange={handleTimePeriodChange}>
+                                <SelectTrigger className="w-[160px] h-12">
+                                    <SelectValue placeholder="Time period..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Time</SelectItem>
+                                    <SelectItem value="1">Last 1 Hour</SelectItem>
+                                    <SelectItem value="2">Last 2 Hours</SelectItem>
+                                    <SelectItem value="6">Last 6 Hours</SelectItem>
+                                    <SelectItem value="12">Last 12 Hours</SelectItem>
+                                    <SelectItem value="24">Last 24 Hours</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
 
                         {/* Not Updated Filter */}
