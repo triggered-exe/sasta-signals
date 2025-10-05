@@ -81,6 +81,28 @@ const extractProductsFromPage = async (page, url, query) => {
       timeout: 30000,
     });
 
+    // Check if "no results found" message appears
+    const noResultsFound = await page.evaluate(() => {
+      // Check for the specific "Sorry, no results found!" text
+      const noResultsText = document.querySelector('.BHPsUQ');
+      if (noResultsText && noResultsText.textContent.includes('Sorry, no results found!')) {
+        return true;
+      }
+
+      // Alternative check for the error image
+      const errorImage = document.querySelector('img[src*="error-no-search-results"]');
+      if (errorImage) {
+        return true;
+      }
+
+      return false;
+    });
+
+    if (noResultsFound) {
+      console.log(`FK: No results found for "${query}" on current page`);
+      return { products: [], nextPageUrl: null };
+    }
+
     try {
       // Wait for products to load
       await page.waitForSelector("div[data-id]", {
@@ -239,6 +261,7 @@ export const searchProductsUsingCrawler = async (req, res, next) => {
   }
 };
 
+
 export const startTracking = async (_, res, next) => {
   try {
     // Start the search process in the background
@@ -276,22 +299,14 @@ export const startTrackingHandler = async (pincode = "500064") => {
       const startTime = new Date();
       console.log("FK: Starting product search at:", startTime.toLocaleString());
 
-      // Get all queries from productQueries
-      const queries = [];
-      Object.values(productQueries).forEach((category) => {
-        Object.values(category).forEach((subcategory) => {
-          subcategory.forEach((query) => {
-            queries.push(query);
-          });
-        });
-      });
+      // Get all categories from Flipkart
+      const categories = await extractCategories(pincode);
+      console.log(`FK: Found ${categories.length} categories to process`);
 
-      console.log(`FK: Found ${queries.length} unique search queries`);
-
-      const PARALLEL_SEARCHES = 2;
+      const PARALLEL_CATEGORIES = 2;
       let totalProcessedProducts = 0;
 
-      // Set up context with location once for all queries
+      // Set up context with location once for all categories
       const context = await setLocation(pincode);
 
       // Check if the location is serviceable
@@ -300,30 +315,32 @@ export const startTrackingHandler = async (pincode = "500064") => {
         break;
       }
 
-      // Process queries in parallel batches
-      for (let i = 0; i < queries.length; i += PARALLEL_SEARCHES) {
-        const currentBatch = queries.slice(i, i + PARALLEL_SEARCHES);
-        console.log(`FK: Processing queries ${i + 1} to ${i + currentBatch.length} of ${queries.length}`);
+      // Process categories in parallel batches
+      for (let i = 0; i < categories.length; i += PARALLEL_CATEGORIES) {
+        const currentBatch = categories.slice(i, i + PARALLEL_CATEGORIES);
+        console.log(`FK: Processing categories ${i + 1} to ${i + currentBatch.length} of ${categories.length}`);
 
-        const batchPromises = currentBatch.map(async (query) => {
+        const batchStartTime = new Date();
+        const batchPromises = currentBatch.map(async (category) => {
+          const categoryStartTime = new Date();
           try {
             let page = null;
 
             try {
               page = await context.newPage();
 
-              let queryProducts = [];
-              let currentUrl = `https://www.flipkart.com/search?q=${query}&otracker=search&marketplace=GROCERY&page=1`;
+              let categoryProducts = [];
+              let currentUrl = category.url;
               let hasNextPage = true;
               let pageNum = 1;
 
               while (hasNextPage) {
-                console.log(`FK: Processing page ${pageNum} of ${query}...`);
+                console.log(`FK: Processing page ${pageNum} of ${category.category} > ${category.subcategory}...`);
 
-                // Extract products using the new function
-                const { products: pageProducts, nextPageUrl } = await extractProductsFromPage(page, currentUrl, query);
+                // Extract products using the function
+                const { products: pageProducts, nextPageUrl } = await extractProductsFromPage(page, currentUrl, `${category.category} ${category.subcategory}`);
 
-                queryProducts = [...queryProducts, ...pageProducts];
+                categoryProducts = [...categoryProducts, ...pageProducts];
 
                 if (nextPageUrl) {
                   currentUrl = nextPageUrl;
@@ -334,8 +351,8 @@ export const startTrackingHandler = async (pincode = "500064") => {
                 }
               }
 
-              // Remove duplicates from query results
-              const uniqueQueryProducts = queryProducts.filter(
+              // Remove duplicates from category results
+              const uniqueCategoryProducts = categoryProducts.filter(
                 (product, index, self) =>
                   index ===
                   self.findIndex(
@@ -345,18 +362,26 @@ export const startTrackingHandler = async (pincode = "500064") => {
                   )
               );
 
-              console.log(`FK: Found ${uniqueQueryProducts.length} unique products for "${query}"`);
+              console.log(`FK: Found ${uniqueCategoryProducts.length} unique products for "${category.category} > ${category.subcategory}"`);
 
-              // Process and save products for this query
-              const processedProducts = await processProducts(uniqueQueryProducts);
-              console.log(`FK: Processed and saved ${processedProducts} products for "${query}"`);
+              // Add category information to products
+              const productsWithCategory = uniqueCategoryProducts.map(product => ({
+                ...product,
+                categoryName: category.category,
+                subcategoryName: category.subcategory,
+              }));
+
+              // Process and save products for this category
+              const processedProducts = await processProducts(productsWithCategory);
+              const categoryTime = ((new Date().getTime() - categoryStartTime.getTime()) / 1000).toFixed(2);
+              console.log(`FK: Processed and saved ${processedProducts} products for "${category.category} > ${category.subcategory}" in ${categoryTime} seconds`);
               totalProcessedProducts += processedProducts;
               return processedProducts;
             } finally {
               if (page) await page.close();
             }
           } catch (error) {
-            console.error(`FK: Error processing query "${query}":`, error);
+            console.error(`FK: Error processing category "${category.category} > ${category.subcategory}":`, error);
             return 0;
           }
         });
@@ -364,7 +389,10 @@ export const startTrackingHandler = async (pincode = "500064") => {
         // Wait for current batch to complete
         await Promise.all(batchPromises);
 
-        if (i + PARALLEL_SEARCHES < queries.length) {
+        const batchTime = ((new Date().getTime() - batchStartTime.getTime()) / 60000).toFixed(2);
+        console.log(`FK: Categories Processed: ${i + currentBatch.length} of ${categories.length} and Time taken: ${batchTime} minutes`);
+
+        if (i + PARALLEL_CATEGORIES < categories.length) {
           console.log("FK: Waiting between batches...");
           await new Promise((resolve) => setTimeout(resolve, 3000));
         }
@@ -372,17 +400,16 @@ export const startTrackingHandler = async (pincode = "500064") => {
 
       const endTime = new Date();
       const totalDuration = (endTime - startTime) / 1000 / 60; // in minutes
+      console.log(`FK: Total processed products: ${totalProcessedProducts}`);
       console.log(
-        `FK: Completed search. Total processed products: ${totalProcessedProducts} in ${totalDuration.toFixed(
-          2
-        )} minutes`
+        `FK: Total time taken: ${totalDuration.toFixed(2)} minutes`
       );
       // Wait for 5 minutes
       await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
     } catch (error) {
       // Wait for 5 minutes
       await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
-      console.error("FK: Error in searchAllProducts:", error);
+      console.error("FK: Error in tracking cycle:", error);
     }
   }
 };
@@ -450,13 +477,16 @@ const extractCategories = async (pincode = "500064") => {
 
       const categorySet = new Set();
 
-      // Look for category URLs in the HTML
-      const urlRegex = /https:\/\/www\.flipkart\.com\/grocery\/[^\/]+\/[^\/]+\/pr\?[^"']*/g;
+      // Look for category URLs in the HTML that have proper category tracking
+      const urlRegex = /https:\/\/www\.flipkart\.com\/grocery\/[^\/]+\/[^\/]+\/pr\?[^"']*otracker=categorytree[^"']*/g;
       const urls = html.match(urlRegex) || [];
 
       urls.forEach(url => {
+        // Decode HTML entities in the URL
+        const decodedUrl = url.replace(/&#x3D;/g, '=').replace(/&/g, '&');
+
         // Extract category info from URL
-        const urlMatch = url.match(/\/grocery\/([^\/]+)\/([^\/]+)\/pr/);
+        const urlMatch = decodedUrl.match(/\/grocery\/([^\/]+)\/([^\/]+)\/pr/);
         if (urlMatch) {
           const category = urlMatch[1].replace(/-/g, ' ');
           const subcategory = urlMatch[2].replace(/-/g, ' ');
@@ -469,11 +499,11 @@ const extractCategories = async (pincode = "500064") => {
             const nameMatch = beforeText.match(/([^<>]*?)["']?\s*$/);
             const name = nameMatch ? nameMatch[1].trim() : subcategory;
 
-            if (name && name.length > 2 && !/^\d+$/.test(name) && name.toLowerCase() !== 'next') {
+            if (name && name.length > 2 && !/^\d+$/.test(name) && name.toLowerCase() !== 'next' && !name.includes('link') && !name.includes('href')) {
               categorySet.add(JSON.stringify({
                 category,
                 subcategory,
-                url: url,
+                url: decodedUrl,
                 name: name.length > 50 ? subcategory : name
               }));
             }
@@ -544,6 +574,8 @@ const processProducts = async (products) => {
       telegramNotification: true,
       emailNotification: false,
     });
+
+    return result;
 
     return result;
   } catch (error) {

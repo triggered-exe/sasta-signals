@@ -264,7 +264,7 @@ export default function PriceTracker({ apiEndpoint }) {
                                         onClick={() => setSearchQuery("")}
                                         variant="ghost"
                                         size="icon"
-                                        className="absolute inset-y-0 right-0 h-8 w-8 text-muted-foreground hover:text-foreground"
+                                        className="absolute top-1/2 -translate-y-1/2 right-2 h-8 w-8 text-muted-foreground hover:text-foreground"
                                         title="Clear search"
                                     >
                                         <FaTimes className="h-4 w-4" />
