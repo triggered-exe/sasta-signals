@@ -36,3 +36,6 @@ yarn-error.log*
 
 # ai assistant related
 .GEMINI.md
+
+# mcp for kilo
+mcp.json

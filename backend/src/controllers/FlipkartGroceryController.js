@@ -177,89 +177,6 @@ const extractProductsFromPage = async (page, url, query) => {
   }
 };
 
-export const searchProductsUsingCrawler = async (req, res, next) => {
-  let page = null;
-
-  try {
-    const { query, pincode } = req.body;
-
-    if (!query || !pincode) {
-      throw AppError.badRequest("Query and pincode are required");
-    }
-
-    try {
-      // Get or create context with setLocation
-      const context = await setLocation(pincode);
-
-      // Check if the location is serviceable before proceeding
-      if (!contextManager.isWebsiteServiceable(pincode, "flipkart-grocery")) {
-        throw AppError.badRequest(`Location ${pincode} is not serviceable by Flipkart Grocery`);
-      }
-
-      page = await context.newPage();
-
-      let allProducts = [];
-      let currentUrl = `https://www.flipkart.com/search?q=${query}&otracker=search&marketplace=GROCERY&page=1`;
-      let hasNextPage = true;
-      let pageNum = 1;
-
-      while (hasNextPage) {
-        console.log(`FK: Processing page ${pageNum} of ${query}...`);
-
-        // Extract products using the new function
-        const { products: pageProducts, nextPageUrl } = await extractProductsFromPage(page, currentUrl, query);
-
-        allProducts = [...allProducts, ...pageProducts];
-        console.log(`FK: Found ${pageProducts.length} products on page ${pageNum}`);
-
-        if (nextPageUrl) {
-          currentUrl = nextPageUrl;
-          console.log(`FK: Moving to page ${++pageNum}`);
-          await page.waitForTimeout(1000);
-        } else {
-          hasNextPage = false;
-          console.log("FK: No more pages available");
-        }
-      }
-
-      console.log(`FK: Found total ${allProducts.length} products for query: ${query}`);
-
-      // Filter out duplicates based on multiple fields
-      const uniqueProducts = allProducts.filter(
-        (product, index, self) =>
-          index ===
-          self.findIndex(
-            (p) =>
-              p.productId === product.productId ||
-              (p.productName === product.productName && p.price === product.price && p.mrp === product.mrp)
-          )
-      );
-
-      console.log(`FK: Found ${uniqueProducts.length} unique products after removing duplicates`);
-
-      return res.status(200).json({
-        success: true,
-        products: uniqueProducts,
-        total: uniqueProducts.length,
-      });
-    } catch (error) {
-      console.error("FK: Detailed error:", {
-        message: error.message,
-        stack: error.stack,
-        name: error.name,
-      });
-      throw error;
-    }
-  } catch (error) {
-    console.error("FK: Search error:", error);
-    next(error instanceof AppError ? error : new AppError(error.message || "Failed to fetch Flipkart products", 500));
-  } finally {
-    if (page) {
-      await page.close();
-      console.log("FK: Page closed");
-    }
-  }
-};
 
 
 export const startTracking = async (_, res, next) => {
@@ -527,6 +444,72 @@ const extractCategories = async (pincode = "500064") => {
   }
 };
 
+
+// Core search function that can be used by unified search
+export const performFlipkartSearch = async (location, query) => {
+  try {
+    // Set up location context
+    const context = await setLocation(location);
+
+    // Check if location is serviceable
+    if (!contextManager.isWebsiteServiceable(location, "flipkart-grocery")) {
+      throw new Error(`Location ${location} is not serviceable by Flipkart Grocery`);
+    }
+
+    // Create a new page for search
+    const page = await context.newPage();
+
+    try {
+      let allProducts = [];
+      let currentUrl = `https://www.flipkart.com/search?q=${query}&otracker=search&marketplace=GROCERY&page=1`;
+      let hasNextPage = true;
+      let pageNum = 1;
+
+      // Search across multiple pages (limit to 3 pages for performance)
+      while (hasNextPage && pageNum <= 3) {
+        console.log(`FLIPKART: Processing page ${pageNum} for "${query}"`);
+
+        // Extract products from current page
+        const { products: pageProducts, nextPageUrl } = await extractProductsFromPage(page, currentUrl, query);
+
+        allProducts = [...allProducts, ...pageProducts];
+        console.log(`FLIPKART: Found ${pageProducts.length} products on page ${pageNum}`);
+
+        if (nextPageUrl) {
+          currentUrl = nextPageUrl;
+          pageNum++;
+          await page.waitForTimeout(1000);
+        } else {
+          hasNextPage = false;
+        }
+      }
+
+      // Filter out duplicates
+      const uniqueProducts = allProducts.filter(
+        (product, index, self) =>
+          index ===
+          self.findIndex(
+            (p) =>
+              p.productId === product.productId ||
+              (p.productName === product.productName && p.price === product.price && p.mrp === product.mrp)
+          )
+      );
+
+      console.log(`FLIPKART: Found ${uniqueProducts.length} unique products`);
+
+      return {
+        success: true,
+        products: uniqueProducts,
+        total: uniqueProducts.length,
+      };
+    } finally {
+      await page.close();
+    }
+  } catch (error) {
+    console.error('FLIPKART: Search error:', error.message);
+    throw error;
+  }
+};
 
 const processProducts = async (products) => {
   try {

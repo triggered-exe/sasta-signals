@@ -208,81 +208,6 @@ const fetchCategories = async (location = "vertex corporate") => {
   }
 };
 
-// Search endpoint for testing
-export const searchQuery = async (req, res, next) => {
-  let page = null;
-  try {
-    const { query, location } = req.body;
-
-    if (!query || !location) {
-      throw AppError.badRequest("Query and location are required");
-    }
-
-    // Get or create context for this location
-    const context = await setLocation(location);
-    page = await context.newPage();
-
-    // Note: User agent should be set at context level, not page level in Playwright
-    console.log("ZEPTO: Proceeding with search (user agent should be set at context level)");
-
-    const allProducts = await extractProducts(page, {
-      query,
-      maxScrollAttempts: 5,
-      maxRetries: 3, // Add retry configuration for search
-    });
-
-    // Sort by price
-    allProducts.sort((a, b) => a.price - b.price);
-
-    // Set headers for better browser compatibility
-    res.set({
-      "Cache-Control": "no-cache, no-store, must-revalidate",
-      Pragma: "no-cache",
-      Expires: "0",
-      "Content-Type": "application/json",
-    });
-
-    res.status(200).json({
-      success: true,
-      products: allProducts,
-      total: allProducts.length,
-      totalPages: Math.ceil(allProducts.length / allProducts.length),
-      processedPages: Math.ceil(allProducts.length / allProducts.length),
-    });
-  } catch (error) {
-    console.error("ZEPTO: Search error:", error);
-
-    // Set headers for error responses too
-    res.set({
-      "Cache-Control": "no-cache, no-store, must-revalidate",
-      Pragma: "no-cache",
-      Expires: "0",
-      "Content-Type": "application/json",
-    });
-
-    // Handle specific error types for better user experience
-    if (error.message && error.message.includes("Location") && error.message.includes("not serviceable")) {
-      return res.status(400).json({
-        success: false,
-        message: error.message,
-        products: [],
-      });
-    }
-
-    // Handle retryable errors (502 Bad Gateway and Something went wrong)
-    if (error.message && (error.message.includes("502_BAD_GATEWAY") || error.message.includes("SOMETHING_WENT_WRONG"))) {
-      return res.status(502).json({
-        success: false,
-        message: "Server temporarily unavailable. Please try again in a few moments.",
-        products: [],
-      });
-    }
-
-    next(error);
-  } finally {
-    if (page) await page.close();
-  }
-};
 
 export const startTracking = async (req, res, next) => {
   try {
@@ -602,6 +527,40 @@ const extractProducts = async (page, options = {}) => {
     console.error(`ZEPTO: Error extracting products:`, error);
     await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
     return [];
+  }
+};
+
+// Core search function that can be used by unified search
+export const performZeptoSearch = async (location, query) => {
+  try {
+    // Set up location context
+    const context = await setLocation(location);
+
+    // Create a new page for search
+    const page = await context.newPage();
+
+    try {
+      // Perform the search
+      const allProducts = await extractProducts(page, {
+        query,
+        maxScrollAttempts: 5,
+        maxRetries: 3,
+      });
+
+      // Sort by price
+      allProducts.sort((a, b) => a.price - b.price);
+
+      return {
+        success: true,
+        products: allProducts,
+        total: allProducts.length,
+      };
+    } finally {
+      await page.close();
+    }
+  } catch (error) {
+    console.error('ZEPTO: Search error:', error.message);
+    throw error;
   }
 };
 

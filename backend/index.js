@@ -22,6 +22,7 @@ import productsRouter from "./src/routes/api/products.js"; // Import the new com
 import blinkitRouter from "./src/routes/api/blinkit/blinkit.js";
 import jiomartRouter from "./src/routes/api/jiomart/jiomart.js";
 import { startTrackingHandler as blinkitStartTrackingHandler } from "./src/controllers/BlinkitController.js";
+import searchRouter from "./src/routes/api/search.js";
 
 // Load environment variables from .env file
 dotenv.config();
@@ -50,6 +51,9 @@ app.use("/api/flipkart-grocery", flipkartGroceryRouter);
 app.use("/api/amazon-fresh", amazonFreshRouter);
 app.use("/api/blinkit", blinkitRouter);
 app.use("/api/jiomart", jiomartRouter);
+
+// Unified search across multiple providers
+app.use("/api/search", searchRouter);
 
 // Common products route that aggregates all platforms
 app.use("/api/products", productsRouter);
