@@ -41,7 +41,7 @@ const instamartProductSchema = new mongoose.Schema({
   timestamps: true
 });
 
-instamartProductSchema.index({ productName: 'text', brand: 'text', categoryName: 'text' });
+instamartProductSchema.index({ productName: 'text', categoryName: 'text' });
 instamartProductSchema.index({ inStock: 1 });
 instamartProductSchema.index({ productId: 1 });
 instamartProductSchema.index({ priceDroppedAt: 1 });

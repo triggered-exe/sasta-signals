@@ -39,6 +39,8 @@ zeptoProductSchema.index({ inStock: 1 });
 zeptoProductSchema.index({ price: 1 });
 zeptoProductSchema.index({ priceDroppedAt: 1 });
 zeptoProductSchema.index({ updatedAt: 1 });
+zeptoProductSchema.index({ inStock: 1, price: 1 });
+zeptoProductSchema.index({ categoryName: 1, inStock: 1 });
 
 
 export const ZeptoProduct = mongoose.model("zepto_products", zeptoProductSchema);
