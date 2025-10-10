@@ -7,7 +7,7 @@ const flipkartGroceryProductSchema = new mongoose.Schema({
         required: true,
         unique: true
     },
-    
+
     // Category information
     categoryName: {
         type: String
@@ -17,7 +17,7 @@ const flipkartGroceryProductSchema = new mongoose.Schema({
         type: String
     },
     subcategoryId: String,
-    
+
     // Product details
     productName: {
         type: String,
@@ -30,7 +30,7 @@ const flipkartGroceryProductSchema = new mongoose.Schema({
     },
     imageUrl: String,
     url: String,
-    
+
     // Price information
     price: {
         type: Number,
@@ -46,11 +46,11 @@ const flipkartGroceryProductSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
-    
+
     // Additional details
     weight: String,
     brand: String,
-    
+
     // Tracking
     notified: {
         type: Boolean,
@@ -62,14 +62,15 @@ const flipkartGroceryProductSchema = new mongoose.Schema({
     }
 }, {
     collection: 'flipkart_grocery_products',
-    timestamps: true,
-    indexes: [
-        { productId: 1 },
-        { categoryName: 1 },
-        { priceDroppedAt: 1 },
-        { discount: 1 },
-        { notified: 1 }
-    ]
+    timestamps: true
 });
 
-export const FlipkartGroceryProduct = mongoose.model('FlipkartGroceryProduct', flipkartGroceryProductSchema); 
+flipkartGroceryProductSchema.index({ productName: 'text', brand: 'text', categoryName: 'text' });
+flipkartGroceryProductSchema.index({ inStock: 1 });
+flipkartGroceryProductSchema.index({ productId: 1 });
+flipkartGroceryProductSchema.index({ categoryName: 1 });
+flipkartGroceryProductSchema.index({ priceDroppedAt: 1 });
+flipkartGroceryProductSchema.index({ discount: 1 });
+flipkartGroceryProductSchema.index({ notified: 1 });
+
+export const FlipkartGroceryProduct = mongoose.model('FlipkartGroceryProduct', flipkartGroceryProductSchema);

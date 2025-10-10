@@ -34,10 +34,11 @@ const zeptoProductSchema = new mongoose.Schema(
     }
 );
 
-// Indexes for commonly queried fields
+zeptoProductSchema.index({ productName: 'text', brand: 'text', categoryName: 'text' });
+zeptoProductSchema.index({ inStock: 1 });
 zeptoProductSchema.index({ price: 1 });
 zeptoProductSchema.index({ priceDroppedAt: 1 });
 zeptoProductSchema.index({ updatedAt: 1 });
-zeptoProductSchema.index({ inStock: 1 });
+
 
 export const ZeptoProduct = mongoose.model("zepto_products", zeptoProductSchema);

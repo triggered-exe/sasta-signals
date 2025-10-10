@@ -44,4 +44,7 @@ const amazonFreshProductSchema = new mongoose.Schema({
     subcategoryName: String,
 });
 
-export const AmazonFreshProduct = mongoose.model("amazon_fresh_products", amazonFreshProductSchema); 
+amazonFreshProductSchema.index({ productName: 'text', brand: 'text', categoryName: 'text' });
+amazonFreshProductSchema.index({ inStock: 1 });
+
+export const AmazonFreshProduct = mongoose.model("amazon_fresh_products", amazonFreshProductSchema);

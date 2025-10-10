@@ -61,17 +61,19 @@ const jiomartProductSchema = new mongoose.Schema(
   {
     collection: "jiomart_products",
     timestamps: true,
-    indexes: [
-      { productId: 1 },
-      { categoryName: 1 },
-      { priceDroppedAt: 1 },
-      { discount: 1 },
-      { price: 1 },
-      { updatedAt: 1 },
-      { inStock: 1 },
-    ],
   }
 );
+
+jiomartProductSchema.index({ productName: 'text', brand: 'text', categoryName: 'text' });
+jiomartProductSchema.index({ inStock: 1 });
+jiomartProductSchema.index({ productId: 1 });
+jiomartProductSchema.index({ categoryName: 1 });
+jiomartProductSchema.index({ priceDroppedAt: 1 });
+jiomartProductSchema.index({ discount: 1 });
+jiomartProductSchema.index({ price: 1 });
+jiomartProductSchema.index({ updatedAt: 1 });
+
+
 
 export const JiomartProduct = mongoose.model(
   "jiomart_products",

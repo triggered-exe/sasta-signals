@@ -23,10 +23,14 @@ const bigBasketProductSchema = new mongoose.Schema({
         default: true
     },
     trackedAt: Date
-}, { 
+}, {
     collection: 'bigbasket_products',
     strict: true,
     timestamps: true
 });
 
-export const BigBasketProduct = mongoose.model('bigbasket_products', bigBasketProductSchema); 
+bigBasketProductSchema.index({ productName: 'text', brand: 'text', categoryName: 'text' });
+bigBasketProductSchema.index({ inStock: 1 });
+
+
+export const BigBasketProduct = mongoose.model('bigbasket_products', bigBasketProductSchema);

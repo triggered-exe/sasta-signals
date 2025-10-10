@@ -4,13 +4,13 @@ const instamartProductSchema = new mongoose.Schema({
   // Product identification
   productId: { type: String, required: true },
   variationId: { type: String, required: true, unique: true },
-  
+
   // Category information
   categoryName: String,
   categoryId: String,
   subcategoryName: String,
   subcategoryId: String,
-  
+
   // Product details
   productName: String,
   displayName: String,
@@ -18,7 +18,7 @@ const instamartProductSchema = new mongoose.Schema({
   url: String,
   inStock: Boolean,
   imageUrl: String,
-  
+
   // Price information
   price: Number,
   previousPrice: Number,
@@ -27,23 +27,25 @@ const instamartProductSchema = new mongoose.Schema({
   mrp: Number,
   storePrice: Number,
   discount: Number,
-  
+
   // Variation specific details
   quantity: String,
   unit: String,
   weight: String,
-  
+
   // Tracking
   trackedAt: Date
-}, { 
+}, {
   collection: 'instamart_products',
   strict: true,
-  timestamps: true,
-  indexes: [
-    { productId: 1 },
-    { priceDroppedAt: 1 },
-    { updatedAt: 1 }
-  ]
+  timestamps: true
 });
+
+instamartProductSchema.index({ productName: 'text', brand: 'text', categoryName: 'text' });
+instamartProductSchema.index({ inStock: 1 });
+instamartProductSchema.index({ productId: 1 });
+instamartProductSchema.index({ priceDroppedAt: 1 });
+instamartProductSchema.index({ updatedAt: 1 });
+
 
 export const InstamartProduct = mongoose.model('instamart_products', instamartProductSchema);
