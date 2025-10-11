@@ -11,24 +11,24 @@ const placesData = {};
 // Constants for parallel processing
 const CATEGORY_CHUNK_SIZE = 1; // Number of categories to process in parallel
 const SUBCATEGORY_CHUNK_SIZE = 1; // Number of subcategories to process in parallel
-// Constants and configuration for Instamart API requests
-const INSTAMART_HEADERS = {
-    accept: "*/*",
-    "accept-language": "en-US,en;q=0.7",
+// Real Firefox browser headers that match our stealth configuration
+const getRealisticHeaders = (cookies) => ({
+    accept: "application/json, text/plain, */*",
+    "accept-language": "en-US,en;q=0.5",
+    "accept-encoding": "gzip, deflate, br",
     "content-type": "application/json",
-    matcher: "cefb98e9gefbb99beeceecb",
-    priority: "u=1, i",
-    referer: "https://www.swiggy.com/instamart?",
-    "sec-ch-ua": '"Chromium";v="130", "Brave";v="130", "Not?A_Brand";v="99"',
-    "sec-ch-ua-mobile": "?1",
-    "sec-ch-ua-platform": '"Android"',
+    "cache-control": "no-cache",
+    "dnt": "1",
     "sec-fetch-dest": "empty",
     "sec-fetch-mode": "cors",
     "sec-fetch-site": "same-origin",
-    "sec-gpc": "1",
-    "user-agent":
-        "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36",
-};
+    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+    "origin": "https://www.swiggy.com",
+    "referer": "https://www.swiggy.com/instamart",
+    "connection": "keep-alive",
+    "te": "trailers",
+    cookie: cookies
+});
 
 // Remove trackingInterval variable as we'll use continuous tracking
 let isTrackingActive = false;
@@ -52,11 +52,11 @@ const setLocation = async (location) => {
         // Set up Instamart for this context
         page = await context.newPage();
 
-        // Navigate to Instamart
+        // Navigate to Instamart with realistic timing
         await page.goto("https://www.swiggy.com", { waitUntil: "domcontentloaded" });
 
-        // Wait for the page to be fully loaded
-        await page.waitForTimeout(3000);
+        // Add random delay to simulate human behavior
+        await page.waitForTimeout(2000 + Math.random() * 2000);
 
         // Look for location selector - this will need to be updated with correct selectors
         console.log("IM: Setting location...");
@@ -71,10 +71,11 @@ const setLocation = async (location) => {
             if (pincodeInput) {
                 console.log("IM: Pincode input field found");
 
+
                 await pincodeInput.fill(location);
 
-                // Wait for suggestions to appear
-                await page.waitForTimeout(3000);
+                // Wait for suggestions to appear with random delay
+                await page.waitForTimeout(2000 + Math.random() * 2000);
 
                 // Check if suggestions are visible - looking for the dropdown structure you provided
                 const firstSuggestion = await page.waitForSelector('div._2BgUI[role="button"]', {
@@ -83,9 +84,10 @@ const setLocation = async (location) => {
 
                 if (firstSuggestion) {
                     // Click the first suggestion (skip "Use my current location" and "Search Result" header)
-                    firstSuggestion.click();
+                    await firstSuggestion.click();
 
-                    await page.waitForTimeout(5000);
+                    // Wait for navigation with random delay
+                    await page.waitForTimeout(3000 + Math.random() * 2000);
 
                     // Check whether a div with text (Shop groceries on Instamart) exists if not its not serviceable
                     const shopGroceriesDiv = await page.$("//div[text()='Shop groceries on Instamart']");
@@ -97,8 +99,8 @@ const setLocation = async (location) => {
                     const instamartLink = await page.waitForSelector('a[href*="https://www.swiggy.com/instamart?entryId"]', { timeout: 5000 });
                     await instamartLink.click();
 
-                    // Wait for the page to be fully loaded
-                    await page.waitForTimeout(3000);
+                    // Wait for the page to be fully loaded with random delay
+                    await page.waitForTimeout(2000 + Math.random() * 2000);
 
                     // Check if the page is loaded properly
                 } else {
@@ -166,51 +168,62 @@ const extractBrowserData = async (location, refresh = false) => {
         try {
             page = await context.newPage();
 
-            // Navigate to Instamart to get the cookies and store data
+            // Step 1: Navigate to Instamart main page
+            console.log("IM: Navigating to https://www.swiggy.com/instamart");
             await page.goto("https://www.swiggy.com/instamart", { waitUntil: "domcontentloaded" });
-            await page.waitForTimeout(3000);
 
-            //  Store id is not available in the above page, so we need to extract it from the page source. the above was loaded so that the cookies are set properly.
+            // Add random delay to simulate human behavior
+            await page.waitForTimeout(3000 + Math.random() * 2000);
 
-            await page.goto("view-source:https://www.swiggy.com/instamart", { waitUntil: "domcontentloaded" });
+            // Step 2: Find any category card using data-testid="item-image-wrapper"
+            console.log("IM: Looking for category cards with data-testid='item-image-wrapper'");
+            const categoryCard = await page.waitForSelector('div[data-testid="item-image-wrapper"]', {
+                timeout: 5000
+            });
 
-            // Extract cookies from the browser - only for swiggy.com domain
-            const cookies = await page.context().cookies('https://www.swiggy.com');
-            const cookieString = cookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ');
-            console.log(`IM: Extracted ${cookies.length} cookies from swiggy.com domain`);
+            if (!categoryCard) {
+                throw new Error("IM: Could not find any category card with data-testid='item-image-wrapper'");
+            }
 
-            // Extract store ID from the HTML response
-            const html = await page.content();
-            const storeIdMatch = html.match(/"storeId":"(\d+)"/);
+            console.log("IM: Found category card, clicking it...");
 
+            // Step 3: Click the category card to navigate to category listing page
+            await categoryCard.click();
+
+            // Refresh the page
+            await page.reload({ waitUntil: "domcontentloaded" });
+
+            // Wait for navigation to complete with random delay
+            await page.waitForTimeout(3000 + Math.random() * 2000);
+
+            // Step 4: Extract storeId from the new URL
+            const currentUrl = page.url();
+            console.log(`IM: Current URL after navigation: ${currentUrl}`);
+
+            const storeIdMatch = currentUrl.match(/storeId=(\d+)/);
             if (!storeIdMatch || !storeIdMatch[1]) {
-                throw new Error("IM: Could not extract storeId from webpage");
+                throw new Error("IM: Could not extract storeId from URL after navigation");
             }
 
             const storeId = storeIdMatch[1];
-            // console.log("IM: Extracted store ID from webpage:", storeId);
+            console.log(`IM: Extracted store ID from URL: ${storeId}`);
 
-            // Extract lat/lng from cookies or page data
+            // Step 5: Extract cookies using document.cookie
+            const cookieString = await page.evaluate(() => document.cookie);
+            console.log(`IM: Extracted cookies from document.cookie`);
+
+            // Extract lat/lng from cookies
             let lat, lng;
-            const userLocationCookie = cookies.find(cookie => cookie.name === 'userLocation');
+            const userLocationCookie = cookieString.split(';').find(cookie => cookie.trim().startsWith('userLocation='));
             if (userLocationCookie) {
                 try {
-                    const locationData = JSON.parse(decodeURIComponent(userLocationCookie.value));
+                    const cookieValue = userLocationCookie.split('=')[1];
+                    const locationData = JSON.parse(decodeURIComponent(cookieValue));
                     lat = locationData.lat;
                     lng = locationData.lng;
-                    // console.log("IM: Extracted lat/lng from cookies:", lat, lng);
+                    console.log(`IM: Extracted lat/lng from cookies: ${lat}, ${lng}`);
                 } catch (e) {
-                    console.log("IM: Could not parse userLocation cookie, will extract from page");
-                }
-            }
-
-            // If we couldn't get lat/lng from cookies, try to extract from page
-            if (!lat || !lng) {
-                const latLngMatch = html.match(/"lat":([^,]+),"lng":([^}]+)/);
-                if (latLngMatch) {
-                    lat = parseFloat(latLngMatch[1]);
-                    lng = parseFloat(latLngMatch[2]);
-                    // console.log("IM: Extracted lat/lng from page:", lat, lng);
+                    console.log("IM: Could not parse userLocation cookie");
                 }
             }
 
@@ -267,25 +280,8 @@ export const startTrackingHandler = async () => {
 const fetchProductsForCategoriesChunk = async (categoryChunk, location) => {
     try {
         let { storeId, cookies } = await extractBrowserData(location, false);
-        // Common headers to use across all API calls
-        const headers = {
-            accept: "*/*",
-            "accept-language": "en-US,en;q=0.5",
-            "accept-encoding": "gzip, deflate, br, zstd",
-            "content-type": "application/json",
-            "user-agent":
-                "Mozilla/5.0 (X11; Linux x86_64; rv:137.0) Gecko/20100101 Firefox/137.0",
-            cookie: cookies, // Already using the full cookie from fetchProductCategories
-            priority: "u=0",
-            matcher: "adbcg8ecfgdfdcgbgdccdad",
-            "x-build-version": "2.297.0",
-            origin: "https://www.swiggy.com",
-            connection: "keep-alive",
-            "sec-fetch-dest": "empty",
-            "sec-fetch-mode": "cors",
-            "sec-fetch-site": "same-origin",
-            te: "trailers",
-        };
+        // Use realistic headers that match our stealth browser
+        const headers = getRealisticHeaders(cookies);
 
         // Process each category sequentially
         for (const category of categoryChunk) {
@@ -308,7 +304,8 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, location) => {
                             let limit = 20;
                             let allProducts = [];
                             let { storeId, cookies } = await extractBrowserData(location, false);
-                            headers.cookie = cookies;
+                            // Update headers with fresh cookies
+                            const updatedHeaders = getRealisticHeaders(cookies);
 
                             while (true) {
                                 let retryCount = 0;
@@ -331,7 +328,7 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, location) => {
                                             filterName: subCategory.name,
                                             categoryName: category.name,
                                         },
-                                        headers: headers,
+                                        headers: updatedHeaders,
                                     }
                                 );
 
@@ -348,7 +345,9 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, location) => {
                                     // If the response status is 202 , then it means the cookies are expired and we have to refresh them
                                     if (response.status === 202) {
                                         const { cookies: refreshedCookies } = await extractBrowserData(location, true);
-                                        headers.cookie = refreshedCookies;
+                                        // Update headers with refreshed cookies
+                                        const refreshedHeaders = getRealisticHeaders(refreshedCookies);
+                                        Object.assign(updatedHeaders, refreshedHeaders);
                                     }
                                     retryCount++;
                                     if (retryCount > MAX_RETRIES) {
@@ -518,14 +517,7 @@ const fetchProductCategories = async (location = "500064") => {
                     primaryStoreId: storeId,
                     secondaryStoreId: "",
                 },
-                headers: {
-                    accept: "*/*",
-                    "accept-language": "en-US,en;q=0.9",
-                    "content-type": "application/json",
-                    "user-agent":
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
-                    cookie: cookies,
-                },
+                headers: getRealisticHeaders(cookies),
             });
 
             if (!categoriesResponse.data?.data?.widgets) {
@@ -835,10 +827,7 @@ export const search = async (req, res, next) => {
                     primaryStoreId: "1311100",
                     secondaryStoreId: "",
                 },
-                headers: {
-                    ...INSTAMART_HEADERS,
-                    Cookie: "deviceId=s%253A32b79aff-414d-4fb0-a759-df85f541312e.H1m4Tr18pypEEkkBIa%252BCo87Ft4iraHpp4mKmAKYhaKE; tid=s%253A04235f7c-720b-4708-81ed-fb8e66252512.UUMQhremwF41QpB9G7ytmOA%252Bodh2kypFE1p%252BwMRQi4M; versionCode=1200; platform=web; subplatform=mweb; statusBarHeight=0; bottomOffset=0; genieTrackOn=false; ally-on=false; isNative=false; strId=; openIMHP=false; userLocation=%257B%2522lat%2522%253A17.3585585%252C%2522lng%2522%253A78.4553883%252C%2522address%2522%253A%2522%2522%252C%2522id%2522%253A%2522%2522%252C%2522annotation%2522%253A%2522%2522%252C%2522name%2522%253A%2522%2522%257D",
-                },
+                headers: getRealisticHeaders("deviceId=s%253A32b79aff-414d-4fb0-a759-df85f541312e.H1m4Tr18pypEEkkBIa%252BCo87Ft4iraHpp4mKmAKYhaKE; tid=s%253A04235f7c-720b-4708-81ed-fb8e66252512.UUMQhremwF41QpB9G7ytmOA%252Bodh2kypFE1p%252BwMRQi4M; versionCode=1200; platform=web; subplatform=mweb; statusBarHeight=0; bottomOffset=0; genieTrackOn=false; ally-on=false; isNative=false; strId=; openIMHP=false; userLocation=%257B%2522lat%2522%253A17.3585585%252C%2522lng%2522%253A78.4553883%252C%2522address%2522%253A%2522%2522%252C%2522id%2522%253A%2522%2522%252C%2522annotation%2522%253A%2522%2522%252C%2522name%2522%253A%2522%2522%257D"),
             }
         );
 
