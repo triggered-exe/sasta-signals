@@ -63,7 +63,7 @@ const blinkitProductSchema = new mongoose.Schema(
     }
 );
 
-blinkitProductSchema.index({ productName: 'text', brand: 'text', categoryName: 'text' });
+blinkitProductSchema.index({ productName: 'text', brand: 'text', categoryName: 'text', subcategoryName: 'text' });
 blinkitProductSchema.index({ inStock: 1 });
 blinkitProductSchema.index({ productId: 1 });
 blinkitProductSchema.index({ categoryName: 1 });

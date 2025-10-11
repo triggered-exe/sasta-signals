@@ -65,12 +65,14 @@ const flipkartGroceryProductSchema = new mongoose.Schema({
     timestamps: true
 });
 
-flipkartGroceryProductSchema.index({ productName: 'text', brand: 'text', categoryName: 'text' });
+flipkartGroceryProductSchema.index({ productName: 'text', brand: 'text', categoryName: 'text', subcategoryName: 'text' });
 flipkartGroceryProductSchema.index({ inStock: 1 });
 flipkartGroceryProductSchema.index({ productId: 1 });
 flipkartGroceryProductSchema.index({ categoryName: 1 });
 flipkartGroceryProductSchema.index({ priceDroppedAt: 1 });
 flipkartGroceryProductSchema.index({ discount: 1 });
 flipkartGroceryProductSchema.index({ notified: 1 });
+flipkartGroceryProductSchema.index({ inStock: 1, price: 1 });
+flipkartGroceryProductSchema.index({ categoryName: 1, inStock: 1 });
 
 export const FlipkartGroceryProduct = mongoose.model('FlipkartGroceryProduct', flipkartGroceryProductSchema);

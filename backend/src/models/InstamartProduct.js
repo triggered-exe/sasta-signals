@@ -41,11 +41,16 @@ const instamartProductSchema = new mongoose.Schema({
   timestamps: true
 });
 
-instamartProductSchema.index({ productName: 'text', categoryName: 'text' });
+instamartProductSchema.index({ productName: 'text', categoryName: 'text', subcategoryName: 'text' });
 instamartProductSchema.index({ inStock: 1 });
 instamartProductSchema.index({ productId: 1 });
+instamartProductSchema.index({ categoryName: 1 });
 instamartProductSchema.index({ priceDroppedAt: 1 });
+instamartProductSchema.index({ discount: 1 });
+instamartProductSchema.index({ price: 1 });
 instamartProductSchema.index({ updatedAt: 1 });
+instamartProductSchema.index({ inStock: 1, price: 1 });
+instamartProductSchema.index({ categoryName: 1, inStock: 1 });
 
 
 export const InstamartProduct = mongoose.model('instamart_products', instamartProductSchema);
