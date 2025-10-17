@@ -53,7 +53,7 @@ const setLocation = async (location) => {
         page = await context.newPage();
 
         // Navigate to Instamart with realistic timing
-        await page.goto("https://www.swiggy.com", { waitUntil: "domcontentloaded" });
+        await page.goto("https://www.swiggy.com", { waitUntil: "networkidle" });
 
         // Add random delay to simulate human behavior
         await page.waitForTimeout(2000 + Math.random() * 2000);
@@ -75,7 +75,7 @@ const setLocation = async (location) => {
                 await pincodeInput.fill(location);
 
                 // Wait for suggestions to appear with random delay
-                await page.waitForTimeout(2000 + Math.random() * 2000);
+                await page.waitForTimeout(2000 + Math.random() * 3000);
 
                 // Check if suggestions are visible - looking for the dropdown structure you provided
                 const firstSuggestion = await page.waitForSelector('div._2BgUI[role="button"]', {
@@ -175,20 +175,17 @@ const extractBrowserData = async (location, refresh = false) => {
             // Add random delay to simulate human behavior
             await page.waitForTimeout(3000 + Math.random() * 2000);
 
-            // Step 2: Find any category card using data-testid="item-image-wrapper"
-            console.log("IM: Looking for category cards with data-testid='item-image-wrapper'");
-            const categoryCard = await page.waitForSelector('div[data-testid="item-image-wrapper"]', {
+            // Step 2: Find a div with text "Fresh Fruits" and click it
+            const freshFruitsDiv = await page.waitForSelector("//div[text()='Fresh Fruits']", {
                 timeout: 5000
             });
 
-            if (!categoryCard) {
-                throw new Error("IM: Could not find any category card with data-testid='item-image-wrapper'");
+            if (!freshFruitsDiv) {
+                throw new Error("IM: Could not find div with text 'Fresh Fruits'");
             }
 
-            console.log("IM: Found category card, clicking it...");
-
-            // Step 3: Click the category card to navigate to category listing page
-            await categoryCard.click();
+            // Step 3: Click the 'Fresh Fruits' div to navigate to category listing page
+            await freshFruitsDiv.click();
 
             // Refresh the page
             await page.reload({ waitUntil: "domcontentloaded" });
@@ -206,25 +203,18 @@ const extractBrowserData = async (location, refresh = false) => {
             }
 
             const storeId = storeIdMatch[1];
-            console.log(`IM: Extracted store ID from URL: ${storeId}`);
 
             // Step 5: Extract cookies using document.cookie
             const cookieString = await page.evaluate(() => document.cookie);
-            console.log(`IM: Extracted cookies from document.cookie`);
 
             // Extract lat/lng from cookies
             let lat, lng;
             const userLocationCookie = cookieString.split(';').find(cookie => cookie.trim().startsWith('userLocation='));
             if (userLocationCookie) {
-                try {
-                    const cookieValue = userLocationCookie.split('=')[1];
-                    const locationData = JSON.parse(decodeURIComponent(cookieValue));
-                    lat = locationData.lat;
-                    lng = locationData.lng;
-                    console.log(`IM: Extracted lat/lng from cookies: ${lat}, ${lng}`);
-                } catch (e) {
-                    console.log("IM: Could not parse userLocation cookie");
-                }
+                const cookieValue = userLocationCookie.split('=')[1];
+                const locationData = JSON.parse(decodeURIComponent(cookieValue));
+                lat = locationData.lat;
+                lng = locationData.lng;
             }
 
             const browserData = {
