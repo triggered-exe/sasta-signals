@@ -33,7 +33,7 @@ export default function RootLayout({ children }) {
   const theme = getThemeServer();
 
   return (
-    <html lang="en" className={theme}>
+    <html lang="en" className={theme} suppressHydrationWarning>
       <body className="bg-background text-foreground min-h-screen antialiased">
         {children}
       </body>
