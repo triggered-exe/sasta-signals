@@ -494,29 +494,57 @@ const fetchProductCategories = async (location = "500064") => {
 
         try {
             page = await context.newPage();
+            let retryCount = 0;
+            const MAX_RETRIES = 3;
+            let widgets = [];
 
-            const categoriesResponse = await axios.get(`https://www.swiggy.com/api/instamart/layout`, {
-                params: {
-                    layoutId: "3742",
-                    limit: "40",
-                    pageNo: "0",
-                    serviceLine: "INSTAMART",
-                    customerPage: "STORES_MENU",
-                    hasMasthead: "false",
-                    storeId: storeId,
-                    primaryStoreId: storeId,
-                    secondaryStoreId: "",
-                },
-                headers: getRealisticHeaders(cookies),
-            });
+            while (retryCount < MAX_RETRIES) {
+                try {
+                    // Navigate to the API URL directly in the browser
+                    await page.goto(`https://www.swiggy.com/api/instamart/layout?layoutId=3742&limit=40&pageNo=0&serviceLine=INSTAMART&customerPage=STORES_MENU&hasMasthead=false&storeId=${storeId}&primaryStoreId=${storeId}&secondaryStoreId=`, {
+                        waitUntil: "networkidle"
+                    });
 
-            if (!categoriesResponse.data?.data?.widgets) {
-                throw new Error("Failed to fetch categories");
+                    // Extract the JSON data from the page
+                    const jsonData = await page.evaluate(() => {
+                        try {
+                            return JSON.parse(document.body.textContent);
+                        } catch (e) {
+                            return null;
+                        }
+                    });
+
+                    if (!jsonData?.data?.widgets) {
+                        console.log(`IM: Attempt ${retryCount + 1}/${MAX_RETRIES} - No widgets found in response, refreshing...`);
+                        await page.reload({ waitUntil: "networkidle" });
+                        retryCount++;
+                        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before retry
+                        continue;
+                    }
+
+                    widgets = jsonData.data.widgets.filter(
+                        (widget) => widget.widgetInfo?.widgetType === "TAXONOMY"
+                    );
+
+                    if (widgets.length > 0) {
+                        break; // Successfully got widgets, exit retry loop
+                    }
+
+                    retryCount++;
+                    await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before retry
+                } catch (error) {
+                    console.error(`IM: Attempt ${retryCount + 1}/${MAX_RETRIES} failed:`, error);
+                    retryCount++;
+                    if (retryCount === MAX_RETRIES) {
+                        throw new Error("Failed to fetch categories after max retries");
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before retry
+                }
             }
 
-            const widgets = categoriesResponse.data.data.widgets.filter(
-                (widget) => widget.widgetInfo?.widgetType === "TAXONOMY"
-            );
+            if (widgets.length === 0) {
+                throw new Error("No taxonomy widgets found after all retries");
+            }
 
             // From widgets get the categories
             const allCategoriesWithSubCategories = widgets.flatMap((widget) =>

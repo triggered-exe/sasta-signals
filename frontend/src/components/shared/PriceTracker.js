@@ -154,8 +154,8 @@ export default function PriceTracker({ apiEndpoint }) {
     };
 
     const renderProductCard = (product) => (
-        <div key={product._id} className="w-1/2 sm:w-1/3 md:w-1/3 lg:w-1/4 xl:w-1/5 2xl:w-1/6 p-1 sm:p-2 md:p-3">
-            <Card className={`group h-full flex flex-col transition-all duration-300 hover:shadow-lg hover:-translate-y-1 animate-scale-in ${!product.inStock ? 'opacity-70' : ''}`}>
+        <div key={product._id} className="w-1/2 sm:w-1/3 md:w-1/3 lg:w-1/4 xl:w-1/5 2xl:w-1/6 p-1 sm:p-2 md:p-3 self-start">
+            <Card className={`group flex flex-col transition-all duration-300 hover:shadow-lg hover:-translate-y-1 animate-scale-in ${!product.inStock ? 'opacity-70' : ''}`}>
                 <CardHeader className="p-0 overflow-hidden rounded-t-xl mb-0">
                     <div className="relative w-full pt-[100%]">
                         <a
@@ -195,7 +195,7 @@ export default function PriceTracker({ apiEndpoint }) {
                         </a>
                     </div>
                 </CardHeader>
-                <CardContent className="p-3 pt-3 flex-1">
+                <CardContent className="p-3 pt-3">
                     <div className="flex flex-wrap gap-2">
                         <Badge variant="outline" className="text-xs">
                             {product.weight && <span>{product.weight}</span>}
@@ -339,7 +339,7 @@ export default function PriceTracker({ apiEndpoint }) {
             </Card>
 
             {/* Products Grid */}
-            <div ref={productGridRef} className="flex flex-wrap -mx-1 sm:-mx-2 md:-mx-3 mb-20 min-h-[400px]">
+            <div ref={productGridRef} className="flex flex-wrap -mx-1 sm:-mx-2 md:-mx-3 mb-20 min-h-[400px] items-start content-start">
                 {isLoading ? (
                     <Card className="w-full">
                         <CardContent className="p-8 text-center">
