@@ -12,8 +12,8 @@
                 "<node_internals>/**"
             ],
             "program": "${workspaceFolder}/backend/index.js",
-            // ***Tell VS Code where to find the node executable ***
-            "runtimeExecutable": "/home/trigger/.nvm/versions/node/v24.1.0/bin/node",
+            // ***Tell VS Code where to find the node executable for Linux ***
+            // "runtimeExecutable": "/home/trigger/.nvm/versions/node/v24.1.0/bin/node",
             "envFile": "${workspaceFolder}/backend/.env"
         }
     ]

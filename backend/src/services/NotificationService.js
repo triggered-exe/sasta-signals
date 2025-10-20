@@ -46,7 +46,7 @@ export const sendTelegramMessage = async (droppedProducts, source, minDiscountTh
 
         for (let i = 0; i < productChunks.length; i++) {
             const products = productChunks[i];
-            const messageText = `🔥 <b>${source} Price Drops</b>\n\n` +
+            const messageText = `🔥 <b>Bachat Signals | ${source} Price Drops</b>\n\n` +
                 products.map((product) => {
                     const priceDrop = product.previousPrice - product.price;
                     return (
@@ -111,7 +111,7 @@ export const sendEmailWithDroppedProducts = async (droppedProducts, source) => {
         for (let i = 0; i < productChunks.length; i++) {
             const products = productChunks[i];
             const emailContent = `
-                <h2>Recently Dropped Products on ${source} (Part ${i + 1}/${productChunks.length})</h2>
+                <h2>Bachat Signals — Recent Drops on ${source} (Part ${i + 1}/${productChunks.length})</h2>
                 <div style="font-family: Arial, sans-serif;">
                     ${products
                     .map(
@@ -147,7 +147,7 @@ export const sendEmailWithDroppedProducts = async (droppedProducts, source) => {
             await resend.emails.send({
                 from: "onboarding@resend.dev",
                 to: "harishanker.500apps@gmail.com",
-                subject: `🔥 Price Drops Alert - ${source} Products (Part ${i + 1}/${productChunks.length})`,
+                subject: `Bachat Signals — 🔥 Price Drops Alert - ${source} (Part ${i + 1}/${productChunks.length})`,
                 html: emailContent,
             });
             

@@ -339,7 +339,7 @@ export default function PriceTracker({ apiEndpoint }) {
             </Card>
 
             {/* Products Grid */}
-            <div ref={productGridRef} className="flex flex-wrap -mx-1 sm:-mx-2 md:-mx-3 mb-20 min-h-[400px] items-start content-start">
+            <div ref={productGridRef} className="flex flex-wrap -mx-1 sm:-mx-2 md:-mx-3 min-h-[400px] items-start content-start">
                 {isLoading ? (
                     <Card className="w-full">
                         <CardContent className="p-8 text-center">
@@ -362,11 +362,11 @@ export default function PriceTracker({ apiEndpoint }) {
                 )}
             </div>
 
-            {/* Pagination Controls */}
-            <div className="fixed bottom-0 inset-x-0 ml-[70px] bg-background/95 shadow-lg p-2 backdrop-blur-sm border-t border-border/50">
+            {/* Pagination Controls - Sticky positioning for better UX */}
+            <div className="sticky bottom-0 bg-background/95 shadow-lg p-3 backdrop-blur-sm border-t border-border/50 z-10">
                 <div className="container mx-auto px-4">
                     <Card className="shadow-none border-0 bg-transparent">
-                        <CardContent className="p-2">
+                        <CardContent className="p-0">
                             <CustomPagination
                                 currentPage={currentPage}
                                 totalPages={totalPages}

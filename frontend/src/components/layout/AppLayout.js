@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
+import Footer from "./Footer";
 import { toggleTheme } from "@/utils/theme";
 
 export default function AppLayout({ children, selectedWebsite, setSelectedWebsite }) {
@@ -53,6 +54,8 @@ export default function AppLayout({ children, selectedWebsite, setSelectedWebsit
                     </div>
                 </main>
             </div>
+
+            <Footer />
         </div>
     );
 }

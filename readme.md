@@ -1,8 +1,9 @@
-# Deals Checker - Multi-Platform Price Tracking System
+# Bachat Signals — Multi-Platform Price Tracking & Alerts
 
-A comprehensive price tracking application that monitors product prices across major Indian grocery and e-commerce platforms, providing real-time notifications for price drops and deals.
+Bachat Signals is a comprehensive price tracking and deal alerts application that monitors product prices across major Indian grocery and e-commerce platforms, providing real-time notifications for price drops and deals.
 
 ## 🌐 Current Deployment
+
 - **Backend**: DigitalOcean Droplet (68.183.85.22:8000)
 - **Proxy**: Nginx reverse proxy (https://68.183.85.22/)
 - **Database**: MongoDB (cloud or self-hosted)
@@ -10,6 +11,7 @@ A comprehensive price tracking application that monitors product prices across m
 ## 🚀 Features
 
 ### Multi-Platform Support
+
 - **Instamart** (Swiggy) - Quick grocery delivery
 - **BigBasket** - Online grocery supermarket
 - **Blinkit** - Instant grocery delivery
@@ -19,6 +21,7 @@ A comprehensive price tracking application that monitors product prices across m
 - **Meesho** - Social commerce platform
 
 ### Core Functionality
+
 - ✅ **Automated Price Tracking** - Continuous monitoring of product prices
 - ✅ **Location-based Services** - Support for different pincodes/delivery areas
 - ✅ **Smart Notifications** - Telegram and email alerts for significant price drops
@@ -30,6 +33,7 @@ A comprehensive price tracking application that monitors product prices across m
 ## 🏗️ Architecture
 
 ### Backend (Node.js/Express)
+
 - **Web Scraping**: Playwright with Firefox automation
 - **Database**: MongoDB with platform-specific collections
 - **API**: RESTful endpoints for product search and tracking
@@ -37,13 +41,16 @@ A comprehensive price tracking application that monitors product prices across m
 - **Context Management**: Efficient browser context reuse
 
 ### Frontend (Next.js/React)
+
 - **UI Framework**: Next.js 14 with React 18
 - **Styling**: Tailwind CSS with dark/light theme support
 - **Components**: Material-UI integration
 - **State Management**: React hooks and context
 
 ### Database Schema
+
 Each platform has its own MongoDB collection with fields:
+
 - Product identification (productId, productName)
 - Pricing information (price, mrp, discount, previousPrice)
 - Category data (categoryName, subcategoryName)
@@ -53,6 +60,7 @@ Each platform has its own MongoDB collection with fields:
 ## 🛠️ Technology Stack
 
 ### Backend Dependencies
+
 - **Express.js** - Web framework
 - **Mongoose** - MongoDB ODM
 - **Playwright** - Browser automation
@@ -63,6 +71,7 @@ Each platform has its own MongoDB collection with fields:
 - **dotenv** - Environment configuration
 
 ### Frontend Dependencies
+
 - **Next.js 14** - React framework
 - **React 18** - UI library
 - **Tailwind CSS** - Utility-first CSS
@@ -73,11 +82,13 @@ Each platform has its own MongoDB collection with fields:
 ## 📦 Installation & Setup
 
 ### Prerequisites
+
 - Node.js (v18 or higher)
 - MongoDB database
 - pnpm or npm package manager
 
 ### Backend Setup
+
 ```bash
 cd backend
 pnpm install
@@ -92,6 +103,7 @@ cp .env.example .env
 ```
 
 ### Frontend Setup
+
 ```bash
 cd frontend
 pnpm install
@@ -99,10 +111,12 @@ pnpm install
 ```
 
 ### Environment Variables
+
 Create `.env` file in backend directory:
+
 ```env
 # Database
-MONGO_URI=mongodb://localhost:27017/deals-checker
+MONGO_URI=mongodb://localhost:27017/bachat-signals
 
 # Notifications
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token
@@ -117,6 +131,7 @@ PORT=8000
 ## 🚀 Running the Application
 
 ### Development Mode
+
 ```bash
 # Backend
 cd backend
@@ -128,6 +143,7 @@ pnpm dev
 ```
 
 ### Production Mode
+
 ```bash
 # Backend
 cd backend
@@ -140,6 +156,7 @@ pnpm start
 ```
 
 ## 🌐 Deployment Commands
+
 ```bash
 # Build frontend
 cd frontend && pnpm build
@@ -151,14 +168,17 @@ cd backend && pnpm start
 ## 📱 API Endpoints
 
 ### Product Search
+
 - `POST /api/{platform}/search` - Search products on specific platform
 - `GET /api/products/{platform}` - Get tracked products from platform
 
 ### Price Tracking
+
 - `POST /api/{platform}/start-tracking` - Start price tracking
 - `GET /api/{platform}/categories` - Get platform categories
 
 ### Supported Platforms
+
 - `/api/instamart/*` - Instamart endpoints
 - `/api/bigbasket/*` - BigBasket endpoints
 - `/api/blinkit/*` - Blinkit endpoints
@@ -170,12 +190,14 @@ cd backend && pnpm start
 ## 🔧 Configuration
 
 ### Browser Settings
+
 - **User Agent**: iPad emulation for better compatibility
 - **Viewport**: 1280x1024 (iPad portrait)
 - **Memory Optimization**: Reduced cache and process limits
 - **Context Management**: Maximum 3 concurrent contexts
 
 ### Tracking Settings
+
 - **Night Mode**: Pauses tracking between 12 AM - 6 AM IST
 - **Retry Logic**: 3 attempts with exponential backoff
 - **Batch Processing**: Parallel processing with rate limiting
@@ -184,11 +206,13 @@ cd backend && pnpm start
 ## 📊 Monitoring & Notifications
 
 ### Telegram Notifications
+
 - Real-time price drop alerts
 - Product availability updates
 - Daily tracking summaries
 
 ### Email Notifications
+
 - Weekly price reports
 - Significant deal alerts
 - System status updates
@@ -196,6 +220,7 @@ cd backend && pnpm start
 ## 🔍 How It Works
 
 ### Price Tracking Process
+
 1. **Location Setup**: Configure delivery location using pincode
 2. **Category Scanning**: Automatically discover product categories
 3. **Product Extraction**: Extract product details using web scraping
@@ -204,6 +229,7 @@ cd backend && pnpm start
 6. **Data Storage**: Store historical pricing data for analysis
 
 ### Platform-Specific Features
+
 - **Instamart**: Category-based tracking with subcategory support
 - **BigBasket**: API-based product fetching with location validation
 - **Blinkit**: Infinite scroll handling for complete product discovery
@@ -227,6 +253,7 @@ This project is licensed under the ISC License.
 ## 🆘 Support
 
 For issues and questions:
+
 1. Check the existing issues
 2. Create a new issue with detailed description
 3. Include logs and error messages
