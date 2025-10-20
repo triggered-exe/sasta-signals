@@ -74,7 +74,7 @@ class ContextManager {
           // Set realistic preferences
           "media.peerconnection.enabled": true,
           "media.navigator.enabled": true,
-          "geo.enabled": true,
+          "geo.enabled": false,
           "geo.provider.use_corelocation": true,
           "geo.prompt.testing": false,
           "geo.prompt.testing.allow": false,
@@ -102,8 +102,6 @@ class ContextManager {
         },
         args: [
           // Firefox-specific stealth arguments
-          '-width=1920',
-          '-height=1080',
         ],
       });
     }
@@ -155,12 +153,12 @@ class ContextManager {
         // Set locale to English India
         locale: 'en-IN',
         // Set geolocation to a random location in India
-        geolocation: {
-          latitude: 17.3850 + (Math.random() - 0.5) * 0.1, // Hyderabad area with some randomness
-          longitude: 78.4867 + (Math.random() - 0.5) * 0.1
-        },
+        // geolocation: {
+        //   latitude: 17.3850 + (Math.random() - 0.5) * 0.1, // Hyderabad area with some randomness
+        //   longitude: 78.4867 + (Math.random() - 0.5) * 0.1
+        // },
         // Set permissions
-        permissions: ['geolocation'],
+        // permissions: ['geolocation'],
         // Set extra HTTP headers to look more like a real Firefox browser
         extraHTTPHeaders: {
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
