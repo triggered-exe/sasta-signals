@@ -32,6 +32,13 @@ const setLocation = async (pincode) => {
     // Look for location selector - this will need to be updated with correct selectors
     console.log("BB: Setting location...");
 
+    // Sometimes the Bigbasket block the ip, check if Access Denied is present on the webpage
+    const accessDeniedElement = await page.$('h1:has-text("Access Denied")');
+    if (accessDeniedElement) {
+      console.log("BB: Access denied - IP appears to be blocked by BigBasket");
+      throw AppError.badRequest("BB: Access denied - IP appears to be blocked by BigBasket");
+    }
+
     // Try to find and click location selector
     try {
       // Click the location selector using JavaScript since Playwright click times out
