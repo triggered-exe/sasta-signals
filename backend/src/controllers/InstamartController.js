@@ -193,16 +193,37 @@ const extractBrowserData = async (location, refresh = false) => {
             // Wait for navigation to complete with random delay
             await page.waitForTimeout(3000 + Math.random() * 2000);
 
-            // Step 4: Extract storeId from the new URL
+            // Step 4: Try to extract storeId from the URL first. If not present, fall back
+            // to reading the page source and extracting with a simple regex for
+            // the pattern "storeId":"1400220".
             const currentUrl = page.url();
             console.log(`IM: Current URL after navigation: ${currentUrl}`);
 
-            const storeIdMatch = currentUrl.match(/storeId=(\d+)/);
-            if (!storeIdMatch || !storeIdMatch[1]) {
-                throw new Error("IM: Could not extract storeId from URL after navigation");
+            let storeId = null;
+
+            // Try URL-based extraction
+            const urlMatch = currentUrl.match(/storeId=(\d+)/);
+            if (urlMatch && urlMatch[1]) {
+                storeId = urlMatch[1];
+            } else {
+                // Fallback: navigate to view-source URL and extract storeId from page content
+                try {
+                    const viewSourceUrl = `view-source:${currentUrl}`;
+                    await page.goto(viewSourceUrl, { waitUntil: "domcontentloaded" });
+                    const pageContent = await page.content();
+                    const sourceMatch = pageContent.match(/\"storeId\":\"(\d+)\"/);
+                    if (sourceMatch && sourceMatch[1]) {
+                        storeId = sourceMatch[1];
+                        console.log(`IM: Extracted storeId from view-source: ${storeId}`);
+                    }
+                } catch (e) {
+                    console.warn('IM: Failed to load view-source for storeId fallback', e);
+                }
             }
 
-            const storeId = storeIdMatch[1];
+            if (!storeId) {
+                throw new Error("IM: Could not extract storeId from URL or page source after navigation");
+            }
 
             // Step 5: Extract cookies using document.cookie
             const cookieString = await page.evaluate(() => document.cookie);
