@@ -2,12 +2,10 @@ import { firefox } from "playwright";
 
 // Real Firefox user agents that are commonly used
 const REAL_FIREFOX_USER_AGENTS = [
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0',
-  'Mozilla/5.0 (X11; Linux x86_64; rv:121.0) Gecko/20100101 Firefox/121.0',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:122.0) Gecko/20100101 Firefox/122.0'
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 OPR/118.0.0.0',
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.3a/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 OPR/117.0.0.', //Chrome 134.0.0, Linux
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:136.0) Gecko/20100101 Firefox/136.0',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.3', //Chrome 107.0.0, Windows
 ];
 
 // Function to get a random Firefox user agent
@@ -142,10 +140,10 @@ class ContextManager {
       const context = await browser.newContext({
         // Use a real Firefox user agent
         userAgent: userAgent,
-        // Emulate a real desktop screen size
-        viewport: { width: 1920, height: 1080 },
+        // Emulate a smaller desktop screen size for memory efficiency
+        viewport: { width: 1280, height: 720 },
         // Set realistic screen properties
-        screen: { width: 1920, height: 1080 },
+        screen: { width: 1280, height: 720 },
         // Set device scale factor
         deviceScaleFactor: 1,
         // Set timezone to match India
