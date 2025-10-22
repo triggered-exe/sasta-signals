@@ -53,7 +53,7 @@ const setLocation = async (location) => {
         page = await context.newPage();
 
         // Navigate to Instamart with realistic timing
-        await page.goto("https://www.swiggy.com", { waitUntil: "networkidle" });
+        await page.goto("https://www.swiggy.com", { waitUntil: "domcontentloaded" });
 
         // Add random delay to simulate human behavior
         await page.waitForTimeout(2000 + Math.random() * 2000);
@@ -63,14 +63,12 @@ const setLocation = async (location) => {
 
         // Try to find and click location selector
         try {
-
             // Fill the pincode using the correct selector from HTML structure
             const pincodeInput = await page.waitForSelector('input[id="location"]', {
                 timeout: 4000,
             });
             if (pincodeInput) {
                 console.log("IM: Pincode input field found");
-
 
                 await pincodeInput.fill(location);
 
@@ -133,6 +131,7 @@ const setLocation = async (location) => {
 
 // Extract browser data (cookies, storeId, lat/lng) from the browser context
 const extractBrowserData = async (location, refresh = false) => {
+    let page = null;
     try {
         // Check if we already have cached browser data for this location
         if (placesData[location] && placesData[location].cookies && placesData[location].storeId && !refresh) {
@@ -154,6 +153,8 @@ const extractBrowserData = async (location, refresh = false) => {
 
         if (refresh) {
             console.log(`IM: Refreshing browser data for location ${location}`);
+        } else {
+            console.log('IM: Browser data is missing from cache. fetching again.')
         }
 
         // Get the context for this location (should already be set up by setLocation)
@@ -164,106 +165,103 @@ const extractBrowserData = async (location, refresh = false) => {
             throw AppError.badRequest(`IM: Location ${location} is not serviceable`);
         }
 
-        let page = null;
-        try {
-            page = await context.newPage();
 
-            // Step 1: Navigate to Instamart main page
-            console.log("IM: Navigating to https://www.swiggy.com/instamart");
-            await page.goto("https://www.swiggy.com/instamart", { waitUntil: "domcontentloaded" });
+        page = await context.newPage();
 
-            // Add random delay to simulate human behavior
-            await page.waitForTimeout(3000 + Math.random() * 2000);
+        // Step 1: Navigate to Instamart main page
+        console.log("IM: Navigating to https://www.swiggy.com/instamart");
+        await page.goto("https://www.swiggy.com/instamart", { waitUntil: "domcontentloaded" });
 
-            // Step 2: Find a div with text "Fresh Fruits" and click it
-            const freshFruitsDiv = await page.waitForSelector("//div[text()='Fresh Fruits']", {
-                timeout: 5000
-            });
+        // Add random delay to simulate human behavior
+        await page.waitForTimeout(3000 + Math.random() * 2000);
 
-            if (!freshFruitsDiv) {
-                throw new Error("IM: Could not find div with text 'Fresh Fruits'");
-            }
+        // Step 2: Find a div with text "Fresh Fruits" and click it
+        const freshFruitsDiv = await page.waitForSelector("//div[text()='Fresh Fruits']", {
+            timeout: 5000
+        });
 
-            // Step 3: Click the 'Fresh Fruits' div to navigate to category listing page
-            await freshFruitsDiv.click();
-
-            // Refresh the page
-            await page.reload({ waitUntil: "domcontentloaded" });
-
-            // Wait for navigation to complete with random delay
-            await page.waitForTimeout(3000 + Math.random() * 2000);
-
-            // Step 4: Try to extract storeId from the URL first. If not present, fall back
-            // to reading the page source and extracting with a simple regex for
-            // the pattern "storeId":"1400220".
-            const currentUrl = page.url();
-            console.log(`IM: Current URL after navigation: ${currentUrl}`);
-
-            let storeId = null;
-
-            // Try URL-based extraction
-            const urlMatch = currentUrl.match(/storeId=(\d+)/);
-            if (urlMatch && urlMatch[1]) {
-                storeId = urlMatch[1];
-            } else {
-                // Fallback: navigate to view-source URL and extract storeId from page content
-                try {
-                    const viewSourceUrl = `view-source:${currentUrl}`;
-                    await page.goto(viewSourceUrl, { waitUntil: "domcontentloaded" });
-                    const pageContent = await page.content();
-                    const sourceMatch = pageContent.match(/\"storeId\":\"(\d+)\"/);
-                    if (sourceMatch && sourceMatch[1]) {
-                        storeId = sourceMatch[1];
-                        console.log(`IM: Extracted storeId from view-source: ${storeId}`);
-                    }
-                } catch (e) {
-                    console.warn('IM: Failed to load view-source for storeId fallback', e);
-                }
-            }
-
-            if (!storeId) {
-                throw new Error("IM: Could not extract storeId from URL or page source after navigation");
-            }
-
-            // Step 5: Extract cookies using document.cookie
-            const cookieString = await page.evaluate(() => document.cookie);
-
-            // Extract lat/lng from cookies
-            let lat, lng;
-            const userLocationCookie = cookieString.split(';').find(cookie => cookie.trim().startsWith('userLocation='));
-            if (userLocationCookie) {
-                const cookieValue = userLocationCookie.split('=')[1];
-                const locationData = JSON.parse(decodeURIComponent(cookieValue));
-                lat = locationData.lat;
-                lng = locationData.lng;
-            }
-
-            const browserData = {
-                cookies: cookieString,
-                storeId: storeId,
-                lat: lat || 0,
-                lng: lng || 0
-            };
-
-            // Update placesData cache with the extracted browser data
-            if (!placesData[location]) {
-                placesData[location] = {};
-            }
-
-            placesData[location] = {
-                ...placesData[location],
-                ...browserData
-            };
-
-            console.log(`IM: Successfully cached browser data for location ${location}`);
-            return browserData;
-
-        } finally {
-            if (page) await page.close();
+        if (!freshFruitsDiv) {
+            throw new Error("IM: Could not find div with text 'Fresh Fruits'");
         }
+
+        // Step 3: Click the 'Fresh Fruits' div to navigate to category listing page
+        await freshFruitsDiv.click();
+
+        // Refresh the page
+        await page.reload({ waitUntil: "domcontentloaded" });
+
+        // Wait for navigation to complete with random delay
+        await page.waitForTimeout(3000 + Math.random() * 2000);
+
+        // Step 4: Try to extract storeId from the URL first. If not present, fall back
+        // to reading the page source and extracting with a simple regex for
+        // the pattern "storeId":"1400220".
+        const currentUrl = page.url();
+        console.log(`IM: Current URL after navigation: ${currentUrl}`);
+
+        let storeId = null;
+
+        // Step 5: Extract cookies using document.cookie
+        const cookieString = await page.evaluate(() => document.cookie);
+
+        // Try URL-based extraction
+        const urlMatch = currentUrl.match(/storeId=(\d+)/);
+        if (urlMatch && urlMatch[1]) {
+            storeId = urlMatch[1];
+        } else {
+            // Fallback: navigate to view-source URL and extract storeId from page content
+            try {
+                const viewSourceUrl = `view-source:${currentUrl}`;
+                await page.goto(viewSourceUrl, { waitUntil: "domcontentloaded" });
+                const pageContent = await page.content();
+                const sourceMatch = pageContent.match(/\"storeId\":\"(\d+)\"/);
+                if (sourceMatch && sourceMatch[1]) {
+                    storeId = sourceMatch[1];
+                    console.log(`IM: Extracted storeId from view-source: ${storeId}`);
+                }
+            } catch (e) {
+                console.warn('IM: Failed to load view-source for storeId fallback', e);
+            }
+        }
+
+        if (!storeId) {
+            throw new Error("IM: Could not extract storeId from URL or page source after navigation");
+        }
+
+        // Extract lat/lng from cookies
+        let lat, lng;
+        const userLocationCookie = cookieString.split(';').find(cookie => cookie.trim().startsWith('userLocation='));
+        if (userLocationCookie) {
+            const cookieValue = userLocationCookie.split('=')[1];
+            const locationData = JSON.parse(decodeURIComponent(cookieValue));
+            lat = locationData.lat;
+            lng = locationData.lng;
+        }
+
+        const browserData = {
+            cookies: cookieString,
+            storeId: storeId,
+            lat: lat || 0,
+            lng: lng || 0
+        };
+
+        // Update placesData cache with the extracted browser data
+        if (!placesData[location]) {
+            placesData[location] = {};
+        }
+
+        placesData[location] = {
+            ...placesData[location],
+            ...browserData
+        };
+
+        console.log(`IM: Successfully cached browser data for location ${location}`);
+        return browserData;
     } catch (error) {
         console.error("IM: Error extracting browser data:", error);
         throw AppError.internalError("Failed to extract browser data");
+    } finally {
+        if (page) await page.close();
     }
 };
 
@@ -279,10 +277,10 @@ export const trackPrices = async (req, res, next) => {
 
 // Handler to start tracking
 export const startTrackingHandler = async () => {
-    console.log("INSTAMART: starting tracking");
+    console.log("IM: starting tracking");
     // Start the continuous tracking loop without awaiting it
     trackProductPrices().catch((error) => {
-        console.error("INSTAMART: Failed in tracking loop:", error);
+        console.error("IM: Failed in tracking loop:", error);
     });
     return "Instamart price tracking started";
 };
@@ -297,7 +295,7 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, location) => {
         // Process each category sequentially
         for (const category of categoryChunk) {
             try {
-                console.log("INSTAMART: processing category", category.name);
+                console.log("IM: processing category", category.name);
                 if (!category.subCategories?.length) {
                     console.log(`IM: Skipping category ${category.name} - no subcategories found`);
                     continue;
@@ -335,7 +333,6 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, location) => {
                                             secondaryStoreId: "",
                                             type: category.taxonomyType,
                                             pageNo: pageNo,
-                                            limit: limit,
                                             filterName: subCategory.name,
                                             categoryName: category.name,
                                         },
@@ -387,7 +384,7 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, location) => {
                                 // console.log(`IM: Found ${products.length} products in subcategory ${subCategory.name}`);
 
                                 if (!products.length) {
-                                    console.log("INSTAMART: no products found in subcategory", subCategory.name);
+                                    console.log("IM: no products found in subcategory", subCategory.name);
                                     break;
                                 }
 
@@ -434,7 +431,7 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, location) => {
             }
         }
     } catch (error) {
-        console.error("INSTAMART: Error processing category chunk:", error);
+        console.error("IM: Error processing category chunk:", error);
     }
 };
 
@@ -442,7 +439,7 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, location) => {
 export const trackProductPrices = async (location = "500064") => {
     // Prevent multiple tracking instances
     if (isTrackingActive) {
-        console.log("INSTAMART: Tracking is already active");
+        console.log("IM: Tracking is already active");
         return;
     }
 
@@ -452,13 +449,13 @@ export const trackProductPrices = async (location = "500064") => {
         try {
             // Skip if it's night time (12 AM to 6 AM IST)
             if (isNightTimeIST()) {
-                console.log("INSTAMART: Skipping price tracking during night hours");
+                console.log("IM: Skipping price tracking during night hours");
                 // Wait for 5 minutes before checking night time status again
                 await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
                 continue;
             }
 
-            console.log("INSTAMART: Starting new tracking cycle at:", new Date().toISOString());
+            console.log("IM: Starting new tracking cycle at:", new Date().toISOString());
 
             // Setup the context for the location
             const context = await setLocation(location);
@@ -472,11 +469,11 @@ export const trackProductPrices = async (location = "500064") => {
             const { categories, storeId, cookie } = await fetchProductCategories(location);
 
             if (!categories?.length) {
-                console.error("INSTAMART: No categories found or invalid categories data");
+                console.error("IM: No categories found or invalid categories data");
                 continue;
             }
 
-            console.log("INSTAMART: Categories fetched:", categories.length);
+            console.log("IM: Categories fetched:", categories.length);
 
             // Process categories in parallel (in groups of 3 to avoid rate limiting)
             const categoryChunks = chunk(categories, CATEGORY_CHUNK_SIZE);
@@ -485,12 +482,12 @@ export const trackProductPrices = async (location = "500064") => {
                 await fetchProductsForCategoriesChunk(categoryChunk, location);
             }
 
-            console.log("INSTAMART: Tracking cycle completed at:", new Date().toISOString());
+            console.log("IM: Tracking cycle completed at:", new Date().toISOString());
 
             // Add a delay before starting the next cycle
             await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
         } catch (error) {
-            console.error("INSTAMART: Error in tracking cycle:", error);
+            console.error("IM: Error in tracking cycle:", error);
             // Wait before retrying after error
             await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
         }
@@ -659,7 +656,7 @@ const fetchProductCategoriesLegacy = async (location = "500064") => {
         }
 
         const { lat, lng } = storeResponse.data.data[0].geometry.location;
-        console.log("INSTAMART: got lat and lng", lat, lng);
+        console.log("IM: got lat and lng", lat, lng);
 
         // Step3: Get the store id using location
         // Create a complete userLocation object similar to one from working cookie
@@ -675,7 +672,7 @@ const fetchProductCategoriesLegacy = async (location = "500064") => {
         // Create cookie without URL encoding - direct JSON format
         // This matches the format seen in working curl commands
         const locationCookie = `userLocation=${JSON.stringify(userLocation)}`;
-        console.log("INSTAMART: using cookie:", locationCookie);
+        console.log("IM: using cookie:", locationCookie);
 
         // Full cookie with additional required fields from working curl command
         const fullCookie = `deviceId=s%3A1ce58713-498a-4aec-bab1-493c2d86d249.LKtG1bUIkqwIQmPUzUlLyzBMoFZjQIow0rLiaXWXiVE; ${locationCookie}`;
@@ -699,7 +696,7 @@ const fetchProductCategoriesLegacy = async (location = "500064") => {
 
             if (storeIdMatch && storeIdMatch[1]) {
                 const storeId = storeIdMatch[1];
-                console.log("INSTAMART: got store id from webpage:", storeId);
+                console.log("IM: got store id from webpage:", storeId);
 
                 // Step4: Fetch categories using dynamic storeId from webpage
                 const categoriesResponse = await axios.get(`https://www.swiggy.com/api/instamart/layout`, {
@@ -781,13 +778,13 @@ const fetchProductCategoriesLegacy = async (location = "500064") => {
 
                 return placesData[location];
             } else {
-                console.log("INSTAMART: No storeId in response");
+                console.log("IM: No storeId in response");
             }
         } catch (error) {
-            console.log("INSTAMART: Error with dynamic cookie:", error.message);
+            console.log("IM: Error with dynamic cookie:", error.message);
         }
     } catch (error) {
-        console.error("INSTAMART: Error fetching categories:", error?.response?.data || error);
+        console.error("IM: Error fetching categories:", error?.response?.data || error);
         throw new AppError("Failed to fetch categories", 500);
     }
 };
@@ -840,7 +837,7 @@ const processProducts = async (products, category, subcategory, location = "5000
         console.log(`IM: Processed ${processedCount} products in ${subcategory.name}`);
         return processedCount;
     } catch (error) {
-        console.error("INSTAMART: Error processing products:", error);
+        console.error("IM: Error processing products:", error);
         return 0;
     }
 };
