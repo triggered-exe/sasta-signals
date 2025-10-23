@@ -140,10 +140,10 @@ class ContextManager {
       const context = await browser.newContext({
         // Use a real Firefox user agent
         userAgent: userAgent,
-        // Emulate a smaller desktop screen size for memory efficiency
-        viewport: { width: 1280, height: 720 },
+        // Emulate a larger desktop screen size
+        viewport: { width: 1920, height: 1080 },
         // Set realistic screen properties
-        screen: { width: 1280, height: 720 },
+        screen: { width: 1920, height: 1080 },
         // Set device scale factor
         deviceScaleFactor: 1,
         // Set timezone to match India
