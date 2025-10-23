@@ -188,113 +188,138 @@ const extractProductsFromPage = async (page, category = null, maxScrollAttempts 
       await page.goto(categoryUrl, { waitUntil: "domcontentloaded" });
     }
 
-    // Wait for products to load
-    await page.waitForSelector('li[class*="PaginateItems___StyledLi"]', { timeout: 10000 });
+    // Wait for the page to load completely
+    await page.waitForTimeout(3000);
 
-    // Handle infinite scroll - scroll to load all products
-    let previousProductCount = 0;
-    let currentProductCount = 0;
-    let scrollAttempts = 0;
-    const MAX_NO_NEW_PRODUCTS_ATTEMPTS = 2;
-    let noNewProductsAttempts = 0;
+    // Get cookies from the browser
+    const cookies = await page.evaluate(() => {
+      return document.cookie;
+    });
+    console.log(`BB: Retrieved cookies from browser`);
 
-    while (scrollAttempts < maxScrollAttempts && noNewProductsAttempts < MAX_NO_NEW_PRODUCTS_ATTEMPTS) {
-      // Get current product count
-      currentProductCount = await page.evaluate(() => {
-        const productCards = document.querySelectorAll('li[class*="PaginateItems___StyledLi"]');
-        return productCards.length;
-      });
+    const allProducts = [];
+    let currentPage = 1;
+    let hasMoreProducts = true;
 
-      // If no new products were loaded, increment the counter
-      if (currentProductCount === previousProductCount && scrollAttempts > 0) {
-        noNewProductsAttempts++;
-        console.log(`BB: No new products loaded (attempt ${noNewProductsAttempts}/${MAX_NO_NEW_PRODUCTS_ATTEMPTS})`);
-      } else {
-        noNewProductsAttempts = 0; // Reset counter if new products were found
-      }
+    // Fetch products using API calls instead of scrolling
+    while (hasMoreProducts) {
+      try {
+        const apiUrl = `https://www.bigbasket.com/listing-svc/v2/products?type=pc&slug=${category.slug}&page=${currentPage}`;
+        console.log(`BB: Fetching page ${currentPage} from API`);
 
-      // Update previous count
-      previousProductCount = currentProductCount;
+        // Perform the listing API call inside the browser context so the request
+        // uses the real browser cookies (including HttpOnly) and client behavior.
+        // This usually bypasses CDN/bot protections that block non-browser clients.
+        let respData = {};
+        try {
+          const browserResp = await page.evaluate(async (url) => {
+            try {
+              const res = await fetch(url, { credentials: 'include' });
+              const text = await res.text();
+              try {
+                return { status: res.status, json: JSON.parse(text) };
+              } catch (e) {
+                return { status: res.status, text };
+              }
+            } catch (e) {
+              return { error: String(e) };
+            }
+          }, apiUrl);
 
-      // Scroll to the last product to trigger loading of new products
-      await page.evaluate(() => {
-        const productCards = document.querySelectorAll('li[class*="PaginateItems___StyledLi"]');
-        if (productCards.length > 0) {
-          const lastProduct = productCards[productCards.length - 1];
-          lastProduct.scrollIntoView({ behavior: "smooth", block: "center" });
+          if (browserResp && browserResp.error) {
+            console.error('BB: Browser fetch error:', browserResp.error);
+            respData = {};
+          } else if (browserResp && browserResp.json) {
+            respData = browserResp.json;
+          } else {
+            // No JSON returned; keep respData empty so fallback logic can run later
+            respData = {};
+          }
+        } catch (e) {
+          console.error('BB: Failed to fetch listing inside browser context:', e);
+          respData = {};
         }
-      });
 
-      // Wait for new products to load
-      await page.waitForTimeout(3000);
+        // Try standard product_info first
+        const productInfo = respData?.tabs?.[0]?.product_info || null;
+        // Raw products array (structure may vary) - leave parsing for the next step
+        const rawProducts = productInfo?.products || respData?.tab_info?.product_map?.all?.prods || [];
 
-      scrollAttempts++;
+        // Parse and transform raw products into normalized shape used by the system
+        if (Array.isArray(rawProducts) && rawProducts.length > 0) {
+          rawProducts.forEach((p) => {
+            try {
+              const priceStr =
+                p?.pricing?.discount?.prim_price?.sp || p?.pricing?.discount?.prim_price?.base_price || p?.pricing?.subscription_price || null;
+              const mrpStr = p?.pricing?.discount?.mrp || null;
+
+              const parseNum = (val) => {
+                if (val === null || val === undefined) return 0;
+                const s = String(val).replace(/[^0-9.]/g, "");
+                const n = parseFloat(s);
+                return Number.isFinite(n) ? n : 0;
+              };
+
+              const price = parseNum(priceStr);
+              const mrp = parseNum(mrpStr) || price;
+              const discount = mrp > 0 && price > 0 ? parseFloat((((mrp - price) / mrp) * 100).toFixed(2)) : 0;
+
+              const image = (p?.images && p.images[0] && (p.images[0].m || p.images[0].l || p.images[0].s)) || "";
+              const url = p?.absolute_url ? `https://www.bigbasket.com${p.absolute_url}` : "";
+
+              const inStock = !!(
+                p?.availability &&
+                p.availability.avail_status === "001" &&
+                p.availability.not_for_sale !== true
+              );
+
+              const weight = p?.w || p?.unit || p?.pack_desc || "";
+
+              const product = {
+                id: p?.id?.toString() || p?.requested_sku_id?.toString() || "",
+                name: (p?.desc || "").toString().trim(),
+                brand: p?.brand?.name || "",
+                weight: weight,
+                price: price,
+                mrp: mrp,
+                discount: discount,
+                image: image,
+                url: url,
+                inStock: inStock,
+              };
+
+              if (product.name && product.price > 0) {
+                allProducts.push(product);
+              }
+            } catch (err) {
+              console.error("BB: Error transforming product:", err);
+            }
+          });
+        }
+
+        // Pagination: use productInfo.number_of_pages and productInfo.page when available
+        const pageFromResp = Number(productInfo?.page || currentPage);
+        const numberOfPages = Number(productInfo?.number_of_pages || 0);
+
+        if (!productInfo || rawProducts.length === 0) {
+          hasMoreProducts = false;
+        } else if (numberOfPages > 0 && pageFromResp >= numberOfPages) {
+          hasMoreProducts = false;
+        } else {
+          // Advance to next page
+          currentPage = pageFromResp + 1;
+          // Safety: avoid hammering the API
+          await page.waitForTimeout(500);
+        }
+      } catch (apiError) {
+        console.error(`BB: Error fetching products from API for page ${currentPage}:`, apiError?.message || apiError);
+        hasMoreProducts = false;
+      }
     }
 
-    // Extract all products from the page
-    const products = await page.evaluate(() => {
-      const productCards = document.querySelectorAll('li[class*="PaginateItems___StyledLi"]');
-      const extractedProducts = [];
-
-      productCards.forEach((card) => {
-        try {
-          // Extract product information using actual BigBasket selectors based on the HTML structure
-          const brandEl = card.querySelector(".BrandName___StyledLabel2-sc-hssfrl-1");
-          const titleEl = card.querySelector("h3.text-darkOnyx-800");
-          const priceEl = card.querySelector(".Pricing___StyledLabel-sc-pldi2d-1");
-          const mrpEl = card.querySelector(".Pricing___StyledLabel2-sc-pldi2d-2");
-          const imageEl = card.querySelector("img");
-          const linkEl = card.querySelector('a[href*="/pd/"]');
-          const weightEl = card.querySelector(".PackSelector___StyledLabel-sc-1lmu4hv-0 .Label-sc-15v1nk5-0");
-
-          // Parse price values
-          const parsePrice = (priceStr) => {
-            if (!priceStr) return 0;
-            const numStr = priceStr.replace(/[₹,\s]/g, "");
-            return parseFloat(numStr) || 0;
-          };
-
-          const price = parsePrice(priceEl?.textContent);
-          const mrp = parsePrice(mrpEl?.textContent) || price;
-          if (mrp === 0 || price === 0) {
-            return;
-          }
-          const discount = mrp > price ? Math.round(((mrp - price) / mrp) * 100) : 0;
-
-          // Extract product ID from the URL
-          const productId = linkEl?.href?.match(/\/pd\/(\d+)\//)?.[1] || "";
-
-          const instock = !card.textContent.toLowerCase().includes("out of stock");
-
-          const product = {
-            id: productId,
-            name: titleEl?.textContent?.trim() || "",
-            brand: brandEl?.textContent?.trim() || "",
-            weight: weightEl?.textContent?.trim() || "",
-            price: price,
-            mrp: mrp,
-            discount: discount,
-            image: imageEl?.src || "",
-            url: linkEl?.href || "",
-            inStock: instock, // Assume available if product is listed
-          };
-
-          // Validate the product data
-          if (product.name && product.price > 0) {
-            extractedProducts.push(product);
-          }
-        } catch (err) {
-          console.error("BB: Error extracting product:", err);
-          return;
-        }
-      });
-
-      return extractedProducts;
-    });
-
     const contextInfo = category ? `category ${category.name}` : "page";
-    console.log(`BB: Successfully extracted ${products.length} products from ${contextInfo}`);
-    return products;
+    console.log(`BB: Successfully extracted ${allProducts.length} products from ${contextInfo}`);
+    return allProducts;
   } catch (error) {
     const contextInfo = category ? `category ${category.name}` : "page";
     console.error(`BB: Error fetching products for ${contextInfo}:`, error);
@@ -338,7 +363,7 @@ export const startTrackingHandler = async (location) => {
       }
 
       // Process categories in parallel batches
-      const PARALLEL_SEARCHES = 2;
+      const PARALLEL_SEARCHES = 1;
       let totalProcessedProducts = 0;
 
       for (let i = 0; i < categories.length; i += PARALLEL_SEARCHES) {
@@ -453,7 +478,7 @@ export const fetchCategories = async () => {
       if (!Array.isArray(categories)) return [];
 
       categories.map((category) => {
-        if (category?.level === 2) {
+        if (category?.level === 1) {
           processedCategories.push(category);
         }
 
