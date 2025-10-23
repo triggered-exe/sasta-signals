@@ -1,6 +1,6 @@
-## Bachat Signals — Frontend (Next.js)
+## Sasta Signals — Frontend (Next.js)
 
-This is the Next.js frontend for Bachat Signals — a grocery price tracking and deal alerts app for India.
+This is the Next.js frontend for Sasta Signals — a grocery price tracking and deal alerts app for India.
 
 ### Scripts
 

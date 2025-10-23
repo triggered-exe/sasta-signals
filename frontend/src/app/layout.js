@@ -2,27 +2,27 @@ import "./globals.css";
 import { getThemeServer } from "@/utils/theme-server";
 
 export const metadata = {
-  title: "Bachat Signals",
+  title: "Sasta Signals",
   description:
-    "Bachat Signals — grocery price tracker and deal alerts across Instamart, BigBasket, Blinkit, Zepto, Amazon Fresh, Flipkart Grocery, and more.",
-  applicationName: "Bachat Signals",
+    "Sasta Signals — grocery price tracker and deal alerts across Instamart, BigBasket, Blinkit, Zepto, Amazon Fresh, Flipkart Grocery, and more.",
+  applicationName: "Sasta Signals",
   icons: {
     icon: "/favicon.png",
     shortcut: "/favicon.png",
     apple: "/favicon.png",
   },
   openGraph: {
-    title: "Bachat Signals — Grocery Deals & Price Alerts",
+    title: "Sasta Signals — Grocery Deals & Price Alerts",
     description:
       "Track grocery prices and get instant deal alerts across Instamart, BigBasket, Blinkit, Zepto, Amazon Fresh, Flipkart Grocery, and more.",
     url: "https://example.com",
-    siteName: "Bachat Signals",
+    siteName: "Sasta Signals",
     locale: "en_IN",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Bachat Signals — Grocery Deals & Price Alerts",
+    title: "Sasta Signals — Grocery Deals & Price Alerts",
     description:
       "Track grocery prices and get instant deal alerts across Instamart, BigBasket, Blinkit, Zepto, Amazon Fresh, Flipkart Grocery, and more.",
   },

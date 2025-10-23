@@ -1,6 +1,6 @@
-# Bachat Signals — Multi-Platform Price Tracking & Alerts
+# Sasta Signals — Multi-Platform Price Tracking & Alerts
 
-Bachat Signals is a comprehensive price tracking and deal alerts application that monitors product prices across major Indian grocery and e-commerce platforms, providing real-time notifications for price drops and deals.
+Sasta Signals is a comprehensive price tracking and deal alerts application that monitors product prices across major Indian grocery and e-commerce platforms, providing real-time notifications for price drops and deals.
 
 ## 🌐 Current Deployment
 
@@ -116,7 +116,7 @@ Create `.env` file in backend directory:
 
 ```env
 # Database
-MONGO_URI=mongodb://localhost:27017/bachat-signals
+MONGO_URI=mongodb://localhost:27017/sasta-signals
 
 # Notifications
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token
