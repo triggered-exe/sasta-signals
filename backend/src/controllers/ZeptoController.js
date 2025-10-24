@@ -93,21 +93,7 @@ const setLocation = async (location) => {
   }
 };
 
-export const getCategoriesHandler = async (req, res, next) => {
-  try {
-    const location = req.query.location;
-    if (!location) {
-      throw AppError.badRequest("Location is required");
-    }
-
-    const categories = await fetchCategories(location);
-    res.status(200).json(categories);
-  } catch (error) {
-    next(error instanceof AppError ? error : AppError.internalError("Failed to fetch categories"));
-  }
-};
-
-const fetchCategories = async (location = "vertex corporate") => {
+const fetchCategories = async (location = 500064) => {
   try {
     // Fetch the sitemap XML
     const response = await axios.get("https://www.zeptonow.com/sitemap/categories/hyderabad.xml");
