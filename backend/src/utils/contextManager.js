@@ -2,10 +2,12 @@ import { firefox } from "playwright";
 
 // Real Firefox user agents that are commonly used
 const REAL_FIREFOX_USER_AGENTS = [
-  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 OPR/118.0.0.0',
-  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.3a/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 OPR/117.0.0.', //Chrome 134.0.0, Linux
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:136.0) Gecko/20100101 Firefox/136.0',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.3', //Chrome 107.0.0, Windows
+  //'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 OPR/118.0.0.0', // Not working for Blinkit
+  // 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.3a/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 OPR/117.0.0.', //Chrome 134.0.0, Linux // Working for 
+
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:136.0) Gecko/20100101 Firefox/136.0', // Working for Blinkit
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.3', //Chrome 107.0.0, Windows // Working for Blinkit
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0', // Edge on Linux // Working for Blinkit
 ];
 
 // Function to get a random Firefox user agent
@@ -24,8 +26,14 @@ class ContextManager {
   async initBrowser() {
     console.log("Environment", process.env.ENVIRONMENT);
     if (!this.browser) {
+      const isDevMode = process.env.ENVIRONMENT === "development";
+
       this.browser = await firefox.launch({
-        headless: process.env.ENVIRONMENT === "development" ? false : true,
+        headless: !isDevMode,
+        // Additional args for development mode
+        args: isDevMode ? [
+          '--start-maximized',  // Start maximized to be more visible and prevent being hidden
+        ] : [],
         firefoxUserPrefs: {
           // Stealth preferences to avoid detection
           "general.useragent.override": getRandomUserAgent(),
