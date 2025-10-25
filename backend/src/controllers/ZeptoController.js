@@ -473,7 +473,7 @@ const extractProducts = async (page, options = {}) => {
             // Calculate discount percentage
             let discount = 0;
             if (mrp > price && price > 0) {
-              discount = Math.round(((mrp - price) / mrp) * 100);
+              discount = parseFloat((((mrp - price) / mrp) * 100).toFixed(2));
             }
 
             // Extract image URL

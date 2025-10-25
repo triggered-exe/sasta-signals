@@ -406,7 +406,6 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, location) => {
                                     allProducts.length
                                 );
                                 const updatedCount = await processProducts(allProducts, category, subCategory, location);
-                                console.log(`IM: Extracted products ${updatedCount} products in ${subCategory.name}`);
                             }
                         } catch (error) {
                             console.error(`IM: Error processing subcategory ${subCategory.name}:`, error.response);
