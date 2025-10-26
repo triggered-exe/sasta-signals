@@ -550,7 +550,7 @@ export const performZeptoSearch = async (location, query) => {
   }
 };
 
-export const startTrackingHelper = async (location = "vertex corporate") => {
+export const startTrackingHelper = async (location = "500064") => {
   while (true) {
     try {
       // Skip if it's night time (12 AM to 6 AM IST)

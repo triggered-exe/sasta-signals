@@ -72,6 +72,8 @@ const setLocation = async (location) => {
 
                 await pincodeInput.fill(location);
 
+                console.log("IM: Filled pincode input field and waiting for suggestions to appear");
+
                 // Wait for suggestions to appear with random delay
                 await page.waitForTimeout(2000 + Math.random() * 3000);
 
