@@ -1,6 +1,6 @@
 import { AppError } from "../utils/errorHandling.js";
 import { BlinkitProduct } from "../models/BlinkitProduct.js";
-import { isNightTimeIST, chunk } from "../utils/priceTracking.js";
+import { isNightTimeIST } from "../utils/priceTracking.js";
 import contextManager from "../utils/contextManager.js";
 import { processProducts as globalProcessProducts } from "../utils/productProcessor.js";
 
@@ -76,11 +76,7 @@ const setLocation = async (location) => {
 // Function to extract products using API calls instead of scrolling
 const extractProductsFromPageAPI = async (page, categoryUrl) => {
     try {
-        // Navigate to the category page to get the category IDs
-        await page.goto("https://blinkit.com/categories", { waitUntil: "networkidle", timeout: 10000 });
-        await page.waitForTimeout(1000); // Wait for page to load
-
-        // Extract category IDs from the URL
+        // Extract category IDs from the URL (no navigation needed - page already has cookies)
         const splitUrl = categoryUrl.split('/');
         const l0_cat = splitUrl[splitUrl.length - 2];
         const l1_cat = splitUrl[splitUrl.length - 1];
@@ -612,104 +608,82 @@ export const startTrackingHandler = async (location = "bahadurpura police statio
                 // Shuffle subcategories to distribute load
                 const shuffledSubcategories = [...subcategories].sort(() => Math.random() - 0.5);
 
-                // Create batches for parallel processing
-                const CONCURRENT_SEARCHES = 2;
-                const categoryBatches = chunk(shuffledSubcategories, CONCURRENT_SEARCHES);
-
                 console.log(
-                    `BLINKIT: Processing ${subcategories.length} subcategories in ${categoryBatches.length} batches`
+                    `BLINKIT: Processing ${subcategories.length} subcategories sequentially with single page`
                 );
-                console.log(`BLINKIT: Categories processed: ${allCategories.length} total categories`);
 
                 let totalProcessedProducts = 0;
 
-                // Process each batch of subcategories
-                for (const [batchIndex, batch] of categoryBatches.entries()) {
-                    const batchStartTime = new Date();
-                    console.log(`BLINKIT: Processing batch ${batchIndex + 1}/${categoryBatches.length}`);
+                // Create a single page for all API calls
+                const page = await context.newPage();
+                try {
+                    // Navigate to categories page once to set up cookies
+                    await page.goto("https://blinkit.com/categories", { waitUntil: "networkidle", timeout: 10000 });
+                    await page.waitForTimeout(1000);
 
-                    // Process subcategories in parallel - create pages inside the loop
-                    const results = await Promise.all(
-                        batch.map(async (subcategory) => {
-                            const subcategoryStartTime = new Date();
-                            let page = null;
-                            try {
-                                console.log(
-                                    `BLINKIT: Processing subcategory: ${subcategory.name} - parent category: (${subcategory.parentCategory})`
+                    // Process all subcategories sequentially using the same page
+                    for (const [subcategoryIndex, subcategory] of shuffledSubcategories.entries()) {
+                        const subcategoryStartTime = new Date();
+                        try {
+                            console.log(
+                                `BLINKIT: Processing subcategory ${subcategoryIndex + 1}/${shuffledSubcategories.length}: ${subcategory.name} - parent category: (${subcategory.parentCategory})`
+                            );
+
+                            // Extract products using API with the same page
+                            const products = await extractProductsFromPageAPI(page, subcategory.url).catch((error) => {
+                                console.error(
+                                    `BLINKIT: Error extracting products for ${subcategory.name}:`,
+                                    error.message
                                 );
+                                return [];
+                            });
 
-                                // Create page for this subcategory
-                                page = await context.newPage().catch((error) => {
-                                    console.error("BLINKIT: Error creating page:", error.message);
-                                    return null;
-                                });
+                            // Add category information to products
+                            const enrichedProducts = products.map((product) => ({
+                                ...product,
+                                categoryName: subcategory.parentCategory,
+                                subcategoryName: subcategory.name,
+                            }));
 
-                                if (!page) return 0;
-
-                                // Extract products using API
-                                const products = await extractProductsFromPageAPI(page, subcategory.url).catch((error) => {
-                                    console.error(
-                                        `BLINKIT: Error extracting products for ${subcategory.name}:`,
-                                        error.message
-                                    );
-                                    return [];
-                                });
-
-                                // Add category information to products
-                                const enrichedProducts = products.map((product) => ({
-                                    ...product,
-                                    categoryName: subcategory.parentCategory,
-                                    subcategoryName: subcategory.name,
-                                }));
-
-                                // Process and store products
-                                const result = await globalProcessProducts(
-                                    enrichedProducts,
-                                    subcategory.parentCategory,
-                                    {
-                                        model: BlinkitProduct,
-                                        source: "Blinkit",
-                                        significantDiscountThreshold: 10,
-                                        telegramNotification: true,
-                                        emailNotification: false,
-                                    }
-                                ).catch((error) => {
-                                    console.error(
-                                        `BLINKIT: Error saving products for ${subcategory.name}:`,
-                                        error.message
-                                    );
-                                    return 0;
-                                });
-
-                                const processedCount = typeof result === "number" ? result : result.processedCount;
-
-                                // Log subcategory processing time
-                                const subcategoryTime = ((new Date().getTime() - subcategoryStartTime.getTime()) / 1000).toFixed(2);
-                                console.log(`BLINKIT: Processed ${processedCount} products for "${subcategory.parentCategory} > ${subcategory.name}" in ${subcategoryTime} seconds`);
-
-                                return processedCount;
-                            } catch (error) {
-                                console.error(`BLINKIT: Error processing ${subcategory.name}:`, error.message);
-                                return 0;
-                            } finally {
-                                // Close page if it was created
-                                if (page) {
-                                    await page.close().catch((e) => console.error("BLINKIT: Error closing page:", e.message));
+                            // Process and store products
+                            const result = await globalProcessProducts(
+                                enrichedProducts,
+                                subcategory.parentCategory,
+                                {
+                                    model: BlinkitProduct,
+                                    source: "Blinkit",
+                                    significantDiscountThreshold: 10,
+                                    telegramNotification: true,
+                                    emailNotification: false,
                                 }
+                            ).catch((error) => {
+                                console.error(
+                                    `BLINKIT: Error saving products for ${subcategory.name}:`,
+                                    error.message
+                                );
+                                return 0;
+                            });
+
+                            const processedCount = typeof result === "number" ? result : result.processedCount;
+                            totalProcessedProducts += processedCount;
+
+                            // Log subcategory processing time
+                            const subcategoryTime = ((new Date().getTime() - subcategoryStartTime.getTime()) / 1000).toFixed(2);
+                            console.log(`BLINKIT: Processed ${processedCount} products for "${subcategory.parentCategory} > ${subcategory.name}" in ${subcategoryTime} seconds`);
+
+                            // Progress update every 10 subcategories
+                            if ((subcategoryIndex + 1) % 10 === 0) {
+                                const progressTime = ((new Date().getTime() - startTime.getTime()) / 60000).toFixed(2);
+                                console.log(`BLINKIT: Progress - ${subcategoryIndex + 1}/${shuffledSubcategories.length} subcategories completed in ${progressTime} minutes`);
                             }
-                        })
-                    );
-
-                    // Update total count
-                    const batchProcessed = results.reduce((a, b) => a + b, 0);
-                    totalProcessedProducts += batchProcessed;
-
-                    // Log batch processing time
-                    const batchTime = ((new Date().getTime() - batchStartTime.getTime()) / 60000).toFixed(2);
-                    console.log(`BLINKIT: Batch ${batchIndex + 1} completed. Processed ${batchProcessed} products in ${batchTime} minutes`);
-
-                    // Short delay between batches
-                    await new Promise((resolve) => setTimeout(resolve, 1000));
+                        } catch (error) {
+                            console.error(`BLINKIT: Error processing ${subcategory.name}:`, error.message);
+                            continue; // Continue with next subcategory
+                        }
+                    }
+                } finally {
+                    // Close the single page
+                    await page.close().catch((e) => console.error("BLINKIT: Error closing page:", e.message));
                 }
 
                 // Log completion and wait before next cycle
