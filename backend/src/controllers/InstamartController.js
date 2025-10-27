@@ -56,7 +56,7 @@ const setLocation = async (location) => {
         await page.goto("https://www.swiggy.com", { waitUntil: "networkidle" });
 
         // Add random delay to simulate human behavior
-        await page.waitForTimeout(2000 + Math.random() * 5000);
+        await page.waitForTimeout(6000 + Math.random() * 5000);
 
         // Look for location selector - this will need to be updated with correct selectors
         console.log("IM: Setting location...");
