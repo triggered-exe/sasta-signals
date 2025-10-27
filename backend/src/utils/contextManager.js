@@ -69,6 +69,14 @@ class ContextManager {
           "privacy.trackingprotection.pbmode.enabled": false,
           "privacy.donottrackheader.enabled": false,
 
+          // Disable service workers to avoid extra navigations/iframes caused by
+          // third-party scripts (helps on Linux where service workers may cause
+          // additional frame navigations like googletagmanager service worker iframe)
+          // This is low-risk and prevents service-worker-driven reloads.
+          "dom.serviceWorkers.enabled": false,
+          "dom.serviceWorkers.testing.enabled": false,
+          "dom.serviceWorkers.controller.enabled": false,
+
           // Disable WebDriver flag
           "marionette.enabled": false,
           "marionette.port": 0,

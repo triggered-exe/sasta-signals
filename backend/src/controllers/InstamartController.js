@@ -53,10 +53,10 @@ const setLocation = async (location) => {
         page = await context.newPage();
 
         // Navigate to Instamart with realistic timing
-        await page.goto("https://www.swiggy.com", { waitUntil: "domcontentloaded" });
+        await page.goto("https://www.swiggy.com", { waitUntil: "networkidle" });
 
         // Add random delay to simulate human behavior
-        await page.waitForTimeout(2000 + Math.random() * 2000);
+        await page.waitForTimeout(2000 + Math.random() * 5000);
 
         // Look for location selector - this will need to be updated with correct selectors
         console.log("IM: Setting location...");
@@ -65,14 +65,17 @@ const setLocation = async (location) => {
         try {
             // Fill the pincode using the correct selector from HTML structure
             const pincodeInput = await page.waitForSelector('input[id="location"]', {
-                timeout: 4000,
+                timeout: 10000,
             });
             if (pincodeInput) {
                 console.log("IM: Pincode input field found");
 
-                await pincodeInput.fill(location);
+                // Use typing instead of direct fill so input events fire reliably
+                await pincodeInput.click();
+                await pincodeInput.fill("");
+                await page.keyboard.type(location, { delay: 80 });
 
-                console.log("IM: Filled pincode input field and waiting for suggestions to appear");
+                console.log("IM: Typed pincode into input and waiting for suggestions");
 
                 // Wait for suggestions to appear with random delay
                 await page.waitForTimeout(2000 + Math.random() * 3000);
