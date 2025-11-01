@@ -74,7 +74,6 @@ const setLocation = async (location) => {
 
     // Location is serviceable - mark it as such
     contextManager.markServiceability(location, "zepto", true);
-    contextManager.contextMap.get(location).websites.add("zepto");
     console.log(`ZEPTO: Successfully set up for location: ${location}`);
     return context;
   } catch (error) {

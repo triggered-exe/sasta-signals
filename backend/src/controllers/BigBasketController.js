@@ -110,7 +110,6 @@ const setLocation = async (pincode) => {
 
     // Mark as serviceable and register the website
     contextManager.markServiceability(pincode, "bigbasket", true);
-    contextManager.contextMap.get(pincode).websites.add("bigbasket");
     console.log(`BB: Successfully set up for pincode: ${pincode}`);
 
     await page.close();

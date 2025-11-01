@@ -121,7 +121,6 @@ const setLocation = async (location) => {
 
         // Mark as serviceable and register the website
         contextManager.markServiceability(location, "instamart", true);
-        contextManager.contextMap.get(location).websites.add("instamart");
         console.log(`IM: Successfully set up for pincode: ${location}`);
 
         await page.close();
