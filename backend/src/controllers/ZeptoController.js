@@ -440,30 +440,32 @@ const extractProducts = async (page, options = {}) => {
             let mrp = 0;
 
             // Look for price in various possible structures
-            const priceContainer = card.querySelector('div[data-slot-id="Price"]');
+            const priceContainer = card.querySelector(
+              'div[data-slot-id="EdlpPrice"], div[data-slot-id="Price"]'
+            );
 
             if (priceContainer) {
-              // Current price - first p tag is usually the price
-              const priceElements = priceContainer.querySelectorAll("p");
-              const priceElement = priceElements[0];
-              if (priceElement) {
-                const priceText = priceElement.textContent.trim();
-                const priceMatch = priceText.match(/₹(\d+(?:\.\d+)?)/);
-                if (priceMatch) {
-                  price = parseFloat(priceMatch[1]) || 0;
-                }
+              // Get all price-related elements (p or span)
+              const priceElements = priceContainer.querySelectorAll("p, span");
+
+              // Current price (usually the first)
+              const priceText = priceElements[0]?.textContent?.trim() ?? "";
+              const priceMatch = priceText.match(/₹\s*([\d,]+(?:\.\d+)?)/);
+              if (priceMatch) {
+                price = parseFloat(priceMatch[1].replace(/,/g, "")) || 0;
               }
 
-              // MRP - second p tag is usually the MRP
-              const mrpElement = priceElements[1];
-              if (mrpElement) {
-                const mrpText = mrpElement.textContent.trim();
-                const mrpMatch = mrpText.match(/₹(\d+(?:\.\d+)?)/);
-                if (mrpMatch) {
-                  mrp = parseFloat(mrpMatch[1]) || 0;
-                }
+              // MRP (usually the second)
+              const mrpText = priceElements[1]?.textContent?.trim() ?? "";
+              const mrpMatch = mrpText.match(/₹\s*([\d,]+(?:\.\d+)?)/);
+              if (mrpMatch) {
+                mrp = parseFloat(mrpMatch[1].replace(/,/g, "")) || 0;
               }
+
+              console.log(`Extracted price: ${price}, MRP: ${mrp} for product ID: ${variantId} and product Name: ${productName}`);
             }
+
+            console.log(`ZEPTO: Extracted product - ID: ${variantId}, Name: ${productName}, Weight: ${weight}, Price: ${price}, MRP: ${mrp}`);
 
             // If no MRP found, use price as MRP
             if (mrp === 0) {
@@ -507,7 +509,7 @@ const extractProducts = async (page, options = {}) => {
     const filteredProducts = products.filter(
       (product) => product !== null && product.productName && product.productId && product.mrp > 0
     );
-    console.log(`ZEPTO: Successfully extracted ${filteredProducts.length} products`);
+    console.log(`ZEPTO: Successfully extracted ${products.length} products and after filtering ${filteredProducts.length} products for ${url || query}`);
     return filteredProducts;
   } catch (error) {
     console.error(`ZEPTO: Error extracting products:`, error);
