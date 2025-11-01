@@ -34,13 +34,13 @@
   "roo-cline.allowedCommands": ["npm test", "npm install", "tsc", "git log", "git diff", "git show"],
   "roo-cline.deniedCommands": [],
   "github.copilot.enable": {
-    "*": false,
+    "*": true,
     "plaintext": false,
     "markdown": false,
     "scminput": false
   },
   "rapidapi.terminalLink.enabled": false,
-  "diffEditor.hideUnchangedRegions.enabled": true,
+  "diffEditor.hideUnchangedRegions.enabled": false,
   "[python]": {
     "diffEditor.ignoreTrimWhitespace": false
   }
