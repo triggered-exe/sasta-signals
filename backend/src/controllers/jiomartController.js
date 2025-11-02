@@ -59,6 +59,7 @@ const setLocation = async (location) => {
     // Location is serviceable - mark it as such
     contextManager.markServiceability(location, "jiomart-grocery", true);
     console.log(`JIO: Successfully set up for location: ${location}`);
+    console.log(`JIO: Closing setup page for ${location}`);
     await page.close();
     return context;
   } catch (error) {
@@ -117,7 +118,10 @@ const fetchJiomartCategories = async (context) => {
     console.error("JIO: Error fetching categories:", error);
     throw error;
   } finally {
-    if (page) await page.close();
+    if (page) {
+      console.log("JIO: Closing categories fetch page");
+      await page.close();
+    }
   }
 };
 
@@ -449,8 +453,6 @@ const trexSearchRequest = async (page, body) => {
     cookie: cookieHeader,
   };
 
-  // The curl for the below request is: curl -X POST 'https://www.jiomart.com/trex/search' -H 'accept: */*' -H 'content-type: application/json' -H 'origin: https://www.jiomart.com' -H 'referer: https://www.jiomart.com/' -H 'cookie: <cookie_header>' -d '<json_body>' 
-
   // Log the actual curl command for debugging
   const curlCommand = `curl -X POST '${url}' -H 'accept: */*' -H 'content-type: application/json' -H 'origin: https://www.jiomart.com' -H 'referer: https://www.jiomart.com/' -H 'cookie: ${cookieHeader.replace(/'/g, "\\'")}' -d '${JSON.stringify(body).replace(/'/g, "\\'")}'`;
   // console.log('JIO: Actual curl command:', curlCommand);
@@ -660,6 +662,11 @@ const fetchTrexProducts = async (page, categoryId, categoryName, maxPages = 15, 
 // Main extraction function: prefer trex/search for category pages, fallback to legacy DOM scraping
 const extractProductsFromPage = async (page, url, MAX_LOAD_MORE_ATTEMPTS = 15) => {
   try {
+    await page.goto(url, {
+      waitUntil: "networkidle",
+      timeout: 10000, // 10 second timeout
+    });
+
     // Try to extract a category id from the URL - if present, use trex/search
     const { categoryId, categoryName } = extractCategoryIdAndNameFromUrl(url);
     if (categoryId) {
@@ -729,11 +736,6 @@ export const startTrackingHandler = async (location) => {
             try {
               page = await context.newPage();
 
-              await page.goto("https://www.jiomart.com/", {
-                waitUntil: "domcontentloaded",
-                timeout: 10000, // 10 second timeout
-              });
-
               // Extract products using the new function
               const { products } = await extractProductsFromPage(page, category.url);
 
@@ -762,7 +764,10 @@ export const startTrackingHandler = async (location) => {
             } catch (error) {
               console.error(`JIO: Error processing category ${category.name}:`, error);
             } finally {
-              if (page) await page.close();
+              if (page) {
+                console.log(`JIO: Closing product extraction page for ${category.name}`);
+                await page.close();
+              }
             }
           } catch (error) {
             console.error(`JIO: Error processing category ${category.name}:`, error);
@@ -836,6 +841,7 @@ export const searchProducts = async (req, res, next) => {
     );
   } finally {
     if (page) {
+      console.log("JIO: Closing search page");
       await page.close();
     }
   }

@@ -53,7 +53,7 @@ const setLocation = async (location) => {
         page = await context.newPage();
 
         // Navigate to Instamart with realistic timing
-        await page.goto("https://www.swiggy.com", { waitUntil: "networkidle" });
+        await page.goto("https://www.swiggy.com", { waitUntil: "domcontentloaded" });
 
         // Add random delay to simulate human behavior
         await page.waitForTimeout(6000 + Math.random() * 5000);
@@ -123,6 +123,7 @@ const setLocation = async (location) => {
         contextManager.markServiceability(location, "instamart", true);
         console.log(`IM: Successfully set up for pincode: ${location}`);
 
+        console.log(`IM: Closing setup page for ${location}`);
         await page.close();
         return context;
     } catch (error) {
@@ -265,7 +266,10 @@ const extractBrowserData = async (location, refresh = false) => {
         console.error("IM: Error extracting browser data:", error);
         throw AppError.internalError("Failed to extract browser data");
     } finally {
-        if (page) await page.close();
+        if (page) {
+            console.log(`IM: Closing browser data extraction page for ${location}`);
+            await page.close();
+        }
     }
 };
 
@@ -615,7 +619,10 @@ const fetchProductCategories = async (location = "500064") => {
             return placesData[location];
 
         } finally {
-            if (page) await page.close();
+            if (page) {
+                console.log(`IM: Closing categories fetch page for ${location}`);
+                await page.close();
+            }
         }
     } catch (error) {
         console.error("IM: Error fetching categories with browser cookies:", error);

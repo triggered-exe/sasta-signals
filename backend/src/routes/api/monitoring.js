@@ -27,6 +27,9 @@ const getSystemMetrics = () => {
     arrayBuffers: Math.round(processMemory.arrayBuffers / 1024 / 1024) // Memory used by ArrayBuffer instances
   };
 
+  // Log memory usage for monitoring
+  console.log(`[memory]: RSS=${processMemoryMB.rss}MB, HeapUsed=${processMemoryMB.heapUsed}MB, HeapTotal=${processMemoryMB.heapTotal}MB, External=${processMemoryMB.external}MB`);
+
   // Get CPU information
   const cpus = os.cpus();
   const cpuCount = cpus.length;
@@ -164,6 +167,9 @@ router.get("/contexts", async (req, res) => {
         ? Math.round((contextStatus.contexts.reduce((sum, c) => sum + c.totalPages, 0) / contextStatus.totalContexts) * 100) / 100
         : 0,
     };
+
+    // Log context summary for monitoring
+    console.log(`[contexts]: Total=${contextStatus.totalContexts}, Active=${contextStatus.summary.activeContexts}, Invalid=${contextStatus.summary.invalidContexts}, TotalPages=${contextStatus.summary.totalPages}`);
 
     res.json(contextStatus);
   } catch (error) {
