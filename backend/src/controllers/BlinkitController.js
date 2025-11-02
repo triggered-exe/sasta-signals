@@ -13,7 +13,7 @@ const setLocation = async (location) => {
 
         // Return existing context if already set up and serviceable
         if (
-            contextManager.isWebsiteServiceable(location, "blinkit")
+            contextManager.getWebsiteServiceabilityStatus(location, "blinkit")
         ) {
             console.log(`BLINKIT: Using existing serviceable context for ${location}`);
             return context;
@@ -390,7 +390,7 @@ export const searchQuery = async (req, res, next) => {
         const context = await setLocation(location);
 
         // Check if the location is serviceable before proceeding
-        if (!contextManager.isWebsiteServiceable(location, "blinkit")) {
+        if (!contextManager.getWebsiteServiceabilityStatus(location, "blinkit")) {
             throw AppError.badRequest(`Location ${location} is not serviceable by Blinkit`);
         }
 
@@ -511,7 +511,7 @@ export const startTrackingHandler = async (location = "bahadurpura police statio
                 }
 
                 // Check if the location is serviceable
-                if (!contextManager.isWebsiteServiceable(location, "blinkit")) {
+                if (!contextManager.getWebsiteServiceabilityStatus(location, "blinkit")) {
                     console.log(`BLINKIT: Location ${location} is not serviceable, stopping tracking`);
                     break;
                 }

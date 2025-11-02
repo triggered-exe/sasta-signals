@@ -13,7 +13,7 @@ const setLocation = async (location) => {
     const context = await contextManager.getContext(location);
 
     // Return existing context if already set up and serviceable
-    if (contextManager.isWebsiteServiceable(location, "zepto")) {
+    if (contextManager.getWebsiteServiceabilityStatus(location, "zepto")) {
       console.log(`ZEPTO: Using existing serviceable context for ${location}`);
       return context;
     }

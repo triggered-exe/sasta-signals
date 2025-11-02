@@ -44,7 +44,7 @@ const setLocation = async (location) => {
         const context = await contextManager.getContext(location);
 
         // If Instamart is already set up for this pincode, return the context
-        if (contextManager.isWebsiteServiceable(location, "instamart")) {
+        if (contextManager.getWebsiteServiceabilityStatus(location, "instamart")) {
             console.log(`IM: Using existing serviceable context for ${location}`);
             return context;
         }
@@ -165,7 +165,7 @@ const extractBrowserData = async (location, refresh = false) => {
         const context = await contextManager.getContext(location);
 
         // Check if the location is serviceable
-        if (!contextManager.isWebsiteServiceable(location, "instamart")) {
+        if (!contextManager.getWebsiteServiceabilityStatus(location, "instamart")) {
             throw AppError.badRequest(`IM: Location ${location} is not serviceable`);
         }
 
@@ -464,7 +464,7 @@ export const trackProductPrices = async (location = "500064") => {
             const context = await setLocation(location);
 
             // Check if the location is serviceable
-            if (!contextManager.isWebsiteServiceable(location, "instamart")) {
+            if (!contextManager.getWebsiteServiceabilityStatus(location, "instamart")) {
                 console.log(`BB: Location ${location} is not serviceable, stopping crawler`);
                 break;
             }

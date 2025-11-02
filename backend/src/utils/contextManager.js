@@ -22,6 +22,12 @@ class ContextManager {
     this.MAX_CONTEXTS = 3; // Reduced from 5 to 3 for memory efficiency - critical for t1.micro instances
   }
 
+  // Helper function to get current time in IST
+  getCurrentIST() {
+    const now = new Date();
+    return new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+  }
+
   // Function to clean and normalize address to create a consistent key
   cleanAddressKey(address) {
     if (!address) return '';
@@ -308,9 +314,8 @@ class ContextManager {
       // Store context with metadata including tracking when it was last used
       this.contextMap.set(addressKey, {
         context,
-        websites: new Set(),
-        createdAt: new Date(),
-        lastUsed: new Date(), // Track last usage for better cleanup decisions
+        createdAt: this.getCurrentIST(),
+        lastUsed: this.getCurrentIST(), // Track last usage for better cleanup decisions
         serviceability: {}, // Track which websites are serviceable for this location
         originalAddress: address, // Store original address for reference
       });
@@ -327,7 +332,7 @@ class ContextManager {
   updateLastUsed(address) {
     const addressKey = this.cleanAddressKey(address);
     if (this.contextMap.has(addressKey)) {
-      this.contextMap.get(addressKey).lastUsed = new Date();
+      this.contextMap.get(addressKey).lastUsed = this.getCurrentIST();
     }
   }
 
@@ -338,28 +343,15 @@ class ContextManager {
       const contextData = this.contextMap.get(addressKey);
       contextData.serviceability[website] = isServiceable;
       
-      // Automatically update the websites set based on serviceability
-      if (isServiceable) {
-        contextData.websites.add(website);
-      } else {
-        contextData.websites.delete(website);
-      }
-      
       this.updateLastUsed(address);
       await contextManager.cleanupNonServiceableContexts();
       console.log(`Marked ${website} as ${isServiceable ? 'serviceable' : 'not serviceable'} for address: ${address}`);
     } else {
       // If context doesn't exist, create a minimal entry for serviceability tracking
-      const websites = new Set();
-      if (isServiceable) {
-        websites.add(website);
-      }
-      
       this.contextMap.set(addressKey, {
         context: null,
-        websites: websites,
-        createdAt: new Date(),
-        lastUsed: new Date(),
+        createdAt: this.getCurrentIST(),
+        lastUsed: this.getCurrentIST(),
         serviceability: { [website]: isServiceable },
         originalAddress: address,
       });
@@ -367,13 +359,13 @@ class ContextManager {
     }
   }
 
-  // Check if a website is serviceable for an address
-  isWebsiteServiceable(address, website) {
+  // Get the serviceability status of a website for an address
+  getWebsiteServiceabilityStatus(address, website) {
     const addressKey = this.cleanAddressKey(address);
-    return (
-      this.contextMap.has(addressKey) &&
-      this.contextMap.get(addressKey).serviceability[website] === true
-    );
+    if (!this.contextMap.has(addressKey)) {
+      return false;
+    }
+    return this.contextMap.get(addressKey).serviceability[website] === true;
   }
 
   // Get all serviceable websites for an address
@@ -383,15 +375,6 @@ class ContextManager {
 
     const serviceability = this.contextMap.get(addressKey).serviceability;
     return Object.keys(serviceability).filter(website => serviceability[website] === true);
-  }
-
-  // Check if a website is set up for an address
-  isWebsiteSet(address, website) {
-    const addressKey = this.cleanAddressKey(address);
-    return (
-      this.contextMap.has(addressKey) &&
-      this.contextMap.get(addressKey).websites.has(website)
-    );
   }
 
   // Cleanup specific address

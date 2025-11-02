@@ -17,7 +17,7 @@ const setLocation = async (pincode) => {
 
         // If Amazon Fresh is already set up for this pincode, return the context
         if (
-            contextManager.isWebsiteServiceable(pincode, "amazonFresh")
+            contextManager.getWebsiteServiceabilityStatus(pincode, "amazonFresh")
         ) {
             console.log(`AF: Using existing serviceable context for ${pincode}`);
             return context;
@@ -523,7 +523,7 @@ export const searchQueryWithCookies = async (req, res, next) => {
         await setLocation(pincode);
 
         // Check if the location is serviceable
-        if (!contextManager.isWebsiteServiceable(pincode, "amazonFresh")) {
+        if (!contextManager.getWebsiteServiceabilityStatus(pincode, "amazonFresh")) {
             throw AppError.badRequest(`Location ${pincode} is not serviceable by Amazon Fresh`);
         }
 
