@@ -354,358 +354,327 @@ const extractProductsFromPageLegacy = async (page, url, MAX_SCROLL_ATTEMPTS = 25
 };
 
 // The below functioanlity work for desktop view of browser not mobile or ipad view and can run only one category at a time
+// Helper: try to extract a numeric category id from jiomart category URLs
+const extractCategoryIdAndNameFromUrl = (url) => {
+  try {
+    if (!url) return null;
+    const u = new URL(url, 'https://www.jiomart.com');
+    const parts = u.pathname.split('/').filter(Boolean);
+    // Find last numeric segment
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i];
+      if (/^\d+$/.test(p)) {
+        return { categoryId: p, categoryName: parts[i - 1] || null };
+      }
+    }
+    return null;
+  } catch (e) {
+    return null;
+  }
+};
+
+// Build the trex/search request body for a category and optional pageToken
+// Accepts regionCode and storeCode so the filter can be built dynamically from cookies
+// Generate a UUIDv4 (used for visitorId)
+const generateUuidV4 = () =>
+  'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+
+const buildTrexBody = ({ categoryId, pageSize = 50, pageToken = null, visitorId = null, regionCode = 'TS34', storeCode = 'TL8Q' }) => {
+  const filter = `attributes.status:ANY("active") AND attributes.category_ids:ANY("${categoryId}") AND (attributes.available_regions:ANY("${regionCode}", "PANINDIAGROCERIES")) AND (attributes.inv_stores_1p:ANY("ALL", "${storeCode}") OR attributes.inv_stores_3p:ANY("ALL", "groceries_zone_non-essential_services", "general_zone", "groceries_zone_essential_services"))`;
+
+  const body = {
+    pageSize,
+    variantRollupKeys: ["variantId"],
+    branch: "projects/sr-project-jiomart-jfront-prod/locations/global/catalogs/default_catalog/branches/0",
+    pageCategories: [String(categoryId)],
+    userInfo: { userId: null },
+    orderBy: "attributes.popularity desc",
+    filter,
+    visitorId: visitorId || `anonymous-${generateUuidV4()}`,
+  };
+
+  if (pageToken) {
+    body.pageToken = pageToken;
+  }
+
+  return body;
+};
+
+// Low-level trex search POST using Playwright request (uses context cookies)
+const trexSearchRequest = async (page, body) => {
+  const url = 'https://www.jiomart.com/trex/search';
+
+  // Build cookie header by merging context cookies (includes httpOnly) and document.cookie (JS-visible)
+  // This covers cookies set in local page JS as well as httpOnly cookies stored in the browser context.
+  let cookieHeader = '';
+  try {
+    const contextCookies = await page.context().cookies();
+    const cookieMap = new Map();
+    contextCookies.forEach((c) => cookieMap.set(c.name, c.value));
+
+    // Also include document.cookie values (non-httpOnly) which may not appear in context cookies list
+    try {
+      const docCookieStr = await page.evaluate(() => document.cookie || '');
+      if (docCookieStr) {
+        docCookieStr.split(';').forEach((pair) => {
+          const idx = pair.indexOf('=');
+          if (idx > -1) {
+            const name = pair.slice(0, idx).trim();
+            const val = pair.slice(idx + 1).trim();
+            if (name) cookieMap.set(name, val);
+          }
+        });
+      }
+    } catch (e) {
+      // If page.evaluate fails (no page or cross-origin), ignore and continue with context cookies only
+      // eslint-disable-next-line no-console
+      console.log('JIO: Could not read document.cookie via page.evaluate()', e.message);
+    }
+
+    cookieHeader = Array.from(cookieMap.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
+  } catch (err) {
+    // Fall back to empty cookie header on error
+    cookieHeader = '';
+  }
+
+  const headers = {
+    accept: '*/*',
+    'content-type': 'application/json',
+    origin: 'https://www.jiomart.com',
+    referer: 'https://www.jiomart.com/',
+    cookie: cookieHeader,
+  };
+
+  // The curl for the below request is: curl -X POST 'https://www.jiomart.com/trex/search' -H 'accept: */*' -H 'content-type: application/json' -H 'origin: https://www.jiomart.com' -H 'referer: https://www.jiomart.com/' -H 'cookie: <cookie_header>' -d '<json_body>' 
+
+  // Log the actual curl command for debugging
+  const curlCommand = `curl -X POST '${url}' -H 'accept: */*' -H 'content-type: application/json' -H 'origin: https://www.jiomart.com' -H 'referer: https://www.jiomart.com/' -H 'cookie: ${cookieHeader.replace(/'/g, "\\'")}' -d '${JSON.stringify(body).replace(/'/g, "\\'")}'`;
+  // console.log('JIO: Actual curl command:', curlCommand);
+
+  const response = await page.request.post(url, {
+    data: body,
+    headers,
+    timeout: 10000,
+  });
+
+  if (!response.ok()) {
+    const text = await response.text();
+    throw new Error(`trex search failed: ${response.status()} ${text}`);
+  }
+
+  return response.json();
+};
+
+// Fetch up to maxPages pages of products for a category using trex/search pagination
+const fetchTrexProducts = async (page, categoryId, categoryName, maxPages = 15, pageSize = 50) => {
+  const allProducts = [];
+  let pageToken = null;
+  let pageCount = 0;
+
+  // Read store/region info from page localStorage (primary), fall back to cookie (secondary)
+  let regionCode = null;
+  let storeCode = null;
+  try {
+    // Try localStorage first (nms_delivery_store_info stored as JSON string)
+    let rawValue = null;
+    try {
+      rawValue = await page.evaluate(() => localStorage.getItem('nms_delivery_store_info'));
+    } catch (err) {
+      // If page.evaluate fails (no page), continue to cookie fallback
+      rawValue = null;
+    }
+
+    let parsed = null;
+    if (rawValue) {
+      try {
+        parsed = JSON.parse(rawValue);
+      } catch (err) {
+        // try decodeURIComponent then parse
+        try {
+          parsed = JSON.parse(decodeURIComponent(rawValue));
+        } catch (err2) {
+          parsed = null;
+        }
+      }
+    }
+
+    if (parsed && typeof parsed === 'object') {
+      if (parsed.region_code) regionCode = parsed.region_code;
+      if (parsed.store_code) storeCode = parsed.store_code;
+    }
+
+    if (!regionCode || !storeCode) {
+      throw AppError.badRequest('nms_delivery_store_info not found in localStorage or cookies, or missing region_code/store_code');
+    }
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+    throw AppError.badRequest(`Error reading nms_delivery_store_info: ${err.message}`);
+  }
+
+  do {
+    pageCount++;
+    const body = buildTrexBody({ categoryId, pageSize, pageToken, regionCode, storeCode });
+    let json = null;
+    try {
+      json = await trexSearchRequest(page, body);
+    } catch (err) {
+      console.error('JIO: trex/search request failed:', err.message);
+      break;
+    }
+
+    // Find the first array-of-objects in the response that looks like products
+    let products = json?.results || [];
+
+    // Helper to parse numeric prices
+    const parsePrice = (v) => {
+      if (v === undefined || v === null) return 0;
+      const s = String(v).replace(/,/g, '');
+      const n = parseFloat(s);
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    // Helper: parse a buybox entry string into fields
+    // Expected format (observed): "3201|1|Reliance Retail||27.0|19.0||8.0|29.0||6|"
+    // We treat parts[4] as mrp and parts[5] as price. parts[0] is a region/store identifier.
+    const parseBuyboxEntry = (entry) => {
+      try {
+        const parts = entry.split('|');
+        const identifier = parts[0] || '';
+        const maybeMrp = parts[4] ? parseFloat(parts[4]) : NaN;
+        const maybePrice = parts[5] ? parseFloat(parts[5]) : NaN;
+        return {
+          identifier: String(identifier),
+          mrp: Number.isFinite(maybeMrp) ? maybeMrp : 0,
+          price: Number.isFinite(maybePrice) ? maybePrice : 0,
+          rawParts: parts,
+        };
+      } catch (e) {
+        return { identifier: '', mrp: 0, price: 0, rawParts: [] };
+      }
+    };
+
+    // Helper: choose buybox entry matching preferred codes (region/store/area). Fallback to first element
+    const chooseBuyboxFor = (buyboxArray, regionCode = null) => {
+      if (!Array.isArray(buyboxArray) || buyboxArray.length === 0) return null;
+      // parse all entries
+      const parsed = buyboxArray.map((e) => ({ raw: e, ...parseBuyboxEntry(e) }));
+      if (!regionCode) return parsed[0];
+      // match exact identifier
+      const found = parsed.find((p) => p.identifier === String(regionCode));
+      if (found) return found;
+
+      // fallback to first parsed that has a positive price
+      const firstValid = parsed.find((p) => p.price > 0 && p.mrp > 0) || parsed[0];
+      return firstValid;
+    };
+
+    for (const p of products) {
+      try {
+        // New product shape: { id, product: { title, variants: [...] } }
+        if (p.product && Array.isArray(p.product.variants) && p.product.variants.length > 0) {
+          const parentTitle = p.product.title || '';
+          for (const variant of p.product.variants) {
+            try {
+              const productId = variant.id || variant.name || variant.uri || null;
+              const productName = variant.title || parentTitle || '';
+
+              // price/mrp: prefer avg_selling_price.numbers, fallback to buybox_mrp text parsing
+              let price = 0;
+              let mrp = 0;
+              if (variant.attributes) {
+                if (variant.attributes.avg_selling_price && Array.isArray(variant.attributes.avg_selling_price.numbers)) {
+                  price = parsePrice(variant.attributes.avg_selling_price.numbers[0]);
+                }
+
+                // buybox_mrp entries like: "3201|1|Reliance Retail||27.0|19.0||8.0|29.0||6|"
+                if ((!price || !mrp) && variant.attributes.buybox_mrp && Array.isArray(variant.attributes.buybox_mrp.text) && variant.attributes.buybox_mrp.text.length > 0) {
+                  const chosen = chooseBuyboxFor(variant.attributes.buybox_mrp.text, regionCode);
+                  if (chosen) {
+                    if (chosen.price && chosen.price > 0) price = chosen.price;
+                    if (chosen.mrp && chosen.mrp > 0) mrp = chosen.mrp;
+                  }
+                }
+              }
+
+              const fullUrl = variant.uri || (variant.url_path ? `https://www.jiomart.com${variant.url_path}` : '');
+              const imageUrl = (variant.images && variant.images[0] && variant.images[0].uri) ? variant.images[0].uri : '';
+              const weight = (variant.sizes && variant.sizes[0]) || '';
+              const brand = (variant.brands && variant.brands[0]) || '';
+
+              if (!productId || !productName || !price || price <= 0) continue;
+
+              const discount = mrp > price ? Number((((mrp - price) / mrp) * 100).toFixed(2)) : 0;
+
+              allProducts.push({
+                productId: String(productId),
+                productName,
+                url: fullUrl,
+                imageUrl,
+                price,
+                mrp: mrp || price,
+                discount,
+                weight,
+                brand,
+                inStock: true,
+              });
+            } catch (innerErr) {
+              console.error('JIO: Error mapping variant from trex product shape:', innerErr.message);
+            }
+          }
+          continue; // processed variants, skip to next candidate
+        }
+      } catch (err) {
+        console.error('JIO: Error mapping product from trex response:', err.message);
+      }
+    }
+
+    // Determine next page token (common keys)
+    pageToken = json.nextPageToken || null;
+
+    // Defensive: stop if no more results or we've reached maxPages
+    if ((!products || products.length === 0) || pageCount >= maxPages) break;
+
+    // small delay to be polite
+    await page.waitForTimeout(300);
+
+  } while (pageToken);
+
+  // Filter the duplicate products based on productId
+  const seenProductIds = new Set();
+  const uniqueProducts = [];
+  allProducts.forEach((product) => {
+    if (!seenProductIds.has(product.productId)) {
+      seenProductIds.add(product.productId);
+      uniqueProducts.push(product);
+    }
+  });
+
+  console.log(`JIO: trex fetched ${uniqueProducts.length} products for category ${categoryName} in ${Math.min(pageCount, maxPages)} pages`);
+  return { products: uniqueProducts };
+};
+
+// Main extraction function: prefer trex/search for category pages, fallback to legacy DOM scraping
 const extractProductsFromPage = async (page, url, MAX_LOAD_MORE_ATTEMPTS = 15) => {
   try {
-    // Navigate to the page
-    await page.goto(url, {
-      waitUntil: "domcontentloaded",
-      timeout: 15000,
-    });
-
-    // Wait for initial products to load
-    await page.waitForSelector("a.plp_product_list", {
-      timeout: 10000,
-      state: "attached",
-    });
-
-    let loadMoreAttempts = 0;
-    let previousHitsLength = 0;
-    const MAX_NO_NEW_PRODUCTS_ATTEMPTS = 2;
-    let noNewProductsAttempts = 0;
-
-    while (loadMoreAttempts < MAX_LOAD_MORE_ATTEMPTS && noNewProductsAttempts < MAX_NO_NEW_PRODUCTS_ATTEMPTS) {
-
-      loadMoreAttempts++;
-
-      // Get current hits length from window.hits object
-      const currentHitsLength = await page.evaluate(() => {
-        if (!window.hits || typeof window.hits !== 'object') {
-          return 0;
-        }
-        return Object.values(window.hits).reduce((total, page) => {
-          return total + (Array.isArray(page) ? page.length : 0);
-        }, 0);
-      });
-
-      // If no new products were loaded, increment the counter
-      if (currentHitsLength === previousHitsLength && loadMoreAttempts > 1) {
-        noNewProductsAttempts++;
-        console.log(`JIO: No new products loaded (attempt ${noNewProductsAttempts}/${MAX_NO_NEW_PRODUCTS_ATTEMPTS})`);
-      } else {
-        // If new products were found, and if the new products loaded are less than 12 then we have reached the end , since we have fetched the less products than the limit per page
-        if (currentHitsLength - previousHitsLength < 12 && loadMoreAttempts > 1) {
-          console.log("JIO: less than 12 new products loaded, stopping pagination");
-          break;
-        }
-        noNewProductsAttempts = 0; // Reset counter if new products were found
-      }
-
-      // Update previous count
-      previousHitsLength = currentHitsLength;
-
-      // Check if load more button exists and is clickable BEFORE setting up response promise
-      const clickResult = await page.evaluate(() => {
-        const loadMoreButton = document.querySelector('.ais-InfiniteHits-loadMore');
-        if (loadMoreButton && !loadMoreButton.classList.contains('ais-InfiniteHits-loadMore--disabled')) {
-          return true;
-        }
-        return false;
-      });
-
-      if (!clickResult) {
-        console.log("JIO: Load more button not found or disabled, stopping pagination");
-        break;
-      }
-
-      // Click the load more button first
-      await page.evaluate(() => {
-        const loadMoreButton = document.querySelector('.ais-InfiniteHits-loadMore');
-        loadMoreButton.click();
-      });
-
-      // console.log(`JIO: Clicked load more button (attempt ${++loadMoreAttempts})`);
-
-      // Wait for the response with improved error handling
+    // Try to extract a category id from the URL - if present, use trex/search
+    const { categoryId, categoryName } = extractCategoryIdAndNameFromUrl(url);
+    if (categoryId) {
       try {
-        // Set up response promise after clicking
-        const responsePromise = page.waitForResponse(response =>
-          response.url().includes('/queries') && response.request().method() === 'POST',
-          { timeout: 5000 } // Increased to 15 seconds
-        );
-
-        await responsePromise;
-        // console.log("JIO: Load more response received");
-      } catch (error) {
-        if (error.name === 'TimeoutError') {
-          console.log("JIO: Timeout waiting for load more response, checking if products were loaded anyway...");
-
-          // Check if new products were actually loaded despite the timeout
-          const currentHitsAfterTimeout = await page.evaluate(() => {
-            if (!window.hits || typeof window.hits !== 'object') {
-              return 0;
-            }
-            return Object.values(window.hits).reduce((total, page) => {
-              return total + (Array.isArray(page) ? page.length : 0);
-            }, 0);
-          });
-
-          if (currentHitsAfterTimeout > previousHitsLength) {
-            console.log("JIO: Products were loaded despite timeout, continuing...");
-            previousHitsLength = currentHitsAfterTimeout;
-            noNewProductsAttempts = 0; // Reset since we got new products
-          } else {
-            console.log("JIO: No new products loaded after timeout, incrementing no-new-products counter");
-            noNewProductsAttempts++;
-          }
-        } else {
-          console.log("JIO: Error waiting for load more response:", error.message);
-          noNewProductsAttempts++;
-        }
-      }
-
-      // Wait a bit for the UI to update
-      await page.waitForTimeout(500);
-
-    }
-
-    // Extract products from window.hits object
-    const products = await page.evaluate(() => {
-      const extractedProducts = [];
-
-      if (!window.hits || typeof window.hits !== 'object') {
-        console.log("JIO: window.hits not found or not an object");
-        return extractedProducts;
-      }
-
-      // Flatten all hits (pages) into a single array of products
-      const allProducts = [];
-      Object.values(window.hits).forEach(page => {
-        if (Array.isArray(page)) {
-          allProducts.push(...page);
-        }
-      });
-
-      // Helper function to parse price strings with commas
-      const parsePrice = (priceValue) => {
-        if (!priceValue) return 0;
-        const priceStr = priceValue.toString();
-        // Remove commas and parse as float
-        return parseFloat(priceStr.replace(/,/g, "")) || 0;
-      };
-
-      allProducts.forEach((product) => {
-        try {
-          // Extract required fields from the product object
-          const productId = product.product_code || product.objectID;
-          const productName = product.display_name;
-          const price = parsePrice(product.selling_price);
-          const mrp = parsePrice(product.mrp);
-          const weight = product.size || "";
-          const brand = product.brand || "";
-          const inStock = true;
-          // Check for the product card for the details about out of stock
-          const productCard = document.querySelector('a[href*="' + product.url_path + '"]');
-          if (productCard) {
-            console.log("JIO: Product card found", product.url_path);
-            if (productCard.textContent.toLowerCase().includes("out of stock")) {
-              inStock = false;
-            }
-          } else {
-            inStock = false;
-            console.log("JIO: Product card not found", product.url_path);
-          }
-
-
-          if (mrp <= 0 || price <= 0) {
-            return;
-          }
-          const discount = mrp > price ? Number((((mrp - price) / mrp) * 100).toFixed(2)) : 0;
-
-          // Build full URL
-          const fullUrl = product.url_path ? `https://www.jiomart.com${product.url_path}` : "";
-
-          // Get image URL
-          const imageUrl = `https://www.jiomart.com/images/product/original/${product.image_path}`
-
-          // Validate required fields
-          if (!productId || !productName || !price || price <= 0) {
-            return;
-          }
-
-          extractedProducts.push({
-            productId: productId.toString(),
-            productName,
-            url: fullUrl,
-            imageUrl,
-            price,
-            mrp: mrp || price,
-            discount,
-            weight,
-            brand,
-            inStock,
-          });
-        } catch (error) {
-          console.error("JIO: Error extracting product data from window.hits:", error);
-        }
-      });
-
-      return extractedProducts;
-    });
-
-    // Extract variants for each product by clicking variant dropdown buttons
-    // console.log("JIO: Starting variant extraction...");
-    const variantDropdownButtons = await page.$$(".variant_dropdown");
-    console.log(`JIO: Found ${variantDropdownButtons.length} variant dropdown buttons`);
-
-    const extractedVariants = [];
-    const processedProductIds = new Set();
-
-    // Limit variant extraction to avoid excessive processing time
-    const maxVariantButtons = Math.min(variantDropdownButtons.length, 20);
-    console.log(`JIO: Processing ${maxVariantButtons} variant dropdown buttons (limited for performance)`);
-
-    for (let i = 0; i < maxVariantButtons; i++) {
-      try {
-        // Click on the variant dropdown button inside browser context
-        const clickResult = await page.evaluate((index) => {
-          const buttons = document.querySelectorAll('.variant_dropdown');
-          if (buttons[index]) {
-            buttons[index].click();
-            return true;
-          }
-          return false;
-        }, i);
-
-        if (clickResult) {
-          // console.log(`JIO: Clicked variant dropdown ${i + 1}/${variantDropdownButtons.length}`);
-        } else {
-          console.log(`JIO: Failed to click variant dropdown ${i + 1}, skipping`);
-          continue;
-        }
-
-        // Wait for the modal to open and variant_data to be populated
-        await page.waitForTimeout(1000);
-
-        // Extract variant data
-        const variants = await page.evaluate(() => {
-          const variantProducts = [];
-          console.log("JIO: variant_data", variant_data);
-
-          // Helper function to parse price strings with commas
-          const parsePrice = (priceValue) => {
-            if (!priceValue) return 0;
-            const priceStr = priceValue.toString();
-            // Remove commas and parse as float
-            return parseFloat(priceStr.replace(/,/g, "")) || 0;
-          };
-
-          if (variant_data && Array.isArray(variant_data)) {
-            variant_data.forEach((variant) => {
-              try {
-                const productId = variant.product_code || variant.objectID;
-                const productName = variant.display_name;
-                let price = parsePrice(variant.selling_price || variant.sell_price_value);
-                let mrp = parsePrice(variant.mrp);
-                const weight = variant.size || "";
-                const brand = variant.brand || "";
-                // For instock check div 
-                let variantProductCard = document.querySelector('a[href*="' + variant.url_path + '"]');
-                let inStock = true;
-                if (variantProductCard) {
-                  console.log("JIO: Variant product card found", variant.url_path);
-                  // Check if it contains text "out of stock"
-                  if (variantProductCard.textContent.toLowerCase().includes("out of stock")) {
-                    inStock = false;
-                  }
-                } else {
-                  console.log("JIO: Variant product card not found", variant.url_path);
-                }
-
-                if (mrp === 0 || price === 0) {
-                  // Try to find from the buybox
-                  if (variant.buybox_mrp && Object.keys(variant.buybox_mrp).length > 0) {
-                    const availableKey = Object.keys(variant.buybox_mrp).find(key => variant.buybox_mrp[key].available);
-
-                    if (availableKey) {
-                      const availableProduct = variant.buybox_mrp[availableKey];
-                      mrp = availableProduct.mrp;
-                      price = availableProduct.price;
-                    }
-                  }
-
-                  if (mrp <= 0 || price <= 0) {
-                    console.log("JIO: Invalid variant data", productId, productName, price);
-                    return;
-                  }
-                }
-                const discount = mrp > price ? Number((((mrp - price) / mrp) * 100).toFixed(2)) : 0;
-
-                // Build full URL
-                const fullUrl = variant.url_path ? `https://www.jiomart.com${variant.url_path}` : "";
-
-                // Get image URL
-                const imageUrl = `https://www.jiomart.com/images/product/original/${variant.image_path}`
-
-                // Validate required fields
-                if (!productId || !productName || !price || price <= 0 || mrp <= 0) {
-                  return;
-                }
-
-                variantProducts.push({
-                  productId: productId.toString(),
-                  productName,
-                  url: fullUrl,
-                  imageUrl,
-                  price,
-                  mrp: mrp || price,
-                  discount,
-                  weight,
-                  brand,
-                  inStock,
-                });
-              } catch (error) {
-                console.error("JIO: Error extracting variant data:", error);
-              }
-            });
-          }
-
-          return variantProducts;
-        });
-
-        // Add variants that haven't been processed yet
-        variants.forEach(variant => {
-          if (!processedProductIds.has(variant.productId)) {
-            extractedVariants.push(variant);
-            processedProductIds.add(variant.productId);
-          }
-        });
-
-        // console.log(`JIO: Extracted ${variants.length} variants from dropdown ${i + 1}`);
-      } catch (error) {
-        console.error(`JIO: Error processing variant dropdown ${i + 1}:`, error);
-        // Try to close any open modal
-        try {
-          await page.keyboard.press('Escape');
-        } catch (closeError) {
-          // Ignore close errors
-        }
+        console.log(`JIO: Using trex/search for category ${categoryId} (url: ${url})`);
+        return await fetchTrexProducts(page, categoryId, categoryName, 15, 50);
+      } catch (err) {
+        console.error('JIO: trex/search failed, falling back to DOM method:', err.message);
       }
     }
 
-    // Combine main products with variants
-    const allProducts = [...products, ...extractedVariants];
-
-    // Check if any product price is less than 5 ruppes
-    const productsWithPriceLessThan5 = allProducts.filter(product => product.price < 2);
-    if (productsWithPriceLessThan5.length > 0) {
-      console.log(`JIO: Products with price less than 5 ruppes: ${productsWithPriceLessThan5.length}`);
-    }
-    console.log(`JIO: Total products extracted: ${products.length} main products + ${extractedVariants.length} variants = ${allProducts.length} total`);
-
-    console.log(`JIO: Successfully extracted ${allProducts.length} products from page ${url} using window.hits and variants`);
-    return { products: allProducts };
+    // Fallback: use legacy DOM based extraction
+    return await extractProductsFromPageLegacy(page, url, MAX_LOAD_MORE_ATTEMPTS);
   } catch (error) {
-    console.error("JIO: Error extracting products from page:", error);
+    console.error('JIO: Error extracting products from page:', error);
     return { products: [] };
   }
 };
@@ -759,6 +728,11 @@ export const startTrackingHandler = async (location) => {
 
             try {
               page = await context.newPage();
+
+              await page.goto("https://www.jiomart.com/", {
+                waitUntil: "domcontentloaded",
+                timeout: 10000, // 10 second timeout
+              });
 
               // Extract products using the new function
               const { products } = await extractProductsFromPage(page, category.url);
