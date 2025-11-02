@@ -53,7 +53,7 @@ class ContextManager {
   }
 
   async initBrowser() {
-    console.log("Environment", process.env.ENVIRONMENT);
+    console.log("[ctx]: Environment", process.env.ENVIRONMENT);
     if (!this.browser) {
       const isDevMode = process.env.ENVIRONMENT === "development";
 
@@ -162,12 +162,12 @@ class ContextManager {
         // Check if context is still valid before using it - prevents the "Target closed" error
         try {
           await contextData.context.pages();
-          console.log(`Using cached context for address: ${address}`);
+          console.log(`[ctx]: Using cached context for address: ${address}`);
           return contextData.context;
         } catch (error) {
           // If context is invalid, clean it up and create a new one
           console.log(
-            `Context for address ${address} is invalid, creating new one`
+            `[ctx]: Context for address ${address} is invalid, creating new one`
           );
           await this.cleanupAddress(addressKey);
         }
@@ -175,7 +175,7 @@ class ContextManager {
 
       // Memory management: prevent exceeding context limit
       if (this.contextMap.size >= this.MAX_CONTEXTS) {
-        console.log("Context limit reached, attempting cleanup...");
+        console.log("[ctx]: Context limit reached, attempting cleanup...");
         
         const cleanedCount = await this.cleanupIdleContexts();
         
@@ -194,7 +194,7 @@ class ContextManager {
             `Please wait for operations to complete.`
           );
         } else {
-          console.log(`Successfully cleaned up ${cleanedCount} idle context(s), proceeding with new context creation.`);
+          console.log(`[ctx]: Successfully cleaned up ${cleanedCount} idle context(s), proceeding with new context creation.`);
         }
       }
 
@@ -332,10 +332,10 @@ class ContextManager {
         originalAddress: address, // Store original address for reference
       });
 
-      console.log(`Created new context for address: ${address}`);
+      console.log(`[ctx]: Created new context for address: ${address}`);
       return context;
     } catch (error) {
-      console.error(`Error getting context for address ${address}:`, error);
+      console.error(`[ctx]: Error getting context for address ${address}:`, error);
       throw error;
     }
   }
@@ -357,7 +357,7 @@ class ContextManager {
       
       this.updateLastUsed(address);
       await contextManager.cleanupIdleContexts();
-      console.log(`Marked ${website} as ${isServiceable ? 'serviceable' : 'not serviceable'} for address: ${address}`);
+      console.log(`[ctx]: Marked ${website} as ${isServiceable ? 'serviceable' : 'not serviceable'} for address: ${address}`);
     } else {
       // If context doesn't exist, create a minimal entry for serviceability tracking
       this.contextMap.set(addressKey, {
@@ -367,7 +367,7 @@ class ContextManager {
         serviceability: { [website]: isServiceable },
         originalAddress: address,
       });
-      console.log(`Created serviceability entry and marked ${website} as ${isServiceable ? 'serviceable' : 'not serviceable'} for address: ${address}`);
+      console.log(`[ctx]: Created serviceability entry and marked ${website} as ${isServiceable ? 'serviceable' : 'not serviceable'} for address: ${address}`);
     }
   }
 
@@ -401,9 +401,9 @@ class ContextManager {
       try {
         await data.context.close();
         this.contextMap.delete(addressKey);
-        console.log(`Closed context for address: ${data.originalAddress || addressKey}`);
+        console.log(`[ctx]: Closed context for address: ${data.originalAddress || addressKey}`);
       } catch (error) {
-        console.error(`Error closing context for address ${data.originalAddress || addressKey}:`, error);
+        console.error(`[ctx]: Error closing context for address ${data.originalAddress || addressKey}:`, error);
       }
     }
   }
@@ -450,13 +450,13 @@ class ContextManager {
       // Cleanup each identified address
       for (const { addressKey, reason } of addressesToCleanup) {
         const data = this.contextMap.get(addressKey);
-        console.log(`Cleaning up context for address: ${data?.originalAddress || addressKey} (reason: ${reason})`);
+        console.log(`[ctx]: Cleaning up context for address: ${data?.originalAddress || addressKey} (reason: ${reason})`);
         await this.cleanupAddress(addressKey);
       }
 
       return addressesToCleanup.length;
     } catch (error) {
-      console.error("Error during idle contexts cleanup:", error);
+      console.error("[ctx]: Error during idle contexts cleanup:", error);
       throw error;
     }
   }
@@ -472,10 +472,10 @@ class ContextManager {
       if (this.browser) {
         await this.browser.close();
         this.browser = null;
-        console.log("Browser closed successfully");
+        console.log("[ctx]: Browser closed successfully");
       }
     } catch (error) {
-      console.error("Error during cleanup:", error);
+      console.error("[ctx]: Error during cleanup:", error);
       throw error;
     }
   }
