@@ -173,11 +173,20 @@ class ContextManager {
         }
       }
 
-      // Memory management: limit concurrent contexts
+      // Memory management: prevent exceeding context limit
       if (this.contextMap.size >= this.MAX_CONTEXTS) {
-        console.log("Reached maximum concurrent contexts, cleaning up oldest one");
-        const oldestAddressKey = Array.from(this.contextMap.keys())[0];
-        await this.cleanupAddress(oldestAddressKey);
+        const activeContexts = Array.from(this.contextMap.entries())
+          .map(([key, data]) => ({
+            address: data.originalAddress,
+            serviceableWebsites: Object.keys(data.serviceability).filter(w => data.serviceability[w] === true).length,
+            lastUsed: data.lastUsed
+          }));
+        
+        throw new Error(
+          `Context limit reached (${this.MAX_CONTEXTS}/${this.MAX_CONTEXTS}). ` +
+          `Active contexts: ${activeContexts.map(c => `${c.address} (${c.serviceableWebsites} serviceable)`).join(', ')}. ` +
+          `Please cleanup unused contexts before creating new ones.`
+        );
       }
 
       // Create new context with stealth configuration
