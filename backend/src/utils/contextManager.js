@@ -175,18 +175,27 @@ class ContextManager {
 
       // Memory management: prevent exceeding context limit
       if (this.contextMap.size >= this.MAX_CONTEXTS) {
-        const activeContexts = Array.from(this.contextMap.entries())
-          .map(([key, data]) => ({
-            address: data.originalAddress,
-            serviceableWebsites: Object.keys(data.serviceability).filter(w => data.serviceability[w] === true).length,
-            lastUsed: data.lastUsed
-          }));
+        console.log("Context limit reached, attempting cleanup...");
         
-        throw new Error(
-          `Context limit reached (${this.MAX_CONTEXTS}/${this.MAX_CONTEXTS}). ` +
-          `Active contexts: ${activeContexts.map(c => `${c.address} (${c.serviceableWebsites} serviceable)`).join(', ')}. ` +
-          `Please cleanup unused contexts before creating new ones.`
-        );
+        const cleanedCount = await this.cleanupIdleContexts();
+        
+        if (cleanedCount === 0) {
+          // No contexts were cleaned up, all are busy
+          const activeContexts = Array.from(this.contextMap.entries())
+            .map(([key, data]) => ({
+              address: data.originalAddress,
+              serviceableWebsites: Object.keys(data.serviceability).filter(w => data.serviceability[w] === true).length,
+              lastUsed: data.lastUsed
+            }));
+          
+          throw new Error(
+            `All ${this.MAX_CONTEXTS} contexts are active with open pages. ` +
+            `Active contexts: ${activeContexts.map(c => `${c.address} (${c.serviceableWebsites} serviceable)`).join(', ')}. ` +
+            `Please wait for operations to complete.`
+          );
+        } else {
+          console.log(`Successfully cleaned up ${cleanedCount} idle context(s), proceeding with new context creation.`);
+        }
       }
 
       // Create new context with stealth configuration
@@ -347,7 +356,7 @@ class ContextManager {
       contextData.serviceability[website] = isServiceable;
       
       this.updateLastUsed(address);
-      await contextManager.cleanupNonServiceableContexts();
+      await contextManager.cleanupIdleContexts();
       console.log(`Marked ${website} as ${isServiceable ? 'serviceable' : 'not serviceable'} for address: ${address}`);
     } else {
       // If context doesn't exist, create a minimal entry for serviceability tracking
@@ -399,31 +408,55 @@ class ContextManager {
     }
   }
 
-  // Cleanup all non-serviceable contexts
-  async cleanupNonServiceableContexts() {
+  // Cleanup idle and non-serviceable contexts
+  async cleanupIdleContexts() {
     try {
       const addressesToCleanup = [];
 
-      // Find all addresses where no website is serviceable
+      // Find contexts to cleanup (idle or non-serviceable)
       for (const [addressKey, data] of this.contextMap.entries()) {
+        let shouldCleanup = false;
+        let reason = '';
+
+        // Check if context has no serviceable websites
         const serviceability = data.serviceability;
         const hasAnyServiceable = Object.values(serviceability).some(isServiceable => isServiceable === true);
-
+        
         if (!hasAnyServiceable) {
-          addressesToCleanup.push(addressKey);
+          shouldCleanup = true;
+          reason = 'non-serviceable';
+        }
+        
+        // Check if context has no open pages (idle from completed searches)
+        if (data.context) {
+          try {
+            const pages = await data.context.pages();
+            if (pages.length === 0) {
+              shouldCleanup = true;
+              reason = reason ? `${reason} + no pages` : 'no pages';
+            }
+          } catch (error) {
+            // Context is invalid, should be cleaned up
+            shouldCleanup = true;
+            reason = reason ? `${reason} + invalid` : 'invalid';
+          }
+        }
+
+        if (shouldCleanup) {
+          addressesToCleanup.push({ addressKey, reason });
         }
       }
 
       // Cleanup each identified address
-      for (const addressKey of addressesToCleanup) {
+      for (const { addressKey, reason } of addressesToCleanup) {
         const data = this.contextMap.get(addressKey);
-        console.log(`Cleaning up non-serviceable context for address: ${data?.originalAddress || addressKey}`);
+        console.log(`Cleaning up context for address: ${data?.originalAddress || addressKey} (reason: ${reason})`);
         await this.cleanupAddress(addressKey);
       }
 
       return addressesToCleanup.length;
     } catch (error) {
-      console.error("Error during non-serviceable contexts cleanup:", error);
+      console.error("Error during idle contexts cleanup:", error);
       throw error;
     }
   }

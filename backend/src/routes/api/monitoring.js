@@ -299,7 +299,7 @@ router.get("/system", (req, res) => {
  */
 router.post("/contexts/cleanup", async (req, res) => {
   try {
-    const cleanedCount = await contextManager.cleanupNonServiceableContexts();
+    const cleanedCount = await contextManager.cleanupIdleContexts();
 
     res.json({
       message: "Cleanup completed",
