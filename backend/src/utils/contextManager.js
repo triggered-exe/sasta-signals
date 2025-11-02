@@ -1,4 +1,5 @@
 import { firefox } from "playwright";
+import { getCurrentIST } from "./dateUtils.js";
 
 // Real Firefox user agents that are commonly used
 const REAL_FIREFOX_USER_AGENTS = [
@@ -18,13 +19,41 @@ const getRandomUserAgent = () => {
 class ContextManager {
   constructor() {
     this.browser = null;
-    this.contextMap = new Map(); // Map to store contexts by pincode
+    this.contextMap = new Map(); // Map to store contexts by address
     this.MAX_CONTEXTS = 3; // Reduced from 5 to 3 for memory efficiency - critical for t1.micro instances
   }
 
+  // Function to clean and normalize address to create a consistent key
+  cleanAddressKey(address) {
+    if (!address) return '';
+    
+    // Convert to string and normalize
+    const cleaned = String(address)
+      .toLowerCase()
+      .trim()
+      // Remove extra spaces and normalize whitespace
+      .replace(/\s+/g, ' ')
+      // Normalize comma spacing (remove spaces around commas, then add single space after)
+      .replace(/\s*,\s*/g, ', ')
+      // Remove special characters except alphanumeric, spaces, and common address separators
+      .replace(/[^\w\s,-]/g, '')
+      // Remove leading/trailing commas and spaces
+      .replace(/^[,\s]+|[,\s]+$/g, '')
+      // Normalize common address abbreviations
+      .replace(/\bstreet\b/g, 'st')
+      .replace(/\broad\b/g, 'rd')
+      .replace(/\bavenue\b/g, 'ave')
+      .replace(/\bapartment\b/g, 'apt')
+      .replace(/\bbuilding\b/g, 'bldg')
+      // Final cleanup of multiple spaces
+      .replace(/\s+/g, ' ')
+      .trim();
+    
+    return cleaned;
+  }
 
   async initBrowser() {
-    console.log("Environment", process.env.ENVIRONMENT);
+    console.log("[ctx]: Environment", process.env.ENVIRONMENT);
     if (!this.browser) {
       const isDevMode = process.env.ENVIRONMENT === "development";
 
@@ -122,31 +151,51 @@ class ContextManager {
     return this.browser;
   }
 
-  // Get or create context for a pincode with improved error handling
-  async getContext(pincode) {
+  // Get or create context for an address with improved error handling
+  async getContext(address) {
     try {
+      const addressKey = this.cleanAddressKey(address);
+      
       // Return existing context if available
-      if (this.contextMap.has(pincode)) {
-        const contextData = this.contextMap.get(pincode);
+      if (this.contextMap.has(addressKey)) {
+        const contextData = this.contextMap.get(addressKey);
         // Check if context is still valid before using it - prevents the "Target closed" error
         try {
           await contextData.context.pages();
-          console.log(`Using cached context for pincode: ${pincode}`);
+          console.log(`[ctx]: Using cached context for address: ${address}`);
           return contextData.context;
         } catch (error) {
           // If context is invalid, clean it up and create a new one
           console.log(
-            `Context for pincode ${pincode} is invalid, creating new one`
+            `[ctx]: Context for address ${address} is invalid, creating new one`
           );
-          await this.cleanupPincode(pincode);
+          await this.cleanupAddress(addressKey);
         }
       }
 
-      // Memory management: limit concurrent contexts
+      // Memory management: prevent exceeding context limit
       if (this.contextMap.size >= this.MAX_CONTEXTS) {
-        console.log("Reached maximum concurrent contexts, cleaning up oldest one");
-        const oldestPincode = Array.from(this.contextMap.keys())[0];
-        await this.cleanupPincode(oldestPincode);
+        console.log("[ctx]: Context limit reached, attempting cleanup...");
+        
+        const cleanedCount = await this.cleanupIdleContexts();
+        
+        if (cleanedCount === 0) {
+          // No contexts were cleaned up, all are busy
+          const activeContexts = Array.from(this.contextMap.entries())
+            .map(([key, data]) => ({
+              address: data.originalAddress,
+              serviceableWebsites: Object.keys(data.serviceability).filter(w => data.serviceability[w] === true).length,
+              lastUsed: data.lastUsed
+            }));
+          
+          throw new Error(
+            `All ${this.MAX_CONTEXTS} contexts are active with open pages. ` +
+            `Active contexts: ${activeContexts.map(c => `${c.address} (${c.serviceableWebsites} serviceable)`).join(', ')}. ` +
+            `Please wait for operations to complete.`
+          );
+        } else {
+          console.log(`[ctx]: Successfully cleaned up ${cleanedCount} idle context(s), proceeding with new context creation.`);
+        }
       }
 
       // Create new context with stealth configuration
@@ -275,101 +324,139 @@ class ContextManager {
       });
 
       // Store context with metadata including tracking when it was last used
-      this.contextMap.set(pincode, {
+      this.contextMap.set(addressKey, {
         context,
-        websites: new Set(),
-        createdAt: new Date(),
-        lastUsed: new Date(), // Track last usage for better cleanup decisions
+        createdAt: getCurrentIST(),
+        lastUsed: getCurrentIST(), // Track last usage for better cleanup decisions
         serviceability: {}, // Track which websites are serviceable for this location
+        originalAddress: address, // Store original address for reference
       });
 
-      console.log(`Created new context for pincode: ${pincode}`);
+      console.log(`[ctx]: Created new context for address: ${address}`);
       return context;
     } catch (error) {
-      console.error(`Error getting context for pincode ${pincode}:`, error);
+      console.error(`[ctx]: Error getting context for address ${address}:`, error);
       throw error;
     }
   }
 
   // Update last used time for a context
-  updateLastUsed(pincode) {
-    if (this.contextMap.has(pincode)) {
-      this.contextMap.get(pincode).lastUsed = new Date();
+  updateLastUsed(address) {
+    const addressKey = this.cleanAddressKey(address);
+    if (this.contextMap.has(addressKey)) {
+      this.contextMap.get(addressKey).lastUsed = getCurrentIST();
     }
   }
 
-  // Mark a website as serviceable or not for a pincode
-  async markServiceability(pincode, website, isServiceable) {
-    if (this.contextMap.has(pincode)) {
-      this.contextMap.get(pincode).serviceability[website] = isServiceable;
-      this.updateLastUsed(pincode);
-      await contextManager.cleanupNonServiceableContexts();
-      console.log(`Marked ${website} as ${isServiceable ? 'serviceable' : 'not serviceable'} for pinc ode: ${pincode}`);
+  // Mark a website as serviceable or not for an address
+  async markServiceability(address, website, isServiceable) {
+    const addressKey = this.cleanAddressKey(address);
+    if (this.contextMap.has(addressKey)) {
+      const contextData = this.contextMap.get(addressKey);
+      contextData.serviceability[website] = isServiceable;
+      
+      this.updateLastUsed(address);
+      await contextManager.cleanupIdleContexts();
+      console.log(`[ctx]: Marked ${website} as ${isServiceable ? 'serviceable' : 'not serviceable'} for address: ${address}`);
+    } else {
+      // If context doesn't exist, create a minimal entry for serviceability tracking
+      this.contextMap.set(addressKey, {
+        context: null,
+        createdAt: getCurrentIST(),
+        lastUsed: getCurrentIST(),
+        serviceability: { [website]: isServiceable },
+        originalAddress: address,
+      });
+      console.log(`[ctx]: Created serviceability entry and marked ${website} as ${isServiceable ? 'serviceable' : 'not serviceable'} for address: ${address}`);
     }
   }
 
-  // Check if a website is serviceable for a pincode
-  isWebsiteServiceable(pincode, website) {
-    return (
-      this.contextMap.has(pincode) &&
-      this.contextMap.get(pincode).serviceability[website] === true
-    );
+  // Get the serviceability status of a website for an address
+  getWebsiteServiceabilityStatus(address, website) {
+    const addressKey = this.cleanAddressKey(address);
+    if (!this.contextMap.has(addressKey)) {
+      return false;
+    }
+    return this.contextMap.get(addressKey).serviceability[website] === true;
   }
 
-  // Get all serviceable websites for a pincode
-  getServiceableWebsites(pincode) {
-    if (!this.contextMap.has(pincode)) return [];
+  // Get all serviceable websites for an address
+  getServiceableWebsites(address) {
+    const addressKey = this.cleanAddressKey(address);
+    if (!this.contextMap.has(addressKey)) return [];
 
-    const serviceability = this.contextMap.get(pincode).serviceability;
+    const serviceability = this.contextMap.get(addressKey).serviceability;
     return Object.keys(serviceability).filter(website => serviceability[website] === true);
   }
 
-  // Check if a website is set up for a pincode
-  isWebsiteSet(pincode, website) {
-    return (
-      this.contextMap.has(pincode) &&
-      this.contextMap.get(pincode).websites.has(website)
-    );
+  // Check if a website is set up for an address (alias for getWebsiteServiceabilityStatus)
+  isWebsiteSet(address, website) {
+    return this.getWebsiteServiceabilityStatus(address, website);
   }
 
-  // Cleanup specific pincode
-  async cleanupPincode(pincode) {
-    if (this.contextMap.has(pincode)) {
-      const data = this.contextMap.get(pincode);
+  // Cleanup specific address
+  async cleanupAddress(addressKey) {
+    if (this.contextMap.has(addressKey)) {
+      const data = this.contextMap.get(addressKey);
       try {
         await data.context.close();
-        this.contextMap.delete(pincode);
-        console.log(`Closed context for pincode: ${pincode}`);
+        this.contextMap.delete(addressKey);
+        console.log(`[ctx]: Closed context for address: ${data.originalAddress || addressKey}`);
       } catch (error) {
-        console.error(`Error closing context for pincode ${pincode}:`, error);
+        console.error(`[ctx]: Error closing context for address ${data.originalAddress || addressKey}:`, error);
       }
     }
   }
 
-  // Cleanup all non-serviceable contexts
-  async cleanupNonServiceableContexts() {
+  // Cleanup idle and non-serviceable contexts
+  async cleanupIdleContexts() {
     try {
-      const pincodesToCleanup = [];
+      const addressesToCleanup = [];
 
-      // Find all pincodes where no website is serviceable
-      for (const [pincode, data] of this.contextMap.entries()) {
+      // Find contexts to cleanup (idle or non-serviceable)
+      for (const [addressKey, data] of this.contextMap.entries()) {
+        let shouldCleanup = false;
+        let reason = '';
+
+        // Check if context has no serviceable websites
         const serviceability = data.serviceability;
         const hasAnyServiceable = Object.values(serviceability).some(isServiceable => isServiceable === true);
-
+        
         if (!hasAnyServiceable) {
-          pincodesToCleanup.push(pincode);
+          shouldCleanup = true;
+          reason = 'non-serviceable';
+        }
+        
+        // Check if context has no open pages (idle from completed searches)
+        if (data.context) {
+          try {
+            const pages = await data.context.pages();
+            if (pages.length === 0) {
+              shouldCleanup = true;
+              reason = reason ? `${reason} + no pages` : 'no pages';
+            }
+          } catch (error) {
+            // Context is invalid, should be cleaned up
+            shouldCleanup = true;
+            reason = reason ? `${reason} + invalid` : 'invalid';
+          }
+        }
+
+        if (shouldCleanup) {
+          addressesToCleanup.push({ addressKey, reason });
         }
       }
 
-      // Cleanup each identified pincode
-      for (const pincode of pincodesToCleanup) {
-        console.log(`Cleaning up non-serviceable context for pincode: ${pincode}`);
-        await this.cleanupPincode(pincode);
+      // Cleanup each identified address
+      for (const { addressKey, reason } of addressesToCleanup) {
+        const data = this.contextMap.get(addressKey);
+        console.log(`[ctx]: Cleaning up context for address: ${data?.originalAddress || addressKey} (reason: ${reason})`);
+        await this.cleanupAddress(addressKey);
       }
 
-      return pincodesToCleanup.length;
+      return addressesToCleanup.length;
     } catch (error) {
-      console.error("Error during non-serviceable contexts cleanup:", error);
+      console.error("[ctx]: Error during idle contexts cleanup:", error);
       throw error;
     }
   }
@@ -377,18 +464,18 @@ class ContextManager {
   // Cleanup all contexts
   async cleanup() {
     try {
-      for (const [pincode, data] of this.contextMap.entries()) {
-        await this.cleanupPincode(pincode);
+      for (const [addressKey, data] of this.contextMap.entries()) {
+        await this.cleanupAddress(addressKey);
       }
       this.contextMap.clear();
 
       if (this.browser) {
         await this.browser.close();
         this.browser = null;
-        console.log("Browser closed successfully");
+        console.log("[ctx]: Browser closed successfully");
       }
     } catch (error) {
-      console.error("Error during cleanup:", error);
+      console.error("[ctx]: Error during cleanup:", error);
       throw error;
     }
   }

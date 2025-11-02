@@ -13,7 +13,7 @@ const setLocation = async (location) => {
     const context = await contextManager.getContext(location);
 
     // Return existing context if already set up and serviceable
-    if (contextManager.isWebsiteServiceable(location, "jiomart-grocery")) {
+    if (contextManager.getWebsiteServiceabilityStatus(location, "jiomart-grocery")) {
       console.log(`JIO: Using existing serviceable context for ${location}`);
       return context;
     }
@@ -736,7 +736,7 @@ export const startTrackingHandler = async (location) => {
 
       let filteredCategories = await filterCategories(categories);
       // Check if the location is serviceable
-      if (!contextManager.isWebsiteServiceable(location, "jiomart-grocery")) {
+      if (!contextManager.getWebsiteServiceabilityStatus(location, "jiomart-grocery")) {
         console.log(`JIO: Location ${location} is not serviceable, stopping crawler`);
         break;
       }
@@ -832,7 +832,7 @@ export const searchProducts = async (req, res, next) => {
     const context = await setLocation(location);
 
     // Check if the location is serviceable
-    if (!contextManager.isWebsiteServiceable(location, "jiomart-grocery")) {
+    if (!contextManager.getWebsiteServiceabilityStatus(location, "jiomart-grocery")) {
       throw AppError.badRequest(`Location ${location} is not serviceable by JioMart`);
     }
 

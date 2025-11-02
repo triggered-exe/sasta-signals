@@ -17,7 +17,7 @@ const setLocation = async (pincode) => {
 
         // If Amazon Fresh is already set up for this pincode, return the context
         if (
-            contextManager.isWebsiteServiceable(pincode, "amazonFresh")
+            contextManager.getWebsiteServiceabilityStatus(pincode, "amazonFresh")
         ) {
             console.log(`AF: Using existing serviceable context for ${pincode}`);
             return context;
@@ -65,8 +65,6 @@ const setLocation = async (pincode) => {
         }
 
         contextManager.markServiceability(pincode, "amazonFresh", true);
-        // Register the website in the context's websites set
-        contextManager.contextMap.get(pincode).websites.add("amazonFresh");
         console.log(`AF: Successfully set up for pincode: ${pincode}`);
         await page.close();
         return context;
@@ -338,8 +336,9 @@ export const startTrackingHandler = async (pincode = "500064") => {
 const extractAmazonCookies = async (pincode) => {
     try {
         // Check if we already have stored Amazon Fresh data
-        if (contextManager.contextMap.has(pincode)) {
-            const contextData = contextManager.contextMap.get(pincode);
+        const addressKey = contextManager.cleanAddressKey(pincode);
+        if (contextManager.contextMap.has(addressKey)) {
+            const contextData = contextManager.contextMap.get(addressKey);
             if (contextData.amazonFreshData) {
                 console.log(`AF-API: Using existing Amazon Fresh cookies for ${pincode}`);
                 return contextData.amazonFreshData;
@@ -375,8 +374,8 @@ const extractAmazonCookies = async (pincode) => {
         };
 
         // Store the data in the context
-        if (contextManager.contextMap.has(pincode)) {
-            contextManager.contextMap.get(pincode).amazonFreshData = amazonFreshData;
+        if (contextManager.contextMap.has(addressKey)) {
+            contextManager.contextMap.get(addressKey).amazonFreshData = amazonFreshData;
         }
 
         console.log(`AF-API: Successfully extracted and stored cookies for pincode: ${pincode}`);
@@ -524,7 +523,7 @@ export const searchQueryWithCookies = async (req, res, next) => {
         await setLocation(pincode);
 
         // Check if the location is serviceable
-        if (!contextManager.isWebsiteServiceable(pincode, "amazonFresh")) {
+        if (!contextManager.getWebsiteServiceabilityStatus(pincode, "amazonFresh")) {
             throw AppError.badRequest(`Location ${pincode} is not serviceable by Amazon Fresh`);
         }
 

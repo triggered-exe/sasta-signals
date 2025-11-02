@@ -13,7 +13,7 @@ const setLocation = async (pincode) => {
     const context = await contextManager.getContext(pincode);
 
     // Return existing context if already set up and serviceable
-    if (contextManager.isWebsiteServiceable(pincode, "flipkart-grocery")) {
+    if (contextManager.getWebsiteServiceabilityStatus(pincode, "flipkart-grocery")) {
       console.log(`FK: Using existing serviceable context for ${pincode}`);
       return context;
     }
@@ -227,7 +227,7 @@ export const startTrackingHandler = async (pincode = "500064") => {
       const context = await setLocation(pincode);
 
       // Check if the location is serviceable
-      if (!contextManager.isWebsiteServiceable(pincode, "flipkart-grocery")) {
+      if (!contextManager.getWebsiteServiceabilityStatus(pincode, "flipkart-grocery")) {
         console.log(`FK: Location ${pincode} is not serviceable, stopping tracking`);
         break;
       }
@@ -339,7 +339,7 @@ const extractCategories = async (pincode = "500064") => {
     const context = await setLocation(pincode);
 
     // Check if the location is serviceable
-    if (!contextManager.isWebsiteServiceable(pincode, "flipkart-grocery")) {
+    if (!contextManager.getWebsiteServiceabilityStatus(pincode, "flipkart-grocery")) {
       throw AppError.badRequest(`Location ${pincode} is not serviceable by Flipkart Grocery`);
     }
 
@@ -452,7 +452,7 @@ export const performFlipkartSearch = async (location, query) => {
     const context = await setLocation(location);
 
     // Check if location is serviceable
-    if (!contextManager.isWebsiteServiceable(location, "flipkart-grocery")) {
+    if (!contextManager.getWebsiteServiceabilityStatus(location, "flipkart-grocery")) {
       throw new Error(`Location ${location} is not serviceable by Flipkart Grocery`);
     }
 

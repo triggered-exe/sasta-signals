@@ -15,7 +15,7 @@ const setLocation = async (pincode) => {
     const context = await contextManager.getContext(pincode);
 
     // If BigBasket is already set up for this pincode, return the context
-    if (contextManager.isWebsiteServiceable(pincode, "bigbasket")) {
+    if (contextManager.getWebsiteServiceabilityStatus(pincode, "bigbasket")) {
       console.log(`BB: Using existing serviceable context for ${pincode}`);
       return context;
     }
@@ -110,7 +110,6 @@ const setLocation = async (pincode) => {
 
     // Mark as serviceable and register the website
     contextManager.markServiceability(pincode, "bigbasket", true);
-    contextManager.contextMap.get(pincode).websites.add("bigbasket");
     console.log(`BB: Successfully set up for pincode: ${pincode}`);
 
     await page.close();
@@ -351,7 +350,7 @@ export const startTrackingHandler = async (location) => {
       const context = await setLocation(location);
 
       // Check if the location is serviceable
-      if (!contextManager.isWebsiteServiceable(location, "bigbasket")) {
+      if (!contextManager.getWebsiteServiceabilityStatus(location, "bigbasket")) {
         console.log(`BB: Location ${location} is not serviceable, stopping crawler`);
         break;
       }
