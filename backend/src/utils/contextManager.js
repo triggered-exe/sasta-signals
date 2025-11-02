@@ -1,4 +1,5 @@
 import { firefox } from "playwright";
+import { getCurrentIST } from "./dateUtils.js";
 
 // Real Firefox user agents that are commonly used
 const REAL_FIREFOX_USER_AGENTS = [
@@ -20,12 +21,6 @@ class ContextManager {
     this.browser = null;
     this.contextMap = new Map(); // Map to store contexts by address
     this.MAX_CONTEXTS = 3; // Reduced from 5 to 3 for memory efficiency - critical for t1.micro instances
-  }
-
-  // Helper function to get current time in IST
-  getCurrentIST() {
-    const now = new Date();
-    return new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
   }
 
   // Function to clean and normalize address to create a consistent key
@@ -56,7 +51,6 @@ class ContextManager {
     
     return cleaned;
   }
-
 
   async initBrowser() {
     console.log("Environment", process.env.ENVIRONMENT);
@@ -314,8 +308,8 @@ class ContextManager {
       // Store context with metadata including tracking when it was last used
       this.contextMap.set(addressKey, {
         context,
-        createdAt: this.getCurrentIST(),
-        lastUsed: this.getCurrentIST(), // Track last usage for better cleanup decisions
+        createdAt: getCurrentIST(),
+        lastUsed: getCurrentIST(), // Track last usage for better cleanup decisions
         serviceability: {}, // Track which websites are serviceable for this location
         originalAddress: address, // Store original address for reference
       });
@@ -332,7 +326,7 @@ class ContextManager {
   updateLastUsed(address) {
     const addressKey = this.cleanAddressKey(address);
     if (this.contextMap.has(addressKey)) {
-      this.contextMap.get(addressKey).lastUsed = this.getCurrentIST();
+      this.contextMap.get(addressKey).lastUsed = getCurrentIST();
     }
   }
 
@@ -350,8 +344,8 @@ class ContextManager {
       // If context doesn't exist, create a minimal entry for serviceability tracking
       this.contextMap.set(addressKey, {
         context: null,
-        createdAt: this.getCurrentIST(),
-        lastUsed: this.getCurrentIST(),
+        createdAt: getCurrentIST(),
+        lastUsed: getCurrentIST(),
         serviceability: { [website]: isServiceable },
         originalAddress: address,
       });
@@ -375,6 +369,11 @@ class ContextManager {
 
     const serviceability = this.contextMap.get(addressKey).serviceability;
     return Object.keys(serviceability).filter(website => serviceability[website] === true);
+  }
+
+  // Check if a website is set up for an address (alias for getWebsiteServiceabilityStatus)
+  isWebsiteSet(address, website) {
+    return this.getWebsiteServiceabilityStatus(address, website);
   }
 
   // Cleanup specific address

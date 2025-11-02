@@ -1,5 +1,6 @@
 import express from "express";
 import contextManager from "../../utils/contextManager.js";
+import { formatISTString, getISTInfo } from "../../utils/dateUtils.js";
 
 const router = express.Router();
 
@@ -9,14 +10,10 @@ const router = express.Router();
  */
 router.get("/contexts", async (req, res) => {
   try {
-    // Helper function to convert date to IST
-    const toIST = (date) => {
-      return new Date(date.getTime() + (5.5 * 60 * 60 * 1000)).toISOString().replace('Z', '+05:30');
-    };
-
+    const istInfo = getISTInfo();
     const contextStatus = {
-      timestamp: toIST(new Date()),
-      timezone: "Asia/Kolkata (IST)",
+      timestamp: formatISTString(new Date()),
+      timezone: istInfo.timezone,
       totalContexts: contextManager.contextMap.size,
       maxContexts: contextManager.MAX_CONTEXTS,
       browserStatus: contextManager.browser ? "running" : "not initialized",
@@ -28,8 +25,8 @@ router.get("/contexts", async (req, res) => {
       const contextInfo = {
         addressKey: addressKey,
         originalAddress: contextData.originalAddress || addressKey,
-        createdAt: toIST(contextData.createdAt),
-        lastUsed: toIST(contextData.lastUsed),
+        createdAt: formatISTString(contextData.createdAt),
+        lastUsed: formatISTString(contextData.lastUsed),
         ageInMinutes: Math.round((new Date() - contextData.createdAt) / (1000 * 60)),
         minutesSinceLastUse: Math.round((new Date() - contextData.lastUsed) / (1000 * 60)),
         serviceability: contextData.serviceability || {},
@@ -103,8 +100,8 @@ router.get("/contexts", async (req, res) => {
     res.status(500).json({
       error: "Failed to get context status",
       message: error.message,
-      timestamp: toIST(new Date()),
-      timezone: "Asia/Kolkata (IST)"
+      timestamp: formatISTString(new Date()),
+      timezone: getISTInfo().timezone
     });
   }
 });
@@ -115,14 +112,10 @@ router.get("/contexts", async (req, res) => {
  */
 router.get("/contexts/summary", async (req, res) => {
   try {
-    // Helper function to convert date to IST
-    const toIST = (date) => {
-      return new Date(date.getTime() + (5.5 * 60 * 60 * 1000)).toISOString().replace('Z', '+05:30');
-    };
-
+    const istInfo = getISTInfo();
     const summary = {
-      timestamp: toIST(new Date()),
-      timezone: "Asia/Kolkata (IST)",
+      timestamp: formatISTString(new Date()),
+      timezone: istInfo.timezone,
       totalContexts: contextManager.contextMap.size,
       maxContexts: contextManager.MAX_CONTEXTS,
       browserStatus: contextManager.browser ? "running" : "not initialized",
@@ -157,8 +150,8 @@ router.get("/contexts/summary", async (req, res) => {
     res.status(500).json({
       error: "Failed to get context summary",
       message: error.message,
-      timestamp: toIST(new Date()),
-      timezone: "Asia/Kolkata (IST)"
+      timestamp: formatISTString(new Date()),
+      timezone: getISTInfo().timezone
     });
   }
 });
@@ -169,27 +162,22 @@ router.get("/contexts/summary", async (req, res) => {
  */
 router.post("/contexts/cleanup", async (req, res) => {
   try {
-    // Helper function to convert date to IST
-    const toIST = (date) => {
-      return new Date(date.getTime() + (5.5 * 60 * 60 * 1000)).toISOString().replace('Z', '+05:30');
-    };
-
     const cleanedCount = await contextManager.cleanupNonServiceableContexts();
     
     res.json({
       message: "Cleanup completed",
       cleanedContexts: cleanedCount,
       remainingContexts: contextManager.contextMap.size,
-      timestamp: toIST(new Date()),
-      timezone: "Asia/Kolkata (IST)"
+      timestamp: formatISTString(new Date()),
+      timezone: getISTInfo().timezone
     });
   } catch (error) {
     console.error("Error during cleanup:", error);
     res.status(500).json({
       error: "Failed to cleanup contexts",
       message: error.message,
-      timestamp: toIST(new Date()),
-      timezone: "Asia/Kolkata (IST)"
+      timestamp: formatISTString(new Date()),
+      timezone: getISTInfo().timezone
     });
   }
 });
