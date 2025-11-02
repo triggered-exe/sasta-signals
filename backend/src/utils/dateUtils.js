@@ -30,3 +30,16 @@ export const formatISTString = (date) => {
   const istDate = toIST(date);
   return istDate.toISOString().replace('Z', '+05:30');
 };
+
+/**
+ * Get IST timezone information
+ * @returns {object} Object containing timezone details
+ */
+export const getISTInfo = () => {
+  return {
+    timezone: 'Asia/Kolkata (IST)',
+    offset: '+05:30',
+    offsetHours: 5.5,
+    offsetMs: 5.5 * 60 * 60 * 1000
+  };
+};
