@@ -28,7 +28,7 @@ const getSystemMetrics = () => {
   };
 
   // Log memory usage for monitoring
-  console.log(`[memory]: RSS=${processMemoryMB.rss}MB, HeapUsed=${processMemoryMB.heapUsed}MB, HeapTotal=${processMemoryMB.heapTotal}MB, External=${processMemoryMB.external}MB`);
+  console.log(`[memory]: RSS=${processMemoryMB.rss}MB, HeapUsed=${processMemoryMB.heapUsed}MB, HeapTotal=${processMemoryMB.heapTotal}MB, External=${processMemoryMB.external}MB, ArrayBuffers=${processMemoryMB.arrayBuffers}MB`);
 
   // Get CPU information
   const cpus = os.cpus();
@@ -287,6 +287,26 @@ router.get("/system", (req, res) => {
       });
     }
 
+    // Add external memory alerts
+    if (systemMetrics.process.memory.external > 200) {
+      response.alerts.push({
+        type: "warning",
+        message: `High external memory usage: ${systemMetrics.process.memory.external}MB`,
+        threshold: "200MB"
+      });
+    }
+
+    if (systemMetrics.process.memory.arrayBuffers > 100) {
+      response.alerts.push({
+        type: "warning",
+        message: `High ArrayBuffer memory usage: ${systemMetrics.process.memory.arrayBuffers}MB`,
+        threshold: "100MB"
+      });
+    }
+
+    // Log memory metrics for monitoring
+    console.log(`[system]: Memory - RSS:${systemMetrics.process.memory.rss}MB, Heap:${systemMetrics.process.memory.heapUsed}MB, External:${systemMetrics.process.memory.external}MB, ArrayBuffers:${systemMetrics.process.memory.arrayBuffers}MB`);
+
     res.json(response);
   } catch (error) {
     console.error("Error getting system metrics:", error);
@@ -305,12 +325,25 @@ router.get("/system", (req, res) => {
  */
 router.post("/contexts/cleanup", async (req, res) => {
   try {
+    const memBefore = process.memoryUsage();
+    console.log(`[cleanup]: Starting cleanup - RSS: ${Math.round(memBefore.rss / 1024 / 1024)}MB, External: ${Math.round(memBefore.external / 1024 / 1024)}MB, ArrayBuffers: ${Math.round(memBefore.arrayBuffers / 1024 / 1024)}MB`);
+
     const cleanedCount = await contextManager.cleanupIdleContexts();
+
+    const memAfter = process.memoryUsage();
+    const memDelta = {
+      rss: Math.round((memAfter.rss - memBefore.rss) / 1024 / 1024),
+      external: Math.round((memAfter.external - memBefore.external) / 1024 / 1024),
+      arrayBuffers: Math.round((memAfter.arrayBuffers - memBefore.arrayBuffers) / 1024 / 1024)
+    };
+
+    console.log(`[cleanup]: Completed - cleaned ${cleanedCount} contexts, Memory delta - RSS: ${memDelta.rss}MB, External: ${memDelta.external}MB, ArrayBuffers: ${memDelta.arrayBuffers}MB`);
 
     res.json({
       message: "Cleanup completed",
       cleanedContexts: cleanedCount,
       remainingContexts: contextManager.contextMap.size,
+      memoryDelta: memDelta,
       timestamp: formatISTString(new Date()),
       timezone: getISTInfo().timezone
     });
