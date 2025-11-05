@@ -6,9 +6,9 @@ const REAL_FIREFOX_USER_AGENTS = [
   //'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 OPR/118.0.0.0', // Not working for Blinkit
   // 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.3a/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 OPR/117.0.0.', //Chrome 134.0.0, Linux // Working for 
 
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:136.0) Gecko/20100101 Firefox/136.0', // Working for Blinkit
+  // 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:136.0) Gecko/20100101 Firefox/136.0', // Working for Blinkit not working for BigBasket
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.3', //Chrome 107.0.0, Windows // Working for Blinkit
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0', // Edge on Linux // Working for Blinkit
+  // 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0', // Edge on Linux // Working for Blinkit not working for BigBasket
 ];
 
 // Function to get a random Firefox user agent
@@ -400,7 +400,12 @@ class ContextManager {
       const data = this.contextMap.get(addressKey);
       try {
         // Log page count before cleanup
-        const pagesBefore = await data.context.pages().catch(() => []);
+        let pagesBefore = [];
+        try {
+          pagesBefore = await data.context.pages();
+        } catch (e) {
+          // Ignore errors if context is already closed
+        }
         console.log(`[ctx]: Cleaning up context for ${data.originalAddress || addressKey} (${pagesBefore.length} pages)`);
 
         await data.context.close();

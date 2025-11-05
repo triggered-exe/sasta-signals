@@ -1,10 +1,10 @@
 // Watch the video https://youtu.be/WP-S1QolVvU which is recorded for the future reference
+import axios from 'axios';
 import { JiomartProduct } from "../models/JiomartProduct.js";
 import contextManager from "../utils/contextManager.js";
 import { AppError } from "../utils/errorHandling.js";
 import { isNightTimeIST } from "../utils/priceTracking.js";
 import { processProducts as globalProcessProducts } from "../utils/productProcessor.js";
-// Removed axios and cheerio; using Playwright context exclusively
 
 const setLocation = async (location) => {
   let page = null;
@@ -409,41 +409,8 @@ const buildTrexBody = ({ categoryId, pageSize = 50, pageToken = null, visitorId 
 };
 
 // Low-level trex search POST using Playwright request (uses context cookies)
-const trexSearchRequest = async (page, body) => {
+const trexSearchRequest = async (cookieHeader, body) => {
   const url = 'https://www.jiomart.com/trex/search';
-
-  // Build cookie header by merging context cookies (includes httpOnly) and document.cookie (JS-visible)
-  // This covers cookies set in local page JS as well as httpOnly cookies stored in the browser context.
-  let cookieHeader = '';
-  try {
-    const contextCookies = await page.context().cookies();
-    const cookieMap = new Map();
-    contextCookies.forEach((c) => cookieMap.set(c.name, c.value));
-
-    // Also include document.cookie values (non-httpOnly) which may not appear in context cookies list
-    try {
-      const docCookieStr = await page.evaluate(() => document.cookie || '');
-      if (docCookieStr) {
-        docCookieStr.split(';').forEach((pair) => {
-          const idx = pair.indexOf('=');
-          if (idx > -1) {
-            const name = pair.slice(0, idx).trim();
-            const val = pair.slice(idx + 1).trim();
-            if (name) cookieMap.set(name, val);
-          }
-        });
-      }
-    } catch (e) {
-      // If page.evaluate fails (no page or cross-origin), ignore and continue with context cookies only
-      // eslint-disable-next-line no-console
-      console.log('JIO: Could not read document.cookie via page.evaluate()', e.message);
-    }
-
-    cookieHeader = Array.from(cookieMap.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
-  } catch (err) {
-    // Fall back to empty cookie header on error
-    cookieHeader = '';
-  }
 
   const headers = {
     accept: '*/*',
@@ -457,18 +424,19 @@ const trexSearchRequest = async (page, body) => {
   const curlCommand = `curl -X POST '${url}' -H 'accept: */*' -H 'content-type: application/json' -H 'origin: https://www.jiomart.com' -H 'referer: https://www.jiomart.com/' -H 'cookie: ${cookieHeader.replace(/'/g, "\\'")}' -d '${JSON.stringify(body).replace(/'/g, "\\'")}'`;
   // console.log('JIO: Actual curl command:', curlCommand);
 
-  const response = await page.request.post(url, {
-    data: body,
-    headers,
-    timeout: 10000,
-  });
-
-  if (!response.ok()) {
-    const text = await response.text();
-    throw new Error(`trex search failed: ${response.status()} ${text}`);
+  try {
+    const response = await axios.post(url, body, {
+      headers,
+      timeout: 10000,
+    });
+    return response.data;
+  } catch (error) {
+    if (error.response) {
+      throw new Error(`trex search failed: ${error.response.status} ${error.response.statusText}`);
+    } else {
+      throw new Error(`trex search failed: ${error.message}`);
+    }
   }
-
-  return response.json();
 };
 
 // Fetch up to maxPages pages of products for a category using trex/search pagination
@@ -520,9 +488,42 @@ const fetchTrexProducts = async (page, categoryId, categoryName, maxPages = 15, 
   do {
     pageCount++;
     const body = buildTrexBody({ categoryId, pageSize, pageToken, regionCode, storeCode });
+    // Build cookie header by merging context cookies (includes httpOnly) and document.cookie (JS-visible)
+    // This covers cookies set in local page JS as well as httpOnly cookies stored in the browser context.
+    let cookieHeader = '';
+    try {
+      const contextCookies = await page.context().cookies();
+      const cookieMap = new Map();
+      contextCookies.forEach((c) => cookieMap.set(c.name, c.value));
+
+      // Also include document.cookie values (non-httpOnly) which may not appear in context cookies list
+      try {
+        const docCookieStr = await page.evaluate(() => document.cookie || '');
+        if (docCookieStr) {
+          docCookieStr.split(';').forEach((pair) => {
+            const idx = pair.indexOf('=');
+            if (idx > -1) {
+              const name = pair.slice(0, idx).trim();
+              const val = pair.slice(idx + 1).trim();
+              if (name) cookieMap.set(name, val);
+            }
+          });
+        }
+      } catch (e) {
+        // If page.evaluate fails (no page or cross-origin), ignore and continue with context cookies only
+        // eslint-disable-next-line no-console
+        console.log('JIO: Could not read document.cookie via page.evaluate()', e.message);
+      }
+
+      cookieHeader = Array.from(cookieMap.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
+    } catch (err) {
+      // Fall back to empty cookie header on error
+      cookieHeader = '';
+    }
+
     let json = null;
     try {
-      json = await trexSearchRequest(page, body);
+      json = await trexSearchRequest(cookieHeader, body);
     } catch (err) {
       console.error('JIO: trex/search request failed:', err.message);
       break;
@@ -721,7 +722,6 @@ export const startTrackingHandler = async (location) => {
 
       // Process queries in parallel batches
       const PARALLEL_SEARCHES = 1;
-      let totalProcessedProducts = 0;
 
       for (let i = 0; i < filteredCategories.length; i += PARALLEL_SEARCHES) {
         const currentBatch = filteredCategories.slice(i, i + PARALLEL_SEARCHES);
@@ -756,7 +756,6 @@ export const startTrackingHandler = async (location) => {
                   emailNotification: false,
                 });
 
-                totalProcessedProducts += processedCount;
                 console.log(`JIO: Processed ${processedCount} products for ${category.name} (${category.subCategory})`);
               } else {
                 console.log(`JIO: No products found for ${category.name}`);
@@ -768,6 +767,8 @@ export const startTrackingHandler = async (location) => {
                 console.log(`JIO: Closing product extraction page for ${category.name}`);
                 await page.close();
               }
+              // Small delay between requests to be polite
+              await new Promise((resolve) => setTimeout(resolve, 2000));
             }
           } catch (error) {
             console.error(`JIO: Error processing category ${category.name}:`, error);
@@ -783,13 +784,12 @@ export const startTrackingHandler = async (location) => {
         );
       }
 
-      console.log(`JIO: Total processed products: ${totalProcessedProducts}`);
       console.log(
-        `JIO: Total time taken: ${((new Date().getTime() - startTime.getTime()) / 60000).toFixed(2)} minutes`
+        `JIO: Tracking completed in: ${((new Date().getTime() - startTime.getTime()) / 60000).toFixed(2)} minutes`
       );
     } catch (error) {
-      // Wait for 5 minutes
-      await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
+      // Wait for 1 minutes
+      await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
       console.error("JIO: Error in crawler:", error);
     }
   }
