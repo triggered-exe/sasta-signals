@@ -36,6 +36,7 @@ const setLocation = async (pincode) => {
     const accessDeniedElement = await page.$('h1:has-text("Access Denied")');
     if (accessDeniedElement) {
       console.log("BB: Access denied - IP appears to be blocked by BigBasket");
+      console.log("User Agent:", await page.evaluate(() => navigator.userAgent));
       throw AppError.badRequest("BB: Access denied - IP appears to be blocked by BigBasket");
     }
 

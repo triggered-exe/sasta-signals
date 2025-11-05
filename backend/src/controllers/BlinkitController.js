@@ -611,9 +611,7 @@ export const startTrackingHandler = async (location = "bahadurpura police statio
                 console.log(
                     `BLINKIT: Processing ${subcategories.length} subcategories sequentially with single page`
                 );
-
-                let totalProcessedProducts = 0;
-
+                // Processing a single tracking cycle takes around 40 minutes
                 // Create a single page for all API calls
                 const page = await context.newPage();
                 try {
@@ -665,17 +663,10 @@ export const startTrackingHandler = async (location = "bahadurpura police statio
                             });
 
                             const processedCount = typeof result === "number" ? result : result.processedCount;
-                            totalProcessedProducts += processedCount;
 
                             // Log subcategory processing time
                             const subcategoryTime = ((new Date().getTime() - subcategoryStartTime.getTime()) / 1000).toFixed(2);
                             console.log(`BLINKIT: Processed ${processedCount} products for "${subcategory.parentCategory} > ${subcategory.name}" in ${subcategoryTime} seconds`);
-
-                            // Progress update every 10 subcategories
-                            if ((subcategoryIndex + 1) % 10 === 0) {
-                                const progressTime = ((new Date().getTime() - startTime.getTime()) / 60000).toFixed(2);
-                                console.log(`BLINKIT: Progress - ${subcategoryIndex + 1}/${shuffledSubcategories.length} subcategories completed in ${progressTime} minutes`);
-                            }
                         } catch (error) {
                             console.error(`BLINKIT: Error processing ${subcategory.name}:`, error.message);
                             continue; // Continue with next subcategory
@@ -689,12 +680,11 @@ export const startTrackingHandler = async (location = "bahadurpura police statio
                 // Log completion and wait before next cycle
                 const endTime = new Date();
                 const totalDuration = (endTime - startTime) / 1000 / 60;
-                console.log(`BLINKIT: Total processed products: ${totalProcessedProducts}`);
-                console.log(`BLINKIT: Total time taken: ${totalDuration.toFixed(2)} minutes`);
-                await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
+                console.log(`BLINKIT: Tracking completed in :  ${totalDuration.toFixed(2)} minutes`);
+                await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000)); // Wait for 1 minute before next iteration
             } catch (error) {
                 console.error("BLINKIT: Error in tracking handler:", error);
-                await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
+                await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000)); // Wait for 1 minute before retrying
             }
         }
     })();

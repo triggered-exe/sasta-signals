@@ -658,7 +658,7 @@ export const startTrackingHelper = async (location = "500064") => {
     } finally {
       console.log("Zepto: Tracking cycle completed at:", new Date().toISOString());
       // Add a delay before starting the next cycle
-      await new Promise((resolve) => setTimeout(resolve, 2 * 60 * 1000)); // 2 minutes
+      await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000)); // 1 minute
     }
   }
 };

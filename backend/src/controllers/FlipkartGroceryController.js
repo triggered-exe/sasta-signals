@@ -321,11 +321,11 @@ export const startTrackingHandler = async (pincode = "500064") => {
       console.log(
         `FK: Total time taken: ${totalDuration.toFixed(2)} minutes`
       );
-      // Wait for 5 minutes
-      await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
+      // Wait for 1 minutes
+      await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
     } catch (error) {
-      // Wait for 5 minutes
-      await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
+      // Wait for 2 minutes
+      await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
       console.error("FK: Error in tracking cycle:", error);
     }
   }
@@ -557,8 +557,6 @@ const processProducts = async (products) => {
       telegramNotification: true,
       emailNotification: false,
     });
-
-    return result;
 
     return result;
   } catch (error) {

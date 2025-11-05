@@ -208,7 +208,7 @@ const searchAndExtractProducts = async (page, query, maxPages = 10) => {
             // Extract products from current page
             const products = await extractProductsFromPage(page);
 
-            allProducts = allProducts.concat(products);
+                allProducts = allProducts.concat(products);
             // console.log(`AF: Found ${products.length} products on page ${currentPage} for ${query}`);
 
             // Check for next page
@@ -221,9 +221,9 @@ const searchAndExtractProducts = async (page, query, maxPages = 10) => {
                 hasNextPage = false;
             }
         }
-        const uniqueProducts = Array.from(new Map(allProducts.map((item) => [item.productId, item])).values());
-        console.log(`AF: Found ${uniqueProducts.length} unique products out of ${allProducts.length} for ${query}`);
-        return uniqueProducts;
+            const uniqueProducts = Array.from(new Map(allProducts.map((item) => [item.productId, item])).values());
+            console.log(`AF: Found ${uniqueProducts.length} unique products out of ${allProducts.length} for ${query}`);
+            return uniqueProducts;
     } catch (error) {
         console.error(`AF: Error searching for "${query}":`, error);
         return [];
@@ -290,12 +290,12 @@ export const startTrackingHandler = async (pincode = "500064") => {
                             console.log(`AF: Processing ${query}`);
                             try {
                                 const products = await searchAndExtractProducts(pages[index], query, 10);
-                                const result = await globalProcessProducts(products, query, {
-                                    model: AmazonFreshProduct,
-                                    source: "Amazon Fresh",
-                                    telegramNotification: true,
-                                    emailNotification: false,
-                                });
+                                    const result = await globalProcessProducts(products, query, {
+                                        model: AmazonFreshProduct,
+                                        source: "Amazon Fresh",
+                                        telegramNotification: true,
+                                        emailNotification: false,
+                                    });
                                 const processedCount = typeof result === "number" ? result : result.processedCount;
                                 return processedCount;
                             } catch (error) {
@@ -443,8 +443,6 @@ const extractProductsFromHTML = (html) => {
 // Search using direct API calls with cookies
 const searchWithCookies = async (amazonFreshData, query, maxPages = 3) => {
     try {
-        console.log(`AF-API: Searching for "${query}" using direct API calls`);
-
         let allProducts = [];
         let currentPage = 1;
 
@@ -702,17 +700,18 @@ const trackPricesWithoutBrowser = async (pincode = "500064") => {
 
             console.log(`AF-API: Found ${queries.length} unique search queries`);
 
-            const CONCURRENT_SEARCHES = 2;
+            const CONCURRENT_SEARCHES = 1; // for 2 CONCURRENT_SEARCHES, takes around 8 minutes per cycle
             let totalProcessedProducts = 0;
 
             // Process queries in sequential batches to avoid overwhelming the API
             const taskChunks = chunk(queries, CONCURRENT_SEARCHES);
 
-            for (const taskChunk of taskChunks) {
+            for (let i = 0; i < taskChunks.length; i++) {
                 try {
+                    const taskChunk = taskChunks[i];
                     // Run searches sequentially to avoid rate limiting
                     for (const query of taskChunk) {
-                        console.log(`AF-API: Processing ${query}`);
+                        console.log(`AF-API: Processing ${query}, chunk ${i + 1} of ${taskChunks.length}`);
                         try {
                             const products = await searchWithCookies(amazonFreshData, query, 10);
                             const result = await globalProcessProducts(products, query, {
@@ -745,12 +744,12 @@ const trackPricesWithoutBrowser = async (pincode = "500064") => {
                 )} minutes`
             );
 
-            // Wait for 5 minutes before next iteration
-            await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
+            // Wait for 1 minutes before next iteration
+            await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
         } catch (error) {
             console.error("AF-API: Error in cookie-based tracking handler:", error);
-            // Wait for 5 minutes before retrying
-            await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
+            // Wait for 1 minutes before retrying
+            await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
         }
     }
 };
