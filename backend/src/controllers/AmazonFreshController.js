@@ -715,7 +715,6 @@ const trackPricesWithoutBrowser = async (pincode = "500064") => {
             console.log(`AF-API: Found ${queries.length} unique search queries`);
 
             const CONCURRENT_SEARCHES = 1; // for 2 CONCURRENT_SEARCHES, takes around 8 minutes per cycle
-            let totalProcessedProducts = 0;
 
             // Process queries in sequential batches to avoid overwhelming the API
             const taskChunks = chunk(queries, CONCURRENT_SEARCHES);
@@ -728,14 +727,12 @@ const trackPricesWithoutBrowser = async (pincode = "500064") => {
                         console.log(`AF-API: Processing ${query}, chunk ${i + 1} of ${taskChunks.length}`);
                         try {
                             const products = await searchWithCookies(amazonFreshData, query, 10);
-                                const result = await globalProcessProducts(products, query, {
-                                    model: AmazonFreshProduct,
-                                    source: "Amazon Fresh (API)",
-                                    telegramNotification: true,
-                                    emailNotification: false,
-                                });
-                                const processedCount = typeof result === "number" ? result : result.processedCount;
-                                totalProcessedProducts += processedCount;
+                            const result = await globalProcessProducts(products, query, {
+                                model: AmazonFreshProduct,
+                                source: "Amazon Fresh (API)",
+                                telegramNotification: true,
+                                emailNotification: false,
+                            });
                         } catch (error) {
                             console.error(`AF-API: Error processing ${query}:`, error);
                         }
@@ -753,7 +750,7 @@ const trackPricesWithoutBrowser = async (pincode = "500064") => {
 
             const totalDuration = (Date.now() - startTime) / 1000 / 60; // in minutes
             console.log(
-                `AF-API: Completed cookie-based crawling. Processed ${totalProcessedProducts} products in ${totalDuration.toFixed(
+                `AF-API: Completed cookie-based crawling. in ${totalDuration.toFixed(
                     2
                 )} minutes`
             );
