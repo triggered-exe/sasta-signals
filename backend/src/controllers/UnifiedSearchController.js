@@ -41,6 +41,23 @@ export const unifiedSearch = async (req, res, next) => {
     // Execute searches in parallel
     const searchPromises = providersToSearch.map(async (providerKey) => {
       const provider = providerRegistry[providerKey];
+      
+      // Validate location parameter for this provider
+      if (provider.locationParam === 'pincode') {
+        // Check if location is a valid 6-digit pincode
+        const pincodeRegex = /^\d{6}$/;
+        if (!pincodeRegex.test(location)) {
+          return {
+            provider: providerKey,
+            success: false,
+            products: [],
+            total: 0,
+            error: `Invalid pincode format. ${provider.name} requires a 6-digit pincode, received: "${location}"`,
+            validationError: true
+          };
+        }
+      }
+      
       try {
         console.log(`UNIFIED: Searching ${provider.name}...`);
         const result = await provider.searchFunction(location, query);
