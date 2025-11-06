@@ -22,7 +22,7 @@ const setLocation = async (location) => {
     page = await context.newPage();
 
     // Navigate to homepage
-    await page.goto("https://www.zeptonow.com/", {
+    await page.goto("https://www.zepto.com/", {
       waitUntil: "domcontentloaded",
     });
 
@@ -95,10 +95,10 @@ const setLocation = async (location) => {
 const fetchCategories = async (location = 500064) => {
   try {
     // Fetch the sitemap XML
-    const response = await axios.get("https://www.zeptonow.com/sitemap/categories/hyderabad.xml");
+    const response = await axios.get("https://www.zepto.com/sitemap/categories/hyderabad.xml");
 
     // Parse the URLs from the XML content
-    const unfilteredUrls = response.data.match(/https:\/\/www\.zeptonow\.com\/city\/[^<]+/g) || [];
+    const unfilteredUrls = response.data.match(/https:\/\/www\.zepto\.com\/city\/[^<]+/g) || [];
 
     // Process URLs to extract categories and their subcategories
     const categoryMap = new Map();
@@ -272,7 +272,7 @@ const extractProducts = async (page, options = {}) => {
       await page.waitForTimeout(1000);
     } else if (query) {
       // Navigate to search page if query is provided
-      const searchUrl = `https://www.zeptonow.com/search?query=${encodeURIComponent(query)}`;
+      const searchUrl = `https://www.zepto.com/search?query=${encodeURIComponent(query)}`;
       await page.goto(searchUrl, {
         waitUntil: "domcontentloaded",
         timeout: 10000,
@@ -485,7 +485,7 @@ const extractProducts = async (page, options = {}) => {
             const isOutOfStock = stockDiv.getAttribute("data-is-out-of-stock") === "true";
 
             // Product URL
-            const productUrl = "https://www.zeptonow.com" + href;
+            const productUrl = "https://www.zepto.com" + href;
 
             return {
               productId: variantId,
