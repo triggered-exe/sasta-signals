@@ -208,7 +208,7 @@ const searchAndExtractProducts = async (page, query, maxPages = 10) => {
             // Extract products from current page
             const products = await extractProductsFromPage(page);
 
-                allProducts = allProducts.concat(products);
+            allProducts = allProducts.concat(products);
             // console.log(`AF: Found ${products.length} products on page ${currentPage} for ${query}`);
 
             // Check for next page
@@ -221,9 +221,9 @@ const searchAndExtractProducts = async (page, query, maxPages = 10) => {
                 hasNextPage = false;
             }
         }
-            const uniqueProducts = Array.from(new Map(allProducts.map((item) => [item.productId, item])).values());
-            console.log(`AF: Found ${uniqueProducts.length} unique products out of ${allProducts.length} for ${query}`);
-            return uniqueProducts;
+        const uniqueProducts = Array.from(new Map(allProducts.map((item) => [item.productId, item])).values());
+        console.log(`AF: Found ${uniqueProducts.length} unique products out of ${allProducts.length} for ${query}`);
+        return uniqueProducts;
     } catch (error) {
         console.error(`AF: Error searching for "${query}":`, error);
         return [];
@@ -290,12 +290,12 @@ export const startTrackingHandler = async (pincode = "500064") => {
                             console.log(`AF: Processing ${query}`);
                             try {
                                 const products = await searchAndExtractProducts(pages[index], query, 10);
-                                    const result = await globalProcessProducts(products, query, {
-                                        model: AmazonFreshProduct,
-                                        source: "Amazon Fresh",
-                                        telegramNotification: true,
-                                        emailNotification: false,
-                                    });
+                                const result = await globalProcessProducts(products, query, {
+                                    model: AmazonFreshProduct,
+                                    source: "Amazon Fresh",
+                                    telegramNotification: true,
+                                    emailNotification: false,
+                                });
                                 const processedCount = typeof result === "number" ? result : result.processedCount;
                                 return processedCount;
                             } catch (error) {
@@ -341,7 +341,8 @@ const extractAmazonCookies = async (pincode) => {
             const contextData = contextManager.contextMap.get(addressKey);
             if (contextData.amazonFreshData) {
                 console.log(`AF-API: Using existing Amazon Fresh cookies for ${pincode}`);
-                return contextData.amazonFreshData;
+                // Return a copy to avoid reference issues
+                return { ...contextData.amazonFreshData };
             }
         }
 
@@ -362,8 +363,6 @@ const extractAmazonCookies = async (pincode) => {
 
         // Extract important session data from Amazon cookies
         const sessionId = amazonCookies.find(cookie => cookie.name === 'session-id')?.value || '';
-
-        console.log(`AF-API: Extracted ${amazonCookies.length} Amazon cookies out of ${allCookies.length} total cookies`);
 
         // Store Amazon Fresh data in context
         const amazonFreshData = {
@@ -386,9 +385,14 @@ const extractAmazonCookies = async (pincode) => {
     }
 };
 
-// Extract products from HTML using cheerio
-const extractProductsFromHTML = (html) => {
-    const $ = cheerio.load(html);
+// Extract products from HTML using cheerio - returns both products and next page status
+const extractProductsAndPaginationFromHTML = (html) => {
+    const $ = cheerio.load(html, {
+        // Cheerio options to reduce memory usage
+        xml: false,
+        decodeEntities: false,
+    });
+
     const products = [];
 
     $('div[data-component-type="s-search-result"]').each((index, element) => {
@@ -437,57 +441,67 @@ const extractProductsFromHTML = (html) => {
         }
     });
 
-    return products;
+    // Check for next page in the same DOM pass
+    const hasNextPage = $('.s-pagination-next').length > 0;
+
+    return { products, hasNextPage };
 };
 
 // Search using direct API calls with cookies
 const searchWithCookies = async (amazonFreshData, query, maxPages = 3) => {
+    let allProducts = [];
+
     try {
-        let allProducts = [];
         let currentPage = 1;
 
         while (currentPage <= maxPages) {
             const searchUrl = `https://www.amazon.in/s?k=${encodeURIComponent(query)}&i=nowstore&page=${currentPage}`;
 
-            const response = await axios.get(searchUrl, {
-                headers: {
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                    'Accept-Language': 'en-US,en;q=0.5',
-                    'Accept-Encoding': 'gzip, deflate, br',
-                    'User-Agent': amazonFreshData.userAgent,
-                    'Cookie': amazonFreshData.cookieString,
-                    'Upgrade-Insecure-Requests': '1',
-                    'Sec-Fetch-Dest': 'document',
-                    'Sec-Fetch-Mode': 'navigate',
-                    'Sec-Fetch-Site': 'same-origin',
-                    'Cache-Control': 'no-cache',
-                    'Pragma': 'no-cache'
-                },
-                timeout: 15000
-            });
+            let response;
+            try {
+                response = await axios.get(searchUrl, {
+                    headers: {
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                        'Accept-Language': 'en-US,en;q=0.5',
+                        'Accept-Encoding': 'gzip, deflate, br',
+                        'User-Agent': amazonFreshData.userAgent,
+                        'Cookie': amazonFreshData.cookieString,
+                        'Upgrade-Insecure-Requests': '1',
+                        'Sec-Fetch-Dest': 'document',
+                        'Sec-Fetch-Mode': 'navigate',
+                        'Sec-Fetch-Site': 'same-origin',
+                        'Cache-Control': 'no-cache',
+                        'Pragma': 'no-cache'
+                    },
+                    timeout: 15000,
+                    maxRedirects: 5,
+                    decompress: true,
+                    responseType: 'text', // Ensure we get text
+
+                });
+            } catch (axiosError) {
+                console.error(`AF-API: Axios error for page ${currentPage}:`, axiosError.message);
+                break;
+            }
 
             if (response.status !== 200) {
                 console.error(`AF-API: HTTP ${response.status} for page ${currentPage}`);
                 break;
             }
 
-            // Extract products from HTML
-            const products = extractProductsFromHTML(response.data);
+            // Extract products AND check pagination in a single pass
+            const { products, hasNextPage } = extractProductsAndPaginationFromHTML(response.data);
 
             if (products.length === 0) {
                 console.log(`AF-API: No products found on page ${currentPage}, stopping`);
                 break;
             }
 
-            allProducts = allProducts.concat(products);
+            allProducts.push(...products); // Use spread instead of concat to avoid array recreation
             console.log(`AF-API: Found ${products.length} products on page ${currentPage}`);
 
-            // Check if there's a next page by looking for pagination
-            const $ = cheerio.load(response.data);
-            const nextPageExists = $('.s-pagination-next').length > 0;
-
-            if (!nextPageExists) {
-                console.log(`AF-API: No next page found, stopping at page ${currentPage}`);
+            if (!hasNextPage || currentPage >= maxPages) {
+                console.log(`AF-API: ${!hasNextPage ? 'No next page found' : 'Max pages reached'}, stopping at page ${currentPage}`);
                 break;
             }
 
@@ -714,14 +728,14 @@ const trackPricesWithoutBrowser = async (pincode = "500064") => {
                         console.log(`AF-API: Processing ${query}, chunk ${i + 1} of ${taskChunks.length}`);
                         try {
                             const products = await searchWithCookies(amazonFreshData, query, 10);
-                            const result = await globalProcessProducts(products, query, {
-                                model: AmazonFreshProduct,
-                                source: "Amazon Fresh (API)",
-                                telegramNotification: true,
-                                emailNotification: false,
-                            });
-                            const processedCount = typeof result === "number" ? result : result.processedCount;
-                            totalProcessedProducts += processedCount;
+                                const result = await globalProcessProducts(products, query, {
+                                    model: AmazonFreshProduct,
+                                    source: "Amazon Fresh (API)",
+                                    telegramNotification: true,
+                                    emailNotification: false,
+                                });
+                                const processedCount = typeof result === "number" ? result : result.processedCount;
+                                totalProcessedProducts += processedCount;
                         } catch (error) {
                             console.error(`AF-API: Error processing ${query}:`, error);
                         }
