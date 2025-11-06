@@ -8,7 +8,7 @@ After running the app for around half an hour under different scenarios:
 - **Instamart**: Peak usage = 200 MB
 - **BigBasket**: Peak usage = 337 MB
 - **Flipkart Grocery**: Peak usage = 254 MB
-- **Amazon**: Peak usage = 404 MB ( ran for 40 minutes )
+- **Amazon**: Peak usage = 485 MB ( ran for 10 minutes )
 - **Blinkit**: Peak usage = 437 MB ( ran for 1 hour 22 minutes )
 - **Jiomart**: Peak usage = 1741 MB ( ran for 25 minutes )
 
@@ -22,3 +22,7 @@ After running the app for around half an hour under different scenarios:
 
 - Websites: Zepto, Instamart, BigBasket, Flipkart Grocery and Amazon
 - Peak usage = 484 MB ( ran for 1 hour )
+
+- Websites: Zepto, Instamart, BigBasket, Flipkart Grocery, Amazon and Blinkit
+- Peak usage = 1369 MB ( ran for 16 hour )
+
