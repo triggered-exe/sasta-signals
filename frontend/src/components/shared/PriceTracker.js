@@ -146,7 +146,7 @@ export default function PriceTracker({ apiEndpoint }) {
         // Scroll to the top of the product grid when page changes
         // Use a small delay to ensure the new products have loaded
         setTimeout(() => {
-            console.log("Scrolling to the top of the product grid", productGridRef.current);
+            // console.log("Scrolling to the top of the product grid", productGridRef.current);
             if (productGridRef.current) {
                 productGridRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
