@@ -440,7 +440,7 @@ const trexSearchRequest = async (cookieHeader, body) => {
 };
 
 // Fetch up to maxPages pages of products for a category using trex/search pagination
-const fetchTrexProducts = async (page, categoryId, categoryName, maxPages = 15, pageSize = 50) => {
+const fetchTrexProducts = async (page, categoryId, categoryName, maxPages = 10, pageSize = 50) => {
   const allProducts = [];
   let pageToken = null;
   let pageCount = 0;
@@ -488,38 +488,8 @@ const fetchTrexProducts = async (page, categoryId, categoryName, maxPages = 15, 
   do {
     pageCount++;
     const body = buildTrexBody({ categoryId, pageSize, pageToken, regionCode, storeCode });
-    // Build cookie header by merging context cookies (includes httpOnly) and document.cookie (JS-visible)
-    // This covers cookies set in local page JS as well as httpOnly cookies stored in the browser context.
-    let cookieHeader = '';
-    try {
-      const contextCookies = await page.context().cookies();
-      const cookieMap = new Map();
-      contextCookies.forEach((c) => cookieMap.set(c.name, c.value));
-
-      // Also include document.cookie values (non-httpOnly) which may not appear in context cookies list
-      try {
-        const docCookieStr = await page.evaluate(() => document.cookie || '');
-        if (docCookieStr) {
-          docCookieStr.split(';').forEach((pair) => {
-            const idx = pair.indexOf('=');
-            if (idx > -1) {
-              const name = pair.slice(0, idx).trim();
-              const val = pair.slice(idx + 1).trim();
-              if (name) cookieMap.set(name, val);
-            }
-          });
-        }
-      } catch (e) {
-        // If page.evaluate fails (no page or cross-origin), ignore and continue with context cookies only
-        // eslint-disable-next-line no-console
-        console.log('JIO: Could not read document.cookie via page.evaluate()', e.message);
-      }
-
-      cookieHeader = Array.from(cookieMap.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
-    } catch (err) {
-      // Fall back to empty cookie header on error
-      cookieHeader = '';
-    }
+    // Build cookie header using document.cookie
+    let cookieHeader = await page.evaluate(() => document.cookie || '');
 
     let json = null;
     try {
@@ -673,7 +643,7 @@ const extractProductsFromPage = async (page, url, MAX_LOAD_MORE_ATTEMPTS = 15) =
     if (categoryId) {
       try {
         console.log(`JIO: Using trex/search for category ${categoryId} (url: ${url})`);
-        return await fetchTrexProducts(page, categoryId, categoryName, 15, 50);
+        return await fetchTrexProducts(page, categoryId, categoryName, 10, 50);
       } catch (err) {
         console.error('JIO: trex/search failed, falling back to DOM method:', err.message);
       }
