@@ -1,3 +1,4 @@
+import logger from "../utils/logger.js";
 import axios from "axios";
 import { ZeptoProduct } from "../models/ZeptoProduct.js";
 import contextManager from "../utils/contextManager.js";
@@ -14,7 +15,7 @@ const setLocation = async (location) => {
 
     // Return existing context if already set up and serviceable
     if (contextManager.getWebsiteServiceabilityStatus(location, "zepto")) {
-      console.log(`ZEPTO: Using existing serviceable context for ${location}`);
+      logger.info(`ZEPTO: Using existing serviceable context for ${location}`);
       return context;
     }
 
@@ -27,7 +28,7 @@ const setLocation = async (location) => {
     });
 
     // Click on the location selection button
-    console.log(`ZEPTO: Setting location for ${location}...`);
+    logger.info(`ZEPTO: Setting location for ${location}...`);
     await page.waitForSelector('button[aria-label="Select Location"]', {
       timeout: 5000,
     });
@@ -50,13 +51,13 @@ const setLocation = async (location) => {
 
     // Click the first address search item specifically
     await page.click('(//div[@data-testid="address-search-item"])[1]');
-    console.log("ZEPTO: Clicked first suggestion using data-testid selector");
+    logger.info("ZEPTO: Clicked first suggestion using data-testid selector");
 
     // Click the "Confirm & Continue" button on the map modal
     await page.waitForSelector('[data-testid="location-confirm-btn"]', {
       timeout: 5000,
     });
-    console.log("ZEPTO: Clicking Confirm & Continue button");
+    logger.info("ZEPTO: Clicking Confirm & Continue button");
     await page.click('[data-testid="location-confirm-btn"]');
 
     // Wait for 2 seconds
@@ -67,14 +68,14 @@ const setLocation = async (location) => {
     if (comingSoonElement) {
       const headingText = await comingSoonElement.textContent();
       if (headingText.includes("Sit Tight")) {
-        console.log(`ZEPTO: Location ${location} is not serviceable - "Coming Soon" message found`);
+        logger.info(`ZEPTO: Location ${location} is not serviceable - "Coming Soon" message found`);
         throw AppError.badRequest(`Location ${location} is not serviceable by Zepto: Coming Soon`);
       }
     }
 
     // Location is serviceable - mark it as such
     contextManager.markServiceability(location, "zepto", true);
-    console.log(`ZEPTO: Successfully set up for location: ${location}`);
+    logger.info(`ZEPTO: Successfully set up for location: ${location}`);
     return context;
   } catch (error) {
     // Mark location as not serviceable for any initialization errors too
@@ -83,9 +84,9 @@ const setLocation = async (location) => {
       contextManager.markServiceability(location, "zepto", false);
     } catch (cleanupError) {
       // Don't let cleanup errors override the original error
-      console.error(`ZEPTO: Error during cleanup for ${location}:`, cleanupError);
+      logger.error(`ZEPTO: Error during cleanup for ${location}:`, cleanupError);
     }
-    console.error(`ZEPTO: Error initializing context for ${location}:`, error);
+    logger.error(`ZEPTO: Error initializing context for ${location}:`, error);
     throw error;
   } finally {
     if (page) await page.close();
@@ -188,7 +189,7 @@ const fetchCategories = async (location = 500064) => {
     }));
     return categories;
   } catch (error) {
-    console.error("Zepto: Error fetching categories from sitemap:", error?.response?.data || error);
+    logger.error("Zepto: Error fetching categories from sitemap:", error?.response?.data || error);
     throw AppError.internalError("Failed to fetch categories");
   }
 };
@@ -284,12 +285,12 @@ const extractProducts = async (page, options = {}) => {
     // Check for retryable errors (502 Bad Gateway and Something went wrong)
     const errorCheck = await checkForRetryableError(page);
     if (errorCheck.hasError) {
-      console.log(`ZEPTO: ${errorCheck.errorType} error detected for ${url || query}, retry ${retryCount + 1}/${maxRetries}`);
+      logger.info(`ZEPTO: ${errorCheck.errorType} error detected for ${url || query}, retry ${retryCount + 1}/${maxRetries}`);
 
       if (retryCount < maxRetries) {
         // Exponential backoff: wait 2^retryCount seconds
         const waitTime = Math.pow(2, retryCount) * 1000;
-        console.log(`ZEPTO: Waiting ${waitTime}ms before retry...`);
+        logger.info(`ZEPTO: Waiting ${waitTime}ms before retry...`);
         await page.waitForTimeout(waitTime);
 
         // Retry with increased retry count
@@ -304,16 +305,16 @@ const extractProducts = async (page, options = {}) => {
       await page.waitForSelector("a div[data-is-out-of-stock]", {
         timeout: 3000,
       });
-      console.log(`ZEPTO: Products found for ${url || query}`);
+      logger.info(`ZEPTO: Products found for ${url || query}`);
     } catch (error) {
       // Double-check if it's the "No Products" case before throwing error
       const hasNoProducts = await checkForNoProducts(page);
       if (hasNoProducts) {
-        console.log(`ZEPTO: No products available for ${url || query} - returning empty array`);
+        logger.info(`ZEPTO: No products available for ${url || query} - returning empty array`);
         return [];
       }
 
-      console.log(`ZEPTO: No products found for ${url || query} - this might be a loading issue`);
+      logger.info(`ZEPTO: No products found for ${url || query} - this might be a loading issue`);
       throw new Error(`No products found for ${url || query}`);
     }
 
@@ -325,7 +326,7 @@ const extractProducts = async (page, options = {}) => {
     let scrollAttempts = 0;
     const MAX_SCROLL_ATTEMPTS = maxScrollAttempts;
 
-    console.log(`ZEPTO: Starting to scroll for ${url || query}`);
+    logger.info(`ZEPTO: Starting to scroll for ${url || query}`);
 
     // Scroll until no spinner is visible or max attempts reached
     while (scrollAttempts < MAX_SCROLL_ATTEMPTS) {
@@ -334,7 +335,7 @@ const extractProducts = async (page, options = {}) => {
         return document.querySelectorAll("a div[data-is-out-of-stock]").length;
       });
 
-      console.log(`ZEPTO: Found ${currentProductCount} products after ${scrollAttempts} scrolls`);
+      logger.info(`ZEPTO: Found ${currentProductCount} products after ${scrollAttempts} scrolls`);
 
       // First scroll to the last available product card to trigger loading
       const { shouldStopScrolling } = await page.evaluate(() => {
@@ -347,7 +348,7 @@ const extractProducts = async (page, options = {}) => {
           const isOutOfStock = lastCard.getAttribute("data-is-out-of-stock") === "true";
 
           if (isOutOfStock) {
-            console.log("Last product is out of stock, stopping scroll");
+            logger.info("Last product is out of stock, stopping scroll");
             return { shouldStopScrolling: true };
           }
 
@@ -361,7 +362,7 @@ const extractProducts = async (page, options = {}) => {
 
       // If last product is out of stock, stop scrolling
       if (shouldStopScrolling) {
-        console.log(`ZEPTO: Stopping scroll - last product is out of stock at ${currentProductCount} products`);
+        logger.info(`ZEPTO: Stopping scroll - last product is out of stock at ${currentProductCount} products`);
         break;
       }
 
@@ -376,7 +377,7 @@ const extractProducts = async (page, options = {}) => {
 
       // If no spinner is visible and product count hasn't changed, we've reached the end
       if (!isSpinnerVisible && currentProductCount === previousProductCount && scrollAttempts > 0) {
-        console.log(`ZEPTO: No more products to load, stopping at ${currentProductCount} products`);
+        logger.info(`ZEPTO: No more products to load, stopping at ${currentProductCount} products`);
         break;
       }
 
@@ -461,10 +462,10 @@ const extractProducts = async (page, options = {}) => {
                 mrp = parseFloat(mrpMatch[1].replace(/,/g, "")) || 0;
               }
 
-              console.log(`Extracted price: ${price}, MRP: ${mrp} for product ID: ${variantId} and product Name: ${productName}`);
+              logger.info(`Extracted price: ${price}, MRP: ${mrp} for product ID: ${variantId} and product Name: ${productName}`);
             }
 
-            console.log(`ZEPTO: Extracted product - ID: ${variantId}, Name: ${productName}, Weight: ${weight}, Price: ${price}, MRP: ${mrp}`);
+            logger.info(`ZEPTO: Extracted product - ID: ${variantId}, Name: ${productName}, Weight: ${weight}, Price: ${price}, MRP: ${mrp}`);
 
             // If no MRP found, use price as MRP
             if (mrp === 0) {
@@ -499,7 +500,7 @@ const extractProducts = async (page, options = {}) => {
               inStock: !isOutOfStock,
             };
           } catch (error) {
-            console.error("Error extracting product data:", error);
+            logger.error("Error extracting product data:", error);
             return null;
           }
         })
@@ -508,10 +509,10 @@ const extractProducts = async (page, options = {}) => {
     const filteredProducts = products.filter(
       (product) => product !== null && product.productName && product.productId && product.mrp > 0
     );
-    console.log(`ZEPTO: Successfully extracted ${products.length} products and after filtering ${filteredProducts.length} products for ${url || query}`);
+    logger.info(`ZEPTO: Successfully extracted ${products.length} products and after filtering ${filteredProducts.length} products for ${url || query}`);
     return filteredProducts;
   } catch (error) {
-    console.error(`ZEPTO: Error extracting products:`, error);
+    logger.error(`ZEPTO: Error extracting products:`, error);
     await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
     return [];
   }
@@ -546,7 +547,7 @@ export const performZeptoSearch = async (location, query) => {
       await page.close();
     }
   } catch (error) {
-    console.error('ZEPTO: Search error:', error.message);
+    logger.error('ZEPTO: Search error:', error.message);
     throw error;
   }
 };
@@ -556,7 +557,7 @@ export const startTrackingHelper = async (location = "500064") => {
     try {
       // Skip if it's night time (12 AM to 6 AM IST)
       if (isNightTimeIST()) {
-        console.log("Zepto: Skipping price tracking during night hours");
+        logger.info("Zepto: Skipping price tracking during night hours");
         // Wait for 5 minutes before checking night time status again
         await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
         continue;
@@ -568,7 +569,7 @@ export const startTrackingHelper = async (location = "500064") => {
         throw new Error("ZEPTO: Failed to set location for Zepto");
       }
 
-      console.log("Zepto: Starting new tracking cycle at:", new Date().toISOString());
+      logger.info("Zepto: Starting new tracking cycle at:", new Date().toISOString());
 
       // Get all categories and flatten subcategories into a single array
       const categories = await fetchCategories();
@@ -579,7 +580,7 @@ export const startTrackingHelper = async (location = "500064") => {
       // Randomize the order of subcategories before processing
       allSubcategories.sort(() => Math.random() - 0.5);
 
-      console.log(`Zepto: Found ${allSubcategories.length} subcategories to process (randomized order)`);
+      logger.info(`Zepto: Found ${allSubcategories.length} subcategories to process (randomized order)`);
 
       let totalProcessedProducts = 0;
       const CHUNK_SIZE = 2; // Process 2 subcategories at a time
@@ -588,7 +589,7 @@ export const startTrackingHelper = async (location = "500064") => {
       const subcategoryChunks = chunk(allSubcategories, CHUNK_SIZE);
       for (let i = 0; i < subcategoryChunks.length; i++) {
         const subcategoryChunk = subcategoryChunks[i];
-        console.log(`Zepto: Processing chunk ${i + 1} of ${subcategoryChunks.length}`);
+        logger.info(`Zepto: Processing chunk ${i + 1} of ${subcategoryChunks.length}`);
 
         // Create pages for this chunk
         const pages = await Promise.all(
@@ -603,7 +604,7 @@ export const startTrackingHelper = async (location = "500064") => {
           const results = await Promise.all(
             subcategoryChunk.map(async (subcategory, index) => {
               try {
-                console.log(`Zepto: Processing ${subcategory.categoryName} > ${subcategory.subcategoryName}`);
+                logger.info(`Zepto: Processing ${subcategory.categoryName} > ${subcategory.subcategoryName}`);
 
                 // Extract products using the URL directly
                 const products = await extractProducts(pages[index], {
@@ -632,7 +633,7 @@ export const startTrackingHelper = async (location = "500064") => {
 
                 return typeof result === "number" ? result : result.processedCount;
               } catch (error) {
-                console.error(
+                logger.error(
                   `Zepto: Error processing ${subcategory.categoryName} > ${subcategory.subcategoryName}:`,
                   error
                 );
@@ -652,11 +653,11 @@ export const startTrackingHelper = async (location = "500064") => {
         await new Promise((resolve) => setTimeout(resolve, 3000));
       }
 
-      console.log(`Zepto: Completed subcategory-based tracking. Processed ${totalProcessedProducts} products`);
+      logger.info(`Zepto: Completed subcategory-based tracking. Processed ${totalProcessedProducts} products`);
     } catch (error) {
-      console.error("Zepto: Failed to track prices:", error);
+      logger.error("Zepto: Failed to track prices:", error);
     } finally {
-      console.log("Zepto: Tracking cycle completed at:", new Date().toISOString());
+      logger.info("Zepto: Tracking cycle completed at:", new Date().toISOString());
       // Add a delay before starting the next cycle
       await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000)); // 1 minute
     }

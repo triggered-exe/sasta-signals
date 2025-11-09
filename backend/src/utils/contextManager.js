@@ -1,3 +1,4 @@
+import logger from "./logger.js";
 import { firefox } from "playwright";
 import { getCurrentIST } from "./dateUtils.js";
 
@@ -53,7 +54,7 @@ class ContextManager {
   }
 
   async initBrowser() {
-    console.log("[ctx]: Environment", process.env.ENVIRONMENT);
+    logger.info("[ctx]: Environment", process.env.ENVIRONMENT);
     if (!this.browser) {
       const isDevMode = process.env.ENVIRONMENT === "development";
 
@@ -162,11 +163,11 @@ class ContextManager {
         // Check if context is still valid before using it - prevents the "Target closed" error
         try {
           const pages = await contextData.context.pages();
-          console.log(`[ctx]: Using cached context for address: ${address} (${pages.length} pages)`);
+          logger.info(`[ctx]: Using cached context for address: ${address} (${pages.length} pages)`);
           return contextData.context;
         } catch (error) {
           // If context is invalid, clean it up and create a new one
-          console.log(
+          logger.info(
             `[ctx]: Context for address ${address} is invalid, creating new one`
           );
           await this.cleanupAddress(addressKey);
@@ -175,7 +176,7 @@ class ContextManager {
 
       // Memory management: prevent exceeding context limit
       if (this.contextMap.size >= this.MAX_CONTEXTS) {
-        console.log("[ctx]: Context limit reached, attempting cleanup...");
+        logger.info("[ctx]: Context limit reached, attempting cleanup...");
         
         const cleanedCount = await this.cleanupIdleContexts();
         
@@ -194,7 +195,7 @@ class ContextManager {
             `Please wait for operations to complete.`
           );
         } else {
-          console.log(`[ctx]: Successfully cleaned up ${cleanedCount} idle context(s), proceeding with new context creation.`);
+          logger.info(`[ctx]: Successfully cleaned up ${cleanedCount} idle context(s), proceeding with new context creation.`);
         }
       }
 
@@ -332,10 +333,10 @@ class ContextManager {
         originalAddress: address, // Store original address for reference
       });
 
-      console.log(`[ctx]: Created new context for address: ${address} (total contexts: ${this.contextMap.size})`);
+      logger.info(`[ctx]: Created new context for address: ${address} (total contexts: ${this.contextMap.size})`);
       return context;
     } catch (error) {
-      console.error(`[ctx]: Error getting context for address ${address}:`, error);
+      logger.error(`[ctx]: Error getting context for address ${address}:`, error);
       throw error;
     }
   }
@@ -357,7 +358,7 @@ class ContextManager {
       
       this.updateLastUsed(address);
       await contextManager.cleanupIdleContexts();
-      console.log(`[ctx]: Marked ${website} as ${isServiceable ? 'serviceable' : 'not serviceable'} for address: ${address}`);
+      logger.info(`[ctx]: Marked ${website} as ${isServiceable ? 'serviceable' : 'not serviceable'} for address: ${address}`);
     } else {
       // If context doesn't exist, create a minimal entry for serviceability tracking
       this.contextMap.set(addressKey, {
@@ -367,7 +368,7 @@ class ContextManager {
         serviceability: { [website]: isServiceable },
         originalAddress: address,
       });
-      console.log(`[ctx]: Created serviceability entry and marked ${website} as ${isServiceable ? 'serviceable' : 'not serviceable'} for address: ${address}`);
+      logger.info(`[ctx]: Created serviceability entry and marked ${website} as ${isServiceable ? 'serviceable' : 'not serviceable'} for address: ${address}`);
     }
   }
 
@@ -406,13 +407,13 @@ class ContextManager {
         } catch (e) {
           // Ignore errors if context is already closed
         }
-        console.log(`[ctx]: Cleaning up context for ${data.originalAddress || addressKey} (${pagesBefore.length} pages)`);
+        logger.info(`[ctx]: Cleaning up context for ${data.originalAddress || addressKey} (${pagesBefore.length} pages)`);
 
         await data.context.close();
         this.contextMap.delete(addressKey);
-        console.log(`[ctx]: Closed context for address: ${data.originalAddress || addressKey} (remaining contexts: ${this.contextMap.size})`);
+        logger.info(`[ctx]: Closed context for address: ${data.originalAddress || addressKey} (remaining contexts: ${this.contextMap.size})`);
       } catch (error) {
-        console.error(`[ctx]: Error closing context for address ${data.originalAddress || addressKey}:`, error);
+        logger.error(`[ctx]: Error closing context for address ${data.originalAddress || addressKey}:`, error);
       }
     }
   }
@@ -457,23 +458,23 @@ class ContextManager {
         }
       }
 
-      console.log(`[ctx]: Found ${addressesToCleanup.length} contexts to cleanup out of ${beforeCount} total`);
+      logger.info(`[ctx]: Found ${addressesToCleanup.length} contexts to cleanup out of ${beforeCount} total`);
 
       // Cleanup each identified address
       for (const { addressKey, reason } of addressesToCleanup) {
         const data = this.contextMap.get(addressKey);
-        console.log(`[ctx]: Cleaning up context for address: ${data?.originalAddress || addressKey} (reason: ${reason})`);
+        logger.info(`[ctx]: Cleaning up context for address: ${data?.originalAddress || addressKey} (reason: ${reason})`);
         await this.cleanupAddress(addressKey);
       }
 
       const cleanedCount = addressesToCleanup.length;
       if (cleanedCount > 0) {
-        console.log(`[ctx]: Cleanup completed - removed ${cleanedCount} contexts, ${this.contextMap.size} remaining`);
+        logger.info(`[ctx]: Cleanup completed - removed ${cleanedCount} contexts, ${this.contextMap.size} remaining`);
       }
 
       return cleanedCount;
     } catch (error) {
-      console.error("[ctx]: Error during idle contexts cleanup:", error);
+      logger.error("[ctx]: Error during idle contexts cleanup:", error);
       throw error;
     }
   }
@@ -489,10 +490,10 @@ class ContextManager {
       if (this.browser) {
         await this.browser.close();
         this.browser = null;
-        console.log("[ctx]: Browser closed successfully");
+        logger.info("[ctx]: Browser closed successfully");
       }
     } catch (error) {
-      console.error("[ctx]: Error during cleanup:", error);
+      logger.error("[ctx]: Error during cleanup:", error);
       throw error;
     }
   }

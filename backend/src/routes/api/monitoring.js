@@ -1,3 +1,4 @@
+import logger from "../../utils/logger.js";
 import express from "express";
 import os from "os";
 import process from "process";
@@ -28,7 +29,7 @@ const getSystemMetrics = () => {
   };
 
   // Log memory usage for monitoring
-  console.log(`[memory]: RSS=${processMemoryMB.rss}MB, HeapUsed=${processMemoryMB.heapUsed}MB, HeapTotal=${processMemoryMB.heapTotal}MB, External=${processMemoryMB.external}MB, ArrayBuffers=${processMemoryMB.arrayBuffers}MB`);
+  logger.info(`[memory]: RSS=${processMemoryMB.rss}MB, HeapUsed=${processMemoryMB.heapUsed}MB, HeapTotal=${processMemoryMB.heapTotal}MB, External=${processMemoryMB.external}MB, ArrayBuffers=${processMemoryMB.arrayBuffers}MB`);
 
   // Get CPU information
   const cpus = os.cpus();
@@ -169,11 +170,11 @@ router.get("/contexts", async (req, res) => {
     };
 
     // Log context summary for monitoring
-    console.log(`[contexts]: Total=${contextStatus.totalContexts}, Active=${contextStatus.summary.activeContexts}, Invalid=${contextStatus.summary.invalidContexts}, TotalPages=${contextStatus.summary.totalPages}`);
+    logger.info(`[contexts]: Total=${contextStatus.totalContexts}, Active=${contextStatus.summary.activeContexts}, Invalid=${contextStatus.summary.invalidContexts}, TotalPages=${contextStatus.summary.totalPages}`);
 
     res.json(contextStatus);
   } catch (error) {
-    console.error("Error getting context status:", error);
+    logger.error("Error getting context status:", error);
     res.status(500).json({
       error: "Failed to get context status",
       message: error.message,
@@ -236,7 +237,7 @@ router.get("/contexts/summary", async (req, res) => {
 
     res.json(summary);
   } catch (error) {
-    console.error("Error getting context summary:", error);
+    logger.error("Error getting context summary:", error);
     res.status(500).json({
       error: "Failed to get context summary",
       message: error.message,
@@ -305,11 +306,11 @@ router.get("/system", (req, res) => {
     }
 
     // Log memory metrics for monitoring
-    console.log(`[system]: Memory - RSS:${systemMetrics.process.memory.rss}MB, Heap:${systemMetrics.process.memory.heapUsed}MB, External:${systemMetrics.process.memory.external}MB, ArrayBuffers:${systemMetrics.process.memory.arrayBuffers}MB`);
+    logger.info(`[system]: Memory - RSS:${systemMetrics.process.memory.rss}MB, Heap:${systemMetrics.process.memory.heapUsed}MB, External:${systemMetrics.process.memory.external}MB, ArrayBuffers:${systemMetrics.process.memory.arrayBuffers}MB`);
 
     res.json(response);
   } catch (error) {
-    console.error("Error getting system metrics:", error);
+    logger.error("Error getting system metrics:", error);
     res.status(500).json({
       error: "Failed to get system metrics",
       message: error.message,
@@ -326,7 +327,7 @@ router.get("/system", (req, res) => {
 router.post("/contexts/cleanup", async (req, res) => {
   try {
     const memBefore = process.memoryUsage();
-    console.log(`[cleanup]: Starting cleanup - RSS: ${Math.round(memBefore.rss / 1024 / 1024)}MB, External: ${Math.round(memBefore.external / 1024 / 1024)}MB, ArrayBuffers: ${Math.round(memBefore.arrayBuffers / 1024 / 1024)}MB`);
+    logger.info(`[cleanup]: Starting cleanup - RSS: ${Math.round(memBefore.rss / 1024 / 1024)}MB, External: ${Math.round(memBefore.external / 1024 / 1024)}MB, ArrayBuffers: ${Math.round(memBefore.arrayBuffers / 1024 / 1024)}MB`);
 
     const cleanedCount = await contextManager.cleanupIdleContexts();
 
@@ -337,7 +338,7 @@ router.post("/contexts/cleanup", async (req, res) => {
       arrayBuffers: Math.round((memAfter.arrayBuffers - memBefore.arrayBuffers) / 1024 / 1024)
     };
 
-    console.log(`[cleanup]: Completed - cleaned ${cleanedCount} contexts, Memory delta - RSS: ${memDelta.rss}MB, External: ${memDelta.external}MB, ArrayBuffers: ${memDelta.arrayBuffers}MB`);
+    logger.info(`[cleanup]: Completed - cleaned ${cleanedCount} contexts, Memory delta - RSS: ${memDelta.rss}MB, External: ${memDelta.external}MB, ArrayBuffers: ${memDelta.arrayBuffers}MB`);
 
     res.json({
       message: "Cleanup completed",
@@ -348,7 +349,7 @@ router.post("/contexts/cleanup", async (req, res) => {
       timezone: getISTInfo().timezone
     });
   } catch (error) {
-    console.error("Error during cleanup:", error);
+    logger.error("Error during cleanup:", error);
     res.status(500).json({
       error: "Failed to cleanup contexts",
       message: error.message,

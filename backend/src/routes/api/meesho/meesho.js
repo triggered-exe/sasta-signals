@@ -1,3 +1,4 @@
+import logger from "../../../utils/logger.js";
 import express from 'express';
 import axios from 'axios';
 import { AppError } from '../../../utils/errorHandling.js';
@@ -49,7 +50,7 @@ async function fetchMeeshoSearchResults(query, page = 1, limit = 100, cursor = n
     // Step 3b: Extract results and update cursor
     const newResults = response.data?.catalogs || [];
     cursor = response.data?.cursor;
-    console.log("newResults", newResults.length);
+    logger.info("newResults", newResults.length);
     // Step 3c: Append new results to the existing results
     allResults = [...allResults, ...newResults];
 
@@ -89,13 +90,13 @@ router.get('/search', async (req, res, next) => {
     const meeshoData = await fetchMeeshoSearchResults(query, pageNum, limitNum, null);
     
     // Step 4: Log the response data (for debugging)
-    console.log("Meesho Response Data:", meeshoData);
+    logger.info("Meesho Response Data:", meeshoData);
 
     // Step 5: Send the filtered response back to the client
     res.status(200).json(meeshoData);
   } catch (error) {
     // Step 6: Error handling
-    console.error('Error fetching Meesho search data:', error);
+    logger.error('Error fetching Meesho search data:', error);
     if (error instanceof AppError) {
       next(error);
     } else if (error.response) {

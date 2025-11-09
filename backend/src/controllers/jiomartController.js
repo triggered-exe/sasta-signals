@@ -1,5 +1,6 @@
 // Watch the video https://youtu.be/WP-S1QolVvU which is recorded for the future reference
 import axios from 'axios';
+import logger from "../utils/logger.js";
 import { JiomartProduct } from "../models/JiomartProduct.js";
 import contextManager from "../utils/contextManager.js";
 import { AppError } from "../utils/errorHandling.js";
@@ -14,7 +15,7 @@ const setLocation = async (location) => {
 
     // Return existing context if already set up and serviceable
     if (contextManager.getWebsiteServiceabilityStatus(location, "jiomart-grocery")) {
-      console.log(`JIO: Using existing serviceable context for ${location}`);
+      logger.info(`JIO: Using existing serviceable context for ${location}`);
       return context;
     }
 
@@ -22,7 +23,7 @@ const setLocation = async (location) => {
     page = await context.newPage();
 
     // Navigate to JioMart
-    console.log("JIO: Navigating to JioMart...");
+    logger.info("JIO: Navigating to JioMart...");
     await page.goto("https://www.jiomart.com/", {
       waitUntil: "domcontentloaded",
       timeout: 20000, // 20 second timeout
@@ -58,8 +59,8 @@ const setLocation = async (location) => {
 
     // Location is serviceable - mark it as such
     contextManager.markServiceability(location, "jiomart-grocery", true);
-    console.log(`JIO: Successfully set up for location: ${location}`);
-    console.log(`JIO: Closing setup page for ${location}`);
+    logger.info(`JIO: Successfully set up for location: ${location}`);
+    logger.debug(`JIO: Closing setup page for ${location}`);
     await page.close();
     return context;
   } catch (error) {
@@ -68,16 +69,16 @@ const setLocation = async (location) => {
       if (page) await page.close();
     } catch (cleanupError) {
       // Don't let cleanup errors override the original error
-      console.error(`JIO: Error during cleanup for ${location}:`, cleanupError);
+      logger.error(`JIO: Error during cleanup for ${location}:`, cleanupError);
     }
 
-    console.error(`JIO: Error initializing context for ${location}:`, error);
+    logger.error(`JIO: Error initializing context for ${location}:`, error);
     throw error;
   }
 };
 
 const fetchJiomartCategories = async (context) => {
-  console.log("JIO: Fetching categories...");
+  logger.info("JIO: Fetching categories...");
   let page = null;
   try {
     // Open page and scrape using Playwright DOM APIs
@@ -115,11 +116,11 @@ const fetchJiomartCategories = async (context) => {
     }
     return categorized;
   } catch (error) {
-    console.error("JIO: Error fetching categories:", error);
+    logger.error("JIO: Error fetching categories:", error);
     throw error;
   } finally {
     if (page) {
-      console.log("JIO: Closing categories fetch page");
+      logger.debug("JIO: Closing categories fetch page");
       await page.close();
     }
   }
@@ -217,7 +218,7 @@ const extractProductsFromPageLegacy = async (page, url, MAX_SCROLL_ATTEMPTS = 25
       // If no new products were loaded, increment the counter
       if (currentProductCount === previousProductCount && scrollAttempts > 0) {
         noNewProductsAttempts++;
-        console.log(`JIO: No new products loaded (attempt ${noNewProductsAttempts}/${MAX_NO_NEW_PRODUCTS_ATTEMPTS})`);
+        logger.debug(`JIO: No new products loaded (attempt ${noNewProductsAttempts}/${MAX_NO_NEW_PRODUCTS_ATTEMPTS})`);
       } else {
         noNewProductsAttempts = 0; // Reset counter if new products were found
       }
@@ -342,17 +343,17 @@ const extractProductsFromPageLegacy = async (page, url, MAX_SCROLL_ATTEMPTS = 25
             inStock,
           });
         } catch (error) {
-          console.error("JIO: Error extracting product data:", error);
+          logger.error("JIO: Error extracting product data:", error);
         }
       });
 
       return extractedProducts;
     });
 
-    console.log(`JIO: Successfully extracted ${products.length} products from page ${url}`);
+    logger.info(`JIO: Successfully extracted ${products.length} products from page ${url}`);
     return { products };
   } catch (error) {
-    console.error("JIO: Error extracting products from page:", error);
+    logger.error("JIO: Error extracting products from page:", error);
     return { products: [] };
   }
 };
@@ -422,7 +423,7 @@ const trexSearchRequest = async (cookieHeader, body) => {
 
   // Log the actual curl command for debugging
   const curlCommand = `curl -X POST '${url}' -H 'accept: */*' -H 'content-type: application/json' -H 'origin: https://www.jiomart.com' -H 'referer: https://www.jiomart.com/' -H 'cookie: ${cookieHeader.replace(/'/g, "\\'")}' -d '${JSON.stringify(body).replace(/'/g, "\\'")}'`;
-  // console.log('JIO: Actual curl command:', curlCommand);
+  // logger.debug('JIO: Actual curl command:', curlCommand);
 
   try {
     const response = await axios.post(url, body, {
@@ -495,7 +496,7 @@ const fetchTrexProducts = async (page, categoryId, categoryName, maxPages = 10, 
     try {
       json = await trexSearchRequest(cookieHeader, body);
     } catch (err) {
-      console.error('JIO: trex/search request failed:', err.message);
+      logger.error('JIO: trex/search request failed:', err.message);
       break;
     }
 
@@ -595,13 +596,13 @@ const fetchTrexProducts = async (page, categoryId, categoryName, maxPages = 10, 
                 inStock: true,
               });
             } catch (innerErr) {
-              console.error('JIO: Error mapping variant from trex product shape:', innerErr.message);
+              logger.error('JIO: Error mapping variant from trex product shape:', innerErr.message);
             }
           }
           continue; // processed variants, skip to next candidate
         }
       } catch (err) {
-        console.error('JIO: Error mapping product from trex response:', err.message);
+        logger.error('JIO: Error mapping product from trex response:', err.message);
       }
     }
 
@@ -626,7 +627,7 @@ const fetchTrexProducts = async (page, categoryId, categoryName, maxPages = 10, 
     }
   });
 
-  console.log(`JIO: trex fetched ${uniqueProducts.length} products for category ${categoryName} in ${Math.min(pageCount, maxPages)} pages`);
+  logger.info(`JIO: trex fetched ${uniqueProducts.length} products for category ${categoryName} in ${Math.min(pageCount, maxPages)} pages`);
   return { products: uniqueProducts };
 };
 
@@ -642,17 +643,17 @@ const extractProductsFromPage = async (page, url, MAX_LOAD_MORE_ATTEMPTS = 15) =
     const { categoryId, categoryName } = extractCategoryIdAndNameFromUrl(url);
     if (categoryId) {
       try {
-        console.log(`JIO: Using trex/search for category ${categoryId} (url: ${url})`);
+        logger.info(`JIO: Using trex/search for category ${categoryId} (url: ${url})`);
         return await fetchTrexProducts(page, categoryId, categoryName, 10, 50);
       } catch (err) {
-        console.error('JIO: trex/search failed, falling back to DOM method:', err.message);
+        logger.warn('JIO: trex/search failed, falling back to DOM method:', err.message);
       }
     }
 
     // Fallback: use legacy DOM based extraction
     return await extractProductsFromPageLegacy(page, url, MAX_LOAD_MORE_ATTEMPTS);
   } catch (error) {
-    console.error('JIO: Error extracting products from page:', error);
+    logger.error('JIO: Error extracting products from page:', error);
     return { products: [] };
   }
 };
@@ -667,14 +668,14 @@ export const startTrackingHandler = async (location) => {
     try {
       // Skip if it's night time (12 AM to 6 AM IST)
       if (isNightTimeIST()) {
-        console.log("JIO: Skipping price tracking during night hours");
+        logger.info("JIO: Skipping price tracking during night hours");
         // Wait for 5 minutes before checking night time status again
         await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
         continue;
       }
 
       const startTime = new Date();
-      console.log("JIO: Starting product search at:", startTime.toLocaleString());
+      logger.info("JIO: Starting product search at:", startTime.toLocaleString());
 
       // Setup the context for the location
       const context = await setLocation(location);
@@ -684,7 +685,7 @@ export const startTrackingHandler = async (location) => {
       let filteredCategories = await filterCategories(categories);
       // Check if the location is serviceable
       if (!contextManager.getWebsiteServiceabilityStatus(location, "jiomart-grocery")) {
-        console.log(`JIO: Location ${location} is not serviceable, stopping crawler`);
+        logger.warn(`JIO: Location ${location} is not serviceable, stopping crawler`);
         break;
       }
       // lets shuffle the filteredCategories
@@ -695,7 +696,7 @@ export const startTrackingHandler = async (location) => {
 
       for (let i = 0; i < filteredCategories.length; i += PARALLEL_SEARCHES) {
         const currentBatch = filteredCategories.slice(i, i + PARALLEL_SEARCHES);
-        console.log(
+        logger.debug(
           `JIO: Processing categories ${i + 1} to ${i + currentBatch.length} of ${filteredCategories.length}`
         );
 
@@ -726,27 +727,27 @@ export const startTrackingHandler = async (location) => {
                   emailNotification: false,
                 });
 
-                console.log(`JIO: Processed ${processedCount} products for ${category.name} (${category.subCategory})`);
+                logger.info(`JIO: Processed ${processedCount} products for ${category.name} (${category.subCategory})`);
               } else {
-                console.log(`JIO: No products found for ${category.name}`);
+                logger.debug(`JIO: No products found for ${category.name}`);
               }
             } catch (error) {
-              console.error(`JIO: Error processing category ${category.name}:`, error);
+              logger.error(`JIO: Error processing category ${category.name}:`, error);
             } finally {
               if (page) {
-                console.log(`JIO: Closing product extraction page for ${category.name}`);
+                logger.debug(`JIO: Closing product extraction page for ${category.name}`);
                 await page.close();
               }
               // Small delay between requests to be polite
               await new Promise((resolve) => setTimeout(resolve, 2000));
             }
           } catch (error) {
-            console.error(`JIO: Error processing category ${category.name}:`, error);
+            logger.error(`JIO: Error processing category ${category.name}:`, error);
           }
         });
 
         await Promise.all(batchPromises);
-        console.log(
+        logger.info(
           `JIO: Categories Processed: ${i + currentBatch.length} of ${filteredCategories.length} and Time taken: ${(
             (new Date().getTime() - startTime.getTime()) /
             60000
@@ -754,13 +755,13 @@ export const startTrackingHandler = async (location) => {
         );
       }
 
-      console.log(
+      logger.info(
         `JIO: Tracking completed in: ${((new Date().getTime() - startTime.getTime()) / 60000).toFixed(2)} minutes`
       );
     } catch (error) {
       // Wait for 1 minutes
       await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
-      console.error("JIO: Error in crawler:", error);
+      logger.error("JIO: Error in crawler:", error);
     }
   }
 };
@@ -775,7 +776,7 @@ export const searchProducts = async (req, res, next) => {
       throw AppError.badRequest("Query and location are required");
     }
 
-    console.log(`JIO: Starting search for "${query}" in location ${location}`);
+    logger.info(`JIO: Starting search for "${query}" in location ${location}`);
 
     // Get or create context for the location
     const context = await setLocation(location);
@@ -790,12 +791,12 @@ export const searchProducts = async (req, res, next) => {
 
     // Navigate to search page
     const searchUrl = `https://www.jiomart.com/search?q=${encodeURIComponent(query)}`;
-    console.log(`JIO: Navigating to search URL: ${searchUrl}`);
+    logger.debug(`JIO: Navigating to search URL: ${searchUrl}`);
 
     // Extract products from the page using existing function
     const { products } = await extractProductsFromPage(page, searchUrl, 5);
 
-    console.log(`JIO: Found ${products.length} products for query "${query}"`);
+    logger.info(`JIO: Found ${products.length} products for query "${query}"`);
 
     res.status(200).json({
       success: true,
@@ -805,13 +806,13 @@ export const searchProducts = async (req, res, next) => {
       location: location,
     });
   } catch (error) {
-    console.error("JIO: Search error:", error);
+    logger.error("JIO: Search error:", error);
     next(
       error instanceof AppError ? error : AppError.internalError(`Failed to search JioMart products: ${error.message}`)
     );
   } finally {
     if (page) {
-      console.log("JIO: Closing search page");
+      logger.debug("JIO: Closing search page");
       await page.close();
     }
   }
@@ -825,7 +826,7 @@ export const startTracking = async (req, res, next) => {
     }
     // Start the search process in the background
     startTrackingHandler(location).catch((error) => {
-      console.error("JIO: Error in search handler:", error);
+      logger.error("JIO: Error in search handler:", error);
     });
 
     res.status(200).json({

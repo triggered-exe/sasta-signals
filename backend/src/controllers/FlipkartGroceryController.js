@@ -1,3 +1,4 @@
+import logger from "../utils/logger.js";
 import { AppError } from "../utils/errorHandling.js";
 import { FlipkartGroceryProduct } from "../models/FlipkartGroceryProduct.js";
 import { isNightTimeIST } from "../utils/priceTracking.js";
@@ -14,7 +15,7 @@ const setLocation = async (pincode) => {
 
     // Return existing context if already set up and serviceable
     if (contextManager.getWebsiteServiceabilityStatus(pincode, "flipkart-grocery")) {
-      console.log(`FK: Using existing serviceable context for ${pincode}`);
+      logger.info(`FK: Using existing serviceable context for ${pincode}`);
       return context;
     }
 
@@ -22,7 +23,7 @@ const setLocation = async (pincode) => {
     page = await context.newPage();
 
     // Navigate to Flipkart
-    console.log("FK: Navigating to Flipkart...");
+    logger.info("FK: Navigating to Flipkart...");
     await page.goto("https://www.flipkart.com/grocery-supermart-store?marketplace=GROCERY", {
       waitUntil: "domcontentloaded",
       timeout: 30000, // 30 second timeout
@@ -31,7 +32,7 @@ const setLocation = async (pincode) => {
     await page.waitForTimeout(4000); // Increased timeout
 
     // Set location
-    console.log(`FK: Setting location for ${pincode}...`);
+    logger.info(`FK: Setting location for ${pincode}...`);
 
     // Focus into the input field
     await page.focus('input[placeholder*="Enter Pincode Here"]');
@@ -53,7 +54,7 @@ const setLocation = async (pincode) => {
 
     // Location is serviceable - mark it as such
     contextManager.markServiceability(pincode, "flipkart-grocery", true);
-    console.log(`FK: Successfully set up for location: ${pincode}`);
+    logger.info(`FK: Successfully set up for location: ${pincode}`);
     await page.close();
     return context;
   } catch (error) {
@@ -64,10 +65,10 @@ const setLocation = async (pincode) => {
       contextManager.markServiceability(pincode, "flipkart-grocery", false);
     } catch (cleanupError) {
       // Don't let cleanup errors override the original error
-      console.error(`FK: Error during cleanup for ${pincode}:`, cleanupError);
+      logger.error(`FK: Error during cleanup for ${pincode}:`, cleanupError);
     }
 
-    console.error(`FK: Error initializing context for ${pincode}:`, error);
+    logger.error(`FK: Error initializing context for ${pincode}:`, error);
     throw error;
   }
 };
@@ -99,7 +100,7 @@ const extractProductsFromPage = async (page, url, query) => {
     });
 
     if (noResultsFound) {
-      console.log(`FK: No results found for "${query}" on current page`);
+      logger.info(`FK: No results found for "${query}" on current page`);
       return { products: [], nextPageUrl: null };
     }
 
@@ -110,7 +111,7 @@ const extractProductsFromPage = async (page, url, query) => {
         state: "attached",
       });
     } catch (error) {
-      console.log(`FK: No products found for "${query}" on current page`);
+      logger.info(`FK: No products found for "${query}" on current page`);
       return { products: [], nextPageUrl: null };
     }
 
@@ -146,7 +147,7 @@ const extractProductsFromPage = async (page, url, query) => {
               outOfStockMessage: outOfStockElement ? outOfStockElement.textContent.trim() : null,
             };
           } catch (err) {
-            console.error("FK: Error processing product:", err);
+            logger.error("FK: Error processing product:", err);
             return null;
           }
         })
@@ -162,7 +163,7 @@ const extractProductsFromPage = async (page, url, query) => {
         );
         return nextButton ? nextButton.getAttribute("href") : null;
       } catch (err) {
-        console.error("FK: Error finding next page:", err);
+        logger.error("FK: Error finding next page:", err);
         return null;
       }
     });
@@ -172,7 +173,7 @@ const extractProductsFromPage = async (page, url, query) => {
       nextPageUrl: nextPageUrl ? "https://www.flipkart.com" + nextPageUrl : null,
     };
   } catch (error) {
-    console.error(`FK: Error extracting products from page:`, error);
+    logger.error(`FK: Error extracting products from page:`, error);
     return { products: [], nextPageUrl: null };
   }
 };
@@ -183,7 +184,7 @@ export const startTracking = async (_, res, next) => {
   try {
     // Start the search process in the background
     startTrackingHandler().catch((error) => {
-      console.error("FK: Error in search handler:", error);
+      logger.error("FK: Error in search handler:", error);
     });
 
     res.status(200).json({
@@ -207,18 +208,18 @@ export const startTrackingHandler = async (pincode = "500064") => {
     try {
       // Skip if it's night time (12 AM to 6 AM IST)
       if (isNightTimeIST()) {
-        console.log("FK : Skipping price tracking during night hours");
+        logger.info("FK : Skipping price tracking during night hours");
         // Wait for 5 minutes before checking night time status again
         await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
         continue;
       }
 
       const startTime = new Date();
-      console.log("FK: Starting product search at:", startTime.toLocaleString());
+      logger.info("FK: Starting product search at:", startTime.toLocaleString());
 
       // Get all categories from Flipkart
       const categories = await extractCategories(pincode);
-      console.log(`FK: Found ${categories.length} categories to process`);
+      logger.info(`FK: Found ${categories.length} categories to process`);
 
       const PARALLEL_CATEGORIES = 2;
       let totalProcessedProducts = 0;
@@ -228,14 +229,14 @@ export const startTrackingHandler = async (pincode = "500064") => {
 
       // Check if the location is serviceable
       if (!contextManager.getWebsiteServiceabilityStatus(pincode, "flipkart-grocery")) {
-        console.log(`FK: Location ${pincode} is not serviceable, stopping tracking`);
+        logger.info(`FK: Location ${pincode} is not serviceable, stopping tracking`);
         break;
       }
 
       // Process categories in parallel batches
       for (let i = 0; i < categories.length; i += PARALLEL_CATEGORIES) {
         const currentBatch = categories.slice(i, i + PARALLEL_CATEGORIES);
-        console.log(`FK: Processing categories ${i + 1} to ${i + currentBatch.length} of ${categories.length}`);
+        logger.info(`FK: Processing categories ${i + 1} to ${i + currentBatch.length} of ${categories.length}`);
 
         const batchStartTime = new Date();
         const batchPromises = currentBatch.map(async (category) => {
@@ -252,7 +253,7 @@ export const startTrackingHandler = async (pincode = "500064") => {
               let pageNum = 1;
 
               while (hasNextPage) {
-                console.log(`FK: Processing page ${pageNum} of ${category.category} > ${category.subcategory}...`);
+                logger.info(`FK: Processing page ${pageNum} of ${category.category} > ${category.subcategory}...`);
 
                 // Extract products using the function
                 const { products: pageProducts, nextPageUrl } = await extractProductsFromPage(page, currentUrl, `${category.category} ${category.subcategory}`);
@@ -279,7 +280,7 @@ export const startTrackingHandler = async (pincode = "500064") => {
                   )
               );
 
-              console.log(`FK: Found ${uniqueCategoryProducts.length} unique products for "${category.category} > ${category.subcategory}"`);
+              logger.info(`FK: Found ${uniqueCategoryProducts.length} unique products for "${category.category} > ${category.subcategory}"`);
 
               // Add category information to products
               const productsWithCategory = uniqueCategoryProducts.map(product => ({
@@ -291,14 +292,14 @@ export const startTrackingHandler = async (pincode = "500064") => {
               // Process and save products for this category
               const processedProducts = await processProducts(productsWithCategory);
               const categoryTime = ((new Date().getTime() - categoryStartTime.getTime()) / 1000).toFixed(2);
-              console.log(`FK: Processed and saved ${processedProducts} products for "${category.category} > ${category.subcategory}" in ${categoryTime} seconds`);
+              logger.info(`FK: Processed and saved ${processedProducts} products for "${category.category} > ${category.subcategory}" in ${categoryTime} seconds`);
               totalProcessedProducts += processedProducts;
               return processedProducts;
             } finally {
               if (page) await page.close();
             }
           } catch (error) {
-            console.error(`FK: Error processing category "${category.category} > ${category.subcategory}":`, error);
+            logger.error(`FK: Error processing category "${category.category} > ${category.subcategory}":`, error);
             return 0;
           }
         });
@@ -307,18 +308,18 @@ export const startTrackingHandler = async (pincode = "500064") => {
         await Promise.all(batchPromises);
 
         const batchTime = ((new Date().getTime() - batchStartTime.getTime()) / 60000).toFixed(2);
-        console.log(`FK: Categories Processed: ${i + currentBatch.length} of ${categories.length} and Time taken: ${batchTime} minutes`);
+        logger.info(`FK: Categories Processed: ${i + currentBatch.length} of ${categories.length} and Time taken: ${batchTime} minutes`);
 
         if (i + PARALLEL_CATEGORIES < categories.length) {
-          console.log("FK: Waiting between batches...");
+          logger.info("FK: Waiting between batches...");
           await new Promise((resolve) => setTimeout(resolve, 3000));
         }
       }
 
       const endTime = new Date();
       const totalDuration = (endTime - startTime) / 1000 / 60; // in minutes
-      console.log(`FK: Total processed products: ${totalProcessedProducts}`);
-      console.log(
+      logger.info(`FK: Total processed products: ${totalProcessedProducts}`);
+      logger.info(
         `FK: Total time taken: ${totalDuration.toFixed(2)} minutes`
       );
       // Wait for 1 minutes
@@ -326,7 +327,7 @@ export const startTrackingHandler = async (pincode = "500064") => {
     } catch (error) {
       // Wait for 2 minutes
       await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
-      console.error("FK: Error in tracking cycle:", error);
+      logger.error("FK: Error in tracking cycle:", error);
     }
   }
 };
@@ -346,7 +347,7 @@ const extractCategories = async (pincode = "500064") => {
     page = await context.newPage();
 
     // Navigate to the main grocery page
-    console.log("FK: Navigating to main grocery page...");
+    logger.info("FK: Navigating to main grocery page...");
     await page.goto("https://www.flipkart.com/grocery-supermart-store?marketplace=GROCERY", {
       waitUntil: "domcontentloaded",
       timeout: 30000,
@@ -380,7 +381,7 @@ const extractCategories = async (pincode = "500064") => {
     // Get the href from the category link
     const categoryHref = await categoryLinkToClick.getAttribute("href");
     const currentUrl = categoryHref.startsWith("http") ? categoryHref : "https://www.flipkart.com" + categoryHref;
-    console.log("FK: Navigated to:", currentUrl);
+    logger.info("FK: Navigated to:", currentUrl);
 
     // Navigate to view-source to get raw HTML
     const viewSourceUrl = "view-source:" + currentUrl;
@@ -431,11 +432,11 @@ const extractCategories = async (pincode = "500064") => {
       return Array.from(categorySet).map(item => JSON.parse(item));
     });
 
-    console.log(`FK: Extracted ${categories.length} categories from view-source`);
+    logger.info(`FK: Extracted ${categories.length} categories from view-source`);
     return categories;
 
   } catch (error) {
-    console.error("FK: Error extracting categories:", error);
+    logger.error("FK: Error extracting categories:", error);
     throw error;
   } finally {
     if (page) {
@@ -467,13 +468,13 @@ export const performFlipkartSearch = async (location, query) => {
 
       // Search across multiple pages (limit to 3 pages for performance)
       while (hasNextPage && pageNum <= 3) {
-        console.log(`FLIPKART: Processing page ${pageNum} for "${query}"`);
+        logger.info(`FLIPKART: Processing page ${pageNum} for "${query}"`);
 
         // Extract products from current page
         const { products: pageProducts, nextPageUrl } = await extractProductsFromPage(page, currentUrl, query);
 
         allProducts = [...allProducts, ...pageProducts];
-        console.log(`FLIPKART: Found ${pageProducts.length} products on page ${pageNum}`);
+        logger.info(`FLIPKART: Found ${pageProducts.length} products on page ${pageNum}`);
 
         if (nextPageUrl) {
           currentUrl = nextPageUrl;
@@ -495,7 +496,7 @@ export const performFlipkartSearch = async (location, query) => {
           )
       );
 
-      console.log(`FLIPKART: Found ${uniqueProducts.length} unique products`);
+      logger.info(`FLIPKART: Found ${uniqueProducts.length} unique products`);
 
       return {
         success: true,
@@ -506,7 +507,7 @@ export const performFlipkartSearch = async (location, query) => {
       await page.close();
     }
   } catch (error) {
-    console.error('FLIPKART: Search error:', error.message);
+    logger.error('FLIPKART: Search error:', error.message);
     throw error;
   }
 };
@@ -560,7 +561,7 @@ const processProducts = async (products) => {
 
     return result;
   } catch (error) {
-    console.error("FK: Error processing crawler products:", error);
+    logger.error("FK: Error processing crawler products:", error);
     throw error;
   }
 };

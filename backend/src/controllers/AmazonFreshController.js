@@ -1,3 +1,4 @@
+import logger from "../utils/logger.js";
 import { AppError } from "../utils/errorHandling.js";
 import { AmazonFreshProduct } from "../models/AmazonFreshProduct.js";
 import { isNightTimeIST, chunk } from "../utils/priceTracking.js";
@@ -19,7 +20,7 @@ const setLocation = async (pincode) => {
         if (
             contextManager.getWebsiteServiceabilityStatus(pincode, "amazonFresh")
         ) {
-            console.log(`AF: Using existing serviceable context for ${pincode}`);
+            logger.info(`AF: Using existing serviceable context for ${pincode}`);
             return context;
         }
 
@@ -65,13 +66,13 @@ const setLocation = async (pincode) => {
         }
 
         contextManager.markServiceability(pincode, "amazonFresh", true);
-        console.log(`AF: Successfully set up for pincode: ${pincode}`);
+        logger.info(`AF: Successfully set up for pincode: ${pincode}`);
         await page.close();
         return context;
     } catch (error) {
         if (page) await page.close();
         contextManager.markServiceability(pincode, "amazonFresh", false);
-        console.error(`AF: Error setting pincode ${pincode}:`, error);
+        logger.error(`AF: Error setting pincode ${pincode}:`, error);
         throw error;
     }
 };
@@ -80,7 +81,7 @@ const setLocation = async (pincode) => {
 const extractProductsFromPage = async (page) => {
     return await page.evaluate(() => {
         const results = document.querySelectorAll('div[role="listitem"]');
-        console.log("AF: Found results:", results.length);
+        logger.info("AF: Found results:", results.length);
 
         return Array.from(results)
             .map((el) => {
@@ -123,13 +124,13 @@ const extractProductsFromPage = async (page) => {
 
                     // Validate the data
                     if (isNaN(data.price) || data.price <= 0) {
-                        console.log("AF: Invalid price for product:", data.productName);
+                        logger.info("AF: Invalid price for product:", data.productName);
                         return null;
                     }
 
                     return data;
                 } catch (err) {
-                    console.error("AF: Error extracting product:", err);
+                    logger.error("AF: Error extracting product:", err);
                     return null;
                 }
             })
@@ -170,7 +171,7 @@ export const searchQuery = async (req, res, next) => {
         // Sort by price
         allProducts.sort((a, b) => a.price - b.price);
 
-        // console.log(`AF: Found total ${allProducts.length} products for query "${query}"`);
+        // logger.info(`AF: Found total ${allProducts.length} products for query "${query}"`);
 
         res.status(200).json({
             success: true,
@@ -180,7 +181,7 @@ export const searchQuery = async (req, res, next) => {
             processedPages: Math.ceil(allProducts.length / allProducts.length),
         });
     } catch (error) {
-        console.error("AF: Amazon Fresh error:", error);
+        logger.error("AF: Amazon Fresh error:", error);
         next(error);
     } finally {
         if (page) await page.close();
@@ -190,7 +191,7 @@ export const searchQuery = async (req, res, next) => {
 // Function to search and extract products for a query
 const searchAndExtractProducts = async (page, query, maxPages = 10) => {
     try {
-        console.log(`AF: Searching for "${query}"`);
+        logger.info(`AF: Searching for "${query}"`);
 
         // Navigate to search  page
         const searchUrl = `https://www.amazon.in/s?k=${encodeURIComponent(query)}&i=nowstore`;
@@ -209,7 +210,7 @@ const searchAndExtractProducts = async (page, query, maxPages = 10) => {
             const products = await extractProductsFromPage(page);
 
             allProducts = allProducts.concat(products);
-            // console.log(`AF: Found ${products.length} products on page ${currentPage} for ${query}`);
+            // logger.info(`AF: Found ${products.length} products on page ${currentPage} for ${query}`);
 
             // Check for next page
             const nextPageUrl = await getNextPageUrl(page);
@@ -222,10 +223,10 @@ const searchAndExtractProducts = async (page, query, maxPages = 10) => {
             }
         }
         const uniqueProducts = Array.from(new Map(allProducts.map((item) => [item.productId, item])).values());
-        console.log(`AF: Found ${uniqueProducts.length} unique products out of ${allProducts.length} for ${query}`);
+        logger.info(`AF: Found ${uniqueProducts.length} unique products out of ${allProducts.length} for ${query}`);
         return uniqueProducts;
     } catch (error) {
-        console.error(`AF: Error searching for "${query}":`, error);
+        logger.error(`AF: Error searching for "${query}":`, error);
         return [];
     }
 };
@@ -244,7 +245,7 @@ export const startTracking = async (_, res, next) => {
 export const startTrackingHandler = async (pincode = "500064") => {
     // Prevent multiple tracking instances
     if (isTrackingActive) {
-        console.log("AF: Tracking is already active");
+        logger.info("AF: Tracking is already active");
         return;
     }
 
@@ -252,7 +253,7 @@ export const startTrackingHandler = async (pincode = "500064") => {
     while (true) {
         // Skip if it's night time (12 AM to 6 AM IST)
         if (isNightTimeIST()) {
-            console.log("AF: Skipping price tracking during night hours");
+            logger.info("AF: Skipping price tracking during night hours");
             // Wait for 5 minutes before checking night time status again
             await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
             continue;
@@ -260,7 +261,7 @@ export const startTrackingHandler = async (pincode = "500064") => {
 
         try {
             const startTime = new Date();
-            console.log("AF: Starting product search at:", startTime.toLocaleString());
+            logger.info("AF: Starting product search at:", startTime.toLocaleString());
 
             // Get all queries from productQueries
             const queries = [];
@@ -272,7 +273,7 @@ export const startTrackingHandler = async (pincode = "500064") => {
                 });
             });
 
-            console.log(`AF: Found ${queries.length} unique search queries`);
+            logger.info(`AF: Found ${queries.length} unique search queries`);
 
             const CONCURRENT_SEARCHES = 2;
             let totalProcessedProducts = 0;
@@ -287,7 +288,7 @@ export const startTrackingHandler = async (pincode = "500064") => {
                     // Run searches in parallel
                     const results = await Promise.all(
                         taskChunk.map(async (query, index) => {
-                            console.log(`AF: Processing ${query}`);
+                            logger.info(`AF: Processing ${query}`);
                             try {
                                 const products = await searchAndExtractProducts(pages[index], query, 10);
                                 const result = await globalProcessProducts(products, query, {
@@ -299,7 +300,7 @@ export const startTrackingHandler = async (pincode = "500064") => {
                                 const processedCount = typeof result === "number" ? result : result.processedCount;
                                 return processedCount;
                             } catch (error) {
-                                console.error(`AF: Error processing ${query}:`, error);
+                                logger.error(`AF: Error processing ${query}:`, error);
                                 return 0;
                             }
                         })
@@ -316,7 +317,7 @@ export const startTrackingHandler = async (pincode = "500064") => {
             }
 
             const totalDuration = (Date.now() - startTime) / 1000 / 60; // in minutes
-            console.log(
+            logger.info(
                 `AF: Completed crawling. Processed ${totalProcessedProducts} products in ${totalDuration.toFixed(
                     2
                 )} minutes`
@@ -325,7 +326,7 @@ export const startTrackingHandler = async (pincode = "500064") => {
             // Wait for 5 minutes before next iteration
             await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
         } catch (error) {
-            console.error("AF: Error in tracking handler:", error);
+            logger.error("AF: Error in tracking handler:", error);
             // Wait for 5 minutes before retrying
             await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
         }
@@ -340,7 +341,7 @@ const extractAmazonCookies = async (pincode) => {
         if (contextManager.contextMap.has(addressKey)) {
             const contextData = contextManager.contextMap.get(addressKey);
             if (contextData.amazonFreshData) {
-                console.log(`AF-API: Using existing Amazon Fresh cookies for ${pincode}`);
+                logger.info(`AF-API: Using existing Amazon Fresh cookies for ${pincode}`);
                 // Return a copy to avoid reference issues
                 return { ...contextData.amazonFreshData };
             }
@@ -377,10 +378,10 @@ const extractAmazonCookies = async (pincode) => {
             contextManager.contextMap.get(addressKey).amazonFreshData = amazonFreshData;
         }
 
-        console.log(`AF-API: Successfully extracted and stored cookies for pincode: ${pincode}`);
+        logger.info(`AF-API: Successfully extracted and stored cookies for pincode: ${pincode}`);
         return amazonFreshData;
     } catch (error) {
-        console.error(`AF-API: Error extracting cookies for pincode ${pincode}:`, error);
+        logger.error(`AF-API: Error extracting cookies for pincode ${pincode}:`, error);
         throw error;
     }
 };
@@ -437,7 +438,7 @@ const extractProductsAndPaginationFromHTML = (html) => {
                 products.push(product);
             }
         } catch (err) {
-            console.error("AF-API: Error extracting product:", err);
+            logger.error("AF-API: Error extracting product:", err);
         }
     });
 
@@ -480,12 +481,12 @@ const searchWithCookies = async (amazonFreshData, query, maxPages = 3) => {
 
                 });
             } catch (axiosError) {
-                console.error(`AF-API: Axios error for page ${currentPage}:`, axiosError.message);
+                logger.error(`AF-API: Axios error for page ${currentPage}:`, axiosError.message);
                 break;
             }
 
             if (response.status !== 200) {
-                console.error(`AF-API: HTTP ${response.status} for page ${currentPage}`);
+                logger.error(`AF-API: HTTP ${response.status} for page ${currentPage}`);
                 break;
             }
 
@@ -493,15 +494,15 @@ const searchWithCookies = async (amazonFreshData, query, maxPages = 3) => {
             const { products, hasNextPage } = extractProductsAndPaginationFromHTML(response.data);
 
             if (products.length === 0) {
-                console.log(`AF-API: No products found on page ${currentPage}, stopping`);
+                logger.info(`AF-API: No products found on page ${currentPage}, stopping`);
                 break;
             }
 
             allProducts.push(...products); // Use spread instead of concat to avoid array recreation
-            console.log(`AF-API: Found ${products.length} products on page ${currentPage}`);
+            logger.info(`AF-API: Found ${products.length} products on page ${currentPage}`);
 
             if (!hasNextPage || currentPage >= maxPages) {
-                console.log(`AF-API: ${!hasNextPage ? 'No next page found' : 'Max pages reached'}, stopping at page ${currentPage}`);
+                logger.info(`AF-API: ${!hasNextPage ? 'No next page found' : 'Max pages reached'}, stopping at page ${currentPage}`);
                 break;
             }
 
@@ -513,11 +514,11 @@ const searchWithCookies = async (amazonFreshData, query, maxPages = 3) => {
 
         // Remove duplicates based on productId
         const uniqueProducts = Array.from(new Map(allProducts.map(item => [item.productId, item])).values());
-        console.log(`AF-API: Found ${uniqueProducts.length} unique products out of ${allProducts.length} for "${query}"`);
+        logger.info(`AF-API: Found ${uniqueProducts.length} unique products out of ${allProducts.length} for "${query}"`);
 
         return uniqueProducts;
     } catch (error) {
-        console.error(`AF-API: Error searching for "${query}":`, error.message);
+        logger.error(`AF-API: Error searching for "${query}":`, error.message);
         throw error;
     }
 };
@@ -557,14 +558,14 @@ export const searchQueryWithCookies = async (req, res, next) => {
             processedPages: Math.ceil(products.length / products.length),
         });
     } catch (error) {
-        console.error("AF-API: Amazon Fresh cookie-based search error:", error);
+        logger.error("AF-API: Amazon Fresh cookie-based search error:", error);
 
         // Fallback to browser-based search if API fails
-        console.log("AF-API: Falling back to browser-based search...");
+        logger.info("AF-API: Falling back to browser-based search...");
         try {
             return await searchQuery(req, res, next);
         } catch (fallbackError) {
-            console.error("AF-API: Fallback also failed:", fallbackError);
+            logger.error("AF-API: Fallback also failed:", fallbackError);
             next(error);
         }
     }
@@ -633,7 +634,7 @@ export const extractCategories = async (req, res, next) => {
                         });
                     }
                 } catch (error) {
-                    console.error('Error extracting category:', error);
+                    logger.error('Error extracting category:', error);
                 }
             });
 
@@ -645,7 +646,7 @@ export const extractCategories = async (req, res, next) => {
             return uniqueCategories;
         });
 
-        console.log(`AF: Found ${categories.length} categories for pincode ${pincode}`);
+        logger.info(`AF: Found ${categories.length} categories for pincode ${pincode}`);
 
         res.status(200).json({
             success: true,
@@ -655,7 +656,7 @@ export const extractCategories = async (req, res, next) => {
         });
 
     } catch (error) {
-        console.error("AF: Error extracting categories:", error);
+        logger.error("AF: Error extracting categories:", error);
         next(error);
     } finally {
         if (page) await page.close();
@@ -664,17 +665,17 @@ export const extractCategories = async (req, res, next) => {
 
 // New tracking handler using cookies
 export const startAmazonTrackingWithoutBrowswer = async (pincode = "500064") => {
-    console.log("AF-API: Starting cookie-based tracking");
+    logger.info("AF-API: Starting cookie-based tracking");
 
     // Prevent multiple tracking instances
     if (isTrackingActive) {
-        console.log("AF-API: Tracking is already active");
+        logger.info("AF-API: Tracking is already active");
         return "Amazon Fresh cookie-based tracking already running";
     }
 
     // Start the continuous tracking loop
     trackPricesWithoutBrowser(pincode).catch(error => {
-        console.error('AF-API: Failed in cookie-based tracking loop:', error);
+        logger.error('AF-API: Failed in cookie-based tracking loop:', error);
     });
 
     return "Amazon Fresh cookie-based price tracking started";
@@ -687,14 +688,14 @@ const trackPricesWithoutBrowser = async (pincode = "500064") => {
     while (true) {
         // Skip if it's night time (12 AM to 6 AM IST)
         if (isNightTimeIST()) {
-            console.log("AF-API: Skipping price tracking during night hours");
+            logger.info("AF-API: Skipping price tracking during night hours");
             await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
             continue;
         }
 
         try {
             const startTime = new Date();
-            console.log("AF-API: Starting cookie-based product search at:", startTime.toLocaleString());
+            logger.info("AF-API: Starting cookie-based product search at:", startTime.toLocaleString());
 
             // First ensure location is set up using existing setLocation function
             await setLocation(pincode);
@@ -712,7 +713,7 @@ const trackPricesWithoutBrowser = async (pincode = "500064") => {
                 });
             });
 
-            console.log(`AF-API: Found ${queries.length} unique search queries`);
+            logger.info(`AF-API: Found ${queries.length} unique search queries`);
 
             const CONCURRENT_SEARCHES = 1; // for 2 CONCURRENT_SEARCHES, takes around 8 minutes per cycle
 
@@ -724,7 +725,7 @@ const trackPricesWithoutBrowser = async (pincode = "500064") => {
                     const taskChunk = taskChunks[i];
                     // Run searches sequentially to avoid rate limiting
                     for (const query of taskChunk) {
-                        console.log(`AF-API: Processing ${query}, chunk ${i + 1} of ${taskChunks.length}`);
+                        logger.info(`AF-API: Processing ${query}, chunk ${i + 1} of ${taskChunks.length}`);
                         try {
                             const products = await searchWithCookies(amazonFreshData, query, 10);
                             const result = await globalProcessProducts(products, query, {
@@ -734,14 +735,14 @@ const trackPricesWithoutBrowser = async (pincode = "500064") => {
                                 emailNotification: false,
                             });
                         } catch (error) {
-                            console.error(`AF-API: Error processing ${query}:`, error);
+                            logger.error(`AF-API: Error processing ${query}:`, error);
                         }
 
                         // Add delay between queries to avoid rate limiting
                         await new Promise((resolve) => setTimeout(resolve, 2000));
                     }
                 } catch (error) {
-                    console.error("AF-API: Error processing query chunk:", error);
+                    logger.error("AF-API: Error processing query chunk:", error);
                 }
 
                 // Add delay between chunks
@@ -749,7 +750,7 @@ const trackPricesWithoutBrowser = async (pincode = "500064") => {
             }
 
             const totalDuration = (Date.now() - startTime) / 1000 / 60; // in minutes
-            console.log(
+            logger.info(
                 `AF-API: Completed cookie-based crawling. in ${totalDuration.toFixed(
                     2
                 )} minutes`
@@ -758,7 +759,7 @@ const trackPricesWithoutBrowser = async (pincode = "500064") => {
             // Wait for 1 minutes before next iteration
             await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
         } catch (error) {
-            console.error("AF-API: Error in cookie-based tracking handler:", error);
+            logger.error("AF-API: Error in cookie-based tracking handler:", error);
             // Wait for 1 minutes before retrying
             await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
         }

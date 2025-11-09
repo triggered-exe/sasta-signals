@@ -1,3 +1,4 @@
+import logger from "../utils/logger.js";
 import axios from "axios";
 import { AppError } from "../utils/errorHandling.js";
 import { InstamartProduct } from "../models/InstamartProduct.js";
@@ -45,7 +46,7 @@ const setLocation = async (location) => {
 
         // If Instamart is already set up for this pincode, return the context
         if (contextManager.getWebsiteServiceabilityStatus(location, "instamart")) {
-            console.log(`IM: Using existing serviceable context for ${location}`);
+            logger.info(`IM: Using existing serviceable context for ${location}`);
             return context;
         }
 
@@ -59,7 +60,7 @@ const setLocation = async (location) => {
         await page.waitForTimeout(6000 + Math.random() * 5000);
 
         // Look for location selector - this will need to be updated with correct selectors
-        console.log("IM: Setting location...");
+        logger.info("IM: Setting location...");
 
         // Try to find and click location selector
         try {
@@ -68,14 +69,14 @@ const setLocation = async (location) => {
                 timeout: 10000,
             });
             if (pincodeInput) {
-                console.log("IM: Pincode input field found");
+                logger.info("IM: Pincode input field found");
 
                 // Use typing instead of direct fill so input events fire reliably
                 await pincodeInput.click();
                 await pincodeInput.fill("");
                 await page.keyboard.type(location, { delay: 80 });
 
-                console.log("IM: Typed pincode into input and waiting for suggestions");
+                logger.info("IM: Typed pincode into input and waiting for suggestions");
 
                 // Wait for suggestions to appear with random delay
                 await page.waitForTimeout(2000 + Math.random() * 3000);
@@ -114,22 +115,22 @@ const setLocation = async (location) => {
                 throw new Error("IM: Pincode input field not found");
             }
         } catch (error) {
-            console.error("IM: Error setting location:", error);
+            logger.error("IM: Error setting location:", error);
             contextManager.markServiceability(location, "instamart", false);
             throw AppError.badRequest(`IM: Could not set location for pincode: ${location}`);
         }
 
         // Mark as serviceable and register the website
         contextManager.markServiceability(location, "instamart", true);
-        console.log(`IM: Successfully set up for pincode: ${location}`);
+        logger.info(`IM: Successfully set up for pincode: ${location}`);
 
-        console.log(`IM: Closing setup page for ${location}`);
+        logger.info(`IM: Closing setup page for ${location}`);
         await page.close();
         return context;
     } catch (error) {
         if (page) await page.close();
         contextManager.markServiceability(location, "instamart", false);
-        console.error(`IM: Error setting pincode ${location}:`, error);
+        logger.error(`IM: Error setting pincode ${location}:`, error);
         throw error;
     }
 };
@@ -140,7 +141,7 @@ const extractBrowserData = async (location, refresh = false) => {
     try {
         // Check if we already have cached browser data for this location
         if (placesData[location] && placesData[location].cookies && placesData[location].storeId && !refresh) {
-            console.log(`IM: Using cached browser data for location ${location}`);
+            logger.info(`IM: Using cached browser data for location ${location}`);
             return {
                 cookies: placesData[location].cookies,
                 storeId: placesData[location].storeId,
@@ -151,15 +152,15 @@ const extractBrowserData = async (location, refresh = false) => {
 
         // If refreshing, clear the cached data
         if (refresh && placesData[location]) {
-            console.log(`IM: Clearing cached browser data for location ${location} due to refresh`);
+            logger.info(`IM: Clearing cached browser data for location ${location} due to refresh`);
             delete placesData[location].cookies;
             delete placesData[location].storeId;
         }
 
         if (refresh) {
-            console.log(`IM: Refreshing browser data for location ${location}`);
+            logger.info(`IM: Refreshing browser data for location ${location}`);
         } else {
-            console.log('IM: Browser data is missing from cache. fetching again.')
+            logger.info('IM: Browser data is missing from cache. fetching again.')
         }
 
         // Get the context for this location (should already be set up by setLocation)
@@ -174,7 +175,7 @@ const extractBrowserData = async (location, refresh = false) => {
         page = await context.newPage();
 
         // Step 1: Navigate to Instamart main page
-        console.log("IM: Navigating to https://www.swiggy.com/instamart");
+        logger.info("IM: Navigating to https://www.swiggy.com/instamart");
         await page.goto("https://www.swiggy.com/instamart", { waitUntil: "domcontentloaded" });
 
         // Add random delay to simulate human behavior
@@ -202,7 +203,7 @@ const extractBrowserData = async (location, refresh = false) => {
         // to reading the page source and extracting with a simple regex for
         // the pattern "storeId":"1400220".
         const currentUrl = page.url();
-        console.log(`IM: Current URL after navigation: ${currentUrl}`);
+        logger.info(`IM: Current URL after navigation: ${currentUrl}`);
 
         let storeId = null;
 
@@ -222,10 +223,10 @@ const extractBrowserData = async (location, refresh = false) => {
                 const sourceMatch = pageContent.match(/\"storeId\":\"(\d+)\"/);
                 if (sourceMatch && sourceMatch[1]) {
                     storeId = sourceMatch[1];
-                    console.log(`IM: Extracted storeId from view-source: ${storeId}`);
+                    logger.info(`IM: Extracted storeId from view-source: ${storeId}`);
                 }
             } catch (e) {
-                console.warn('IM: Failed to load view-source for storeId fallback', e);
+                logger.warn('IM: Failed to load view-source for storeId fallback', e);
             }
         }
 
@@ -260,14 +261,14 @@ const extractBrowserData = async (location, refresh = false) => {
             ...browserData
         };
 
-        console.log(`IM: Successfully cached browser data for location ${location}`);
+        logger.info(`IM: Successfully cached browser data for location ${location}`);
         return browserData;
     } catch (error) {
-        console.error("IM: Error extracting browser data:", error);
+        logger.error("IM: Error extracting browser data:", error);
         throw AppError.internalError("Failed to extract browser data");
     } finally {
         if (page) {
-            console.log(`IM: Closing browser data extraction page for ${location}`);
+            logger.info(`IM: Closing browser data extraction page for ${location}`);
             await page.close();
         }
     }
@@ -285,10 +286,10 @@ export const trackPrices = async (req, res, next) => {
 
 // Handler to start tracking
 export const startTrackingHandler = async () => {
-    console.log("IM: starting tracking");
+    logger.info("IM: starting tracking");
     // Start the continuous tracking loop without awaiting it
     trackProductPrices().catch((error) => {
-        console.error("IM: Failed in tracking loop:", error);
+        logger.error("IM: Failed in tracking loop:", error);
     });
     return "Instamart price tracking started";
 };
@@ -303,9 +304,9 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, location) => {
         // Process each category sequentially
         for (const category of categoryChunk) {
             try {
-                console.log("IM: processing category", category.name);
+                logger.info("IM: processing category", category.name);
                 if (!category.subCategories?.length) {
-                    console.log(`IM: Skipping category ${category.name} - no subcategories found`);
+                    logger.info(`IM: Skipping category ${category.name} - no subcategories found`);
                     continue;
                 }
 
@@ -367,7 +368,7 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, location) => {
                                     }
                                     retryCount++;
                                     if (retryCount > MAX_RETRIES) {
-                                        console.log(
+                                        logger.info(
                                             `IM: Max retries (${MAX_RETRIES}) reached for subcategory ${subCategory.name}`
                                         );
                                         break;
@@ -375,7 +376,7 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, location) => {
                                     // Wait for progressively longer times between retries (1m, 2m, 3m)
                                     const waitTime = retryCount * 60 * 1000;
 
-                                    console.log(
+                                    logger.info(
                                         `IM: Rate limit hit (attempt ${retryCount}/${MAX_RETRIES}), waiting for ${waitTime / 1000
                                         } seconds before retry...`
                                     );
@@ -389,10 +390,10 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, location) => {
                                     .flatMap((widget) => widget.data || [])
                                     .filter((product) => product);
 
-                                // console.log(`IM: Found ${products.length} products in subcategory ${subCategory.name}`);
+                                // logger.info(`IM: Found ${products.length} products in subcategory ${subCategory.name}`);
 
                                 if (!products.length) {
-                                    console.log("IM: no products found in subcategory", subCategory.name);
+                                    logger.info("IM: no products found in subcategory", subCategory.name);
                                     break;
                                 }
 
@@ -407,7 +408,7 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, location) => {
 
                             // After processing products in each subcategory
                             if (allProducts.length > 0) {
-                                console.log(
+                                logger.info(
                                     "IM: Processing products for subcategory",
                                     subCategory.name,
                                     "length",
@@ -416,14 +417,14 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, location) => {
                                 const updatedCount = await processProducts(allProducts, category, subCategory, location);
                             }
                         } catch (error) {
-                            console.error(`IM: Error processing subcategory ${subCategory.name}:`, error.response);
+                            logger.error(`IM: Error processing subcategory ${subCategory.name}:`, error.response);
                             await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
                             // Refresh cookies when we hit errors
                             try {
-                                console.log(`IM: Refreshing cookies due to error in subcategory ${subCategory.name}`);
+                                logger.info(`IM: Refreshing cookies due to error in subcategory ${subCategory.name}`);
                                 await extractBrowserData(location, true);
                             } catch (refreshError) {
-                                console.error(`IM: Failed to refresh cookies:`, refreshError);
+                                logger.error(`IM: Failed to refresh cookies:`, refreshError);
                             }
 
                             // Continue with next subcategory even if one fails
@@ -432,13 +433,13 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, location) => {
                     }));
                 }
             } catch (error) {
-                console.error(`IM: Error processing category ${category.name}:`, error);
+                logger.error(`IM: Error processing category ${category.name}:`, error);
                 // Continue with next category even if one fails
                 continue;
             }
         }
     } catch (error) {
-        console.error("IM: Error processing category chunk:", error);
+        logger.error("IM: Error processing category chunk:", error);
     }
 };
 
@@ -446,7 +447,7 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, location) => {
 export const trackProductPrices = async (location = "500064") => {
     // Prevent multiple tracking instances
     if (isTrackingActive) {
-        console.log("IM: Tracking is already active");
+        logger.info("IM: Tracking is already active");
         return;
     }
 
@@ -456,31 +457,31 @@ export const trackProductPrices = async (location = "500064") => {
         try {
             // Skip if it's night time (12 AM to 6 AM IST)
             if (isNightTimeIST()) {
-                console.log("IM: Skipping price tracking during night hours");
+                logger.info("IM: Skipping price tracking during night hours");
                 // Wait for 5 minutes before checking night time status again
                 await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
                 continue;
             }
 
-            console.log("IM: Starting new tracking cycle at:", new Date().toISOString());
+            logger.info("IM: Starting new tracking cycle at:", new Date().toISOString());
 
             // Setup the context for the location
             const context = await setLocation(location);
 
             // Check if the location is serviceable
             if (!contextManager.getWebsiteServiceabilityStatus(location, "instamart")) {
-                console.log(`BB: Location ${location} is not serviceable, stopping crawler`);
+                logger.info(`BB: Location ${location} is not serviceable, stopping crawler`);
                 break;
             }
 
             const { categories, storeId, cookie } = await fetchProductCategories(location);
 
             if (!categories?.length) {
-                console.error("IM: No categories found or invalid categories data");
+                logger.error("IM: No categories found or invalid categories data");
                 continue;
             }
 
-            console.log("IM: Categories fetched:", categories.length);
+            logger.info("IM: Categories fetched:", categories.length);
 
             // Process categories in parallel (in groups of 3 to avoid rate limiting)
             const categoryChunks = chunk(categories, CATEGORY_CHUNK_SIZE);
@@ -489,12 +490,12 @@ export const trackProductPrices = async (location = "500064") => {
                 await fetchProductsForCategoriesChunk(categoryChunk, location);
             }
 
-            console.log("IM: Tracking cycle completed at:", new Date().toISOString());
+            logger.info("IM: Tracking cycle completed at:", new Date().toISOString());
 
             // Add a delay before starting the next cycle
             await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
         } catch (error) {
-            console.error("IM: Error in tracking cycle:", error);
+            logger.error("IM: Error in tracking cycle:", error);
             // Wait before retrying after error
             await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
         }
@@ -506,7 +507,7 @@ const fetchProductCategories = async (location = "500064") => {
     try {
         // Check if we already have cached categories for this location
         if (placesData[location] && placesData[location].categories) {
-            console.log(`IM: Using cached categories for location ${location}`);
+            logger.info(`IM: Using cached categories for location ${location}`);
             return placesData[location];
         }
 
@@ -540,7 +541,7 @@ const fetchProductCategories = async (location = "500064") => {
                     });
 
                     if (!jsonData?.data?.widgets) {
-                        console.log(`IM: Attempt ${retryCount + 1}/${MAX_RETRIES} - No widgets found in response, refreshing...`);
+                        logger.info(`IM: Attempt ${retryCount + 1}/${MAX_RETRIES} - No widgets found in response, refreshing...`);
                         await page.reload({ waitUntil: "networkidle" });
                         retryCount++;
                         await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before retry
@@ -558,7 +559,7 @@ const fetchProductCategories = async (location = "500064") => {
                     retryCount++;
                     await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before retry
                 } catch (error) {
-                    console.error(`IM: Attempt ${retryCount + 1}/${MAX_RETRIES} failed:`, error);
+                    logger.error(`IM: Attempt ${retryCount + 1}/${MAX_RETRIES} failed:`, error);
                     retryCount++;
                     if (retryCount === MAX_RETRIES) {
                         throw new Error("Failed to fetch categories after max retries");
@@ -615,17 +616,17 @@ const fetchProductCategories = async (location = "500064") => {
                 categories: filteredCategories,
             };
 
-            console.log(`IM: Successfully cached categories for location ${location}`);
+            logger.info(`IM: Successfully cached categories for location ${location}`);
             return placesData[location];
 
         } finally {
             if (page) {
-                console.log(`IM: Closing categories fetch page for ${location}`);
+                logger.info(`IM: Closing categories fetch page for ${location}`);
                 await page.close();
             }
         }
     } catch (error) {
-        console.error("IM: Error fetching categories with browser cookies:", error);
+        logger.error("IM: Error fetching categories with browser cookies:", error);
         throw AppError.internalError("Failed to fetch categories");
     }
 };
@@ -666,7 +667,7 @@ const fetchProductCategoriesLegacy = async (location = "500064") => {
         }
 
         const { lat, lng } = storeResponse.data.data[0].geometry.location;
-        console.log("IM: got lat and lng", lat, lng);
+        logger.info("IM: got lat and lng", lat, lng);
 
         // Step3: Get the store id using location
         // Create a complete userLocation object similar to one from working cookie
@@ -682,7 +683,7 @@ const fetchProductCategoriesLegacy = async (location = "500064") => {
         // Create cookie without URL encoding - direct JSON format
         // This matches the format seen in working curl commands
         const locationCookie = `userLocation=${JSON.stringify(userLocation)}`;
-        console.log("IM: using cookie:", locationCookie);
+        logger.info("IM: using cookie:", locationCookie);
 
         // Full cookie with additional required fields from working curl command
         const fullCookie = `deviceId=s%3A1ce58713-498a-4aec-bab1-493c2d86d249.LKtG1bUIkqwIQmPUzUlLyzBMoFZjQIow0rLiaXWXiVE; ${locationCookie}`;
@@ -706,7 +707,7 @@ const fetchProductCategoriesLegacy = async (location = "500064") => {
 
             if (storeIdMatch && storeIdMatch[1]) {
                 const storeId = storeIdMatch[1];
-                console.log("IM: got store id from webpage:", storeId);
+                logger.info("IM: got store id from webpage:", storeId);
 
                 // Step4: Fetch categories using dynamic storeId from webpage
                 const categoriesResponse = await axios.get(`https://www.swiggy.com/api/instamart/layout`, {
@@ -788,13 +789,13 @@ const fetchProductCategoriesLegacy = async (location = "500064") => {
 
                 return placesData[location];
             } else {
-                console.log("IM: No storeId in response");
+                logger.info("IM: No storeId in response");
             }
         } catch (error) {
-            console.log("IM: Error with dynamic cookie:", error.message);
+            logger.info("IM: Error with dynamic cookie:", error.message);
         }
     } catch (error) {
-        console.error("IM: Error fetching categories:", error?.response?.data || error);
+        logger.error("IM: Error fetching categories:", error?.response?.data || error);
         throw new AppError("Failed to fetch categories", 500);
     }
 };
@@ -844,10 +845,10 @@ const processProducts = async (products, category, subcategory, location = "5000
         });
 
         const processedCount = typeof result === "number" ? result : 0;
-        console.log(`IM: Processed ${processedCount} products in ${subcategory.name}`);
+        logger.info(`IM: Processed ${processedCount} products in ${subcategory.name}`);
         return processedCount;
     } catch (error) {
-        console.error("IM: Error processing products:", error);
+        logger.error("IM: Error processing products:", error);
         return 0;
     }
 };

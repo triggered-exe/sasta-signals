@@ -1,3 +1,4 @@
+import logger from "../utils/logger.js";
 import { isNightTimeIST } from "../utils/priceTracking.js";
 import axios from "axios";
 import { BigBasketProduct } from "../models/BigBasketProduct.js";
@@ -16,7 +17,7 @@ const setLocation = async (pincode) => {
 
     // If BigBasket is already set up for this pincode, return the context
     if (contextManager.getWebsiteServiceabilityStatus(pincode, "bigbasket")) {
-      console.log(`BB: Using existing serviceable context for ${pincode}`);
+      logger.info(`BB: Using existing serviceable context for ${pincode}`);
       return context;
     }
 
@@ -30,13 +31,13 @@ const setLocation = async (pincode) => {
     await page.waitForTimeout(5000);
 
     // Look for location selector - this will need to be updated with correct selectors
-    console.log("BB: Setting location...");
+    logger.info("BB: Setting location...");
 
     // Sometimes the Bigbasket block the ip, check if Access Denied is present on the webpage
     const accessDeniedElement = await page.$('h1:has-text("Access Denied")');
     if (accessDeniedElement) {
-      console.log("BB: Access denied - IP appears to be blocked by BigBasket");
-      console.log("User Agent:", await page.evaluate(() => navigator.userAgent));
+      logger.info("BB: Access denied - IP appears to be blocked by BigBasket");
+      logger.info("User Agent:", await page.evaluate(() => navigator.userAgent));
       throw AppError.badRequest("BB: Access denied - IP appears to be blocked by BigBasket");
     }
 
@@ -53,7 +54,7 @@ const setLocation = async (pincode) => {
       });
 
       if (clicked) {
-        console.log("BB: Clicked location selector with JavaScript");
+        logger.info("BB: Clicked location selector with JavaScript");
       } else {
         throw new Error("BB: Could not click location selector with JavaScript");
       }
@@ -63,7 +64,7 @@ const setLocation = async (pincode) => {
         timeout: 4000,
       });
       if (pincodeInput) {
-        console.log("BB: Pincode input field found");
+        logger.info("BB: Pincode input field found");
 
         await pincodeInput.fill(pincode);
 
@@ -85,7 +86,7 @@ const setLocation = async (pincode) => {
               return false;
             }
           });
-          console.log("BB: Selected first location suggestion");
+          logger.info("BB: Selected first location suggestion");
 
           await page.waitForTimeout(5000);
 
@@ -93,7 +94,7 @@ const setLocation = async (pincode) => {
           // Check if the "Select Location" button is still present after selecting the suggestion
           const selectLocationButton = await page.$("//button[.//span[contains(text(), 'Select Location')]]");
           if (selectLocationButton) {
-            console.error("BB: Location not set successfully or not serviceable");
+            logger.error("BB: Location not set successfully or not serviceable");
             throw AppError.badRequest(`BB: Location not set successfully or not serviceable for pincode: ${pincode}`);
           }
         } else {
@@ -104,21 +105,21 @@ const setLocation = async (pincode) => {
         throw new Error("BB: Pincode input field not found");
       }
     } catch (error) {
-      console.error("BB: Error setting location:", error);
+      logger.error("BB: Error setting location:", error);
       contextManager.markServiceability(pincode, "bigbasket", false);
       throw AppError.badRequest(`BB: Could not set location for pincode: ${pincode}`);
     }
 
     // Mark as serviceable and register the website
     contextManager.markServiceability(pincode, "bigbasket", true);
-    console.log(`BB: Successfully set up for pincode: ${pincode}`);
+    logger.info(`BB: Successfully set up for pincode: ${pincode}`);
 
     await page.close();
     return context;
   } catch (error) {
     if (page) await page.close();
     contextManager.markServiceability(pincode, "bigbasket", false);
-    console.error(`BB: Error setting pincode ${pincode}:`, error);
+    logger.error(`BB: Error setting pincode ${pincode}:`, error);
     throw error;
   }
 };
@@ -126,7 +127,7 @@ const setLocation = async (pincode) => {
 // Function to search and extract products for a query
 const searchAndExtractProducts = async (page, query, maxScrollAttempts = 15) => {
   try {
-    console.log(`BB: Searching for "${query}"`);
+    logger.info(`BB: Searching for "${query}"`);
 
     // Navigate to search page
     const searchUrl = `https://www.bigbasket.com/ps/?q=${encodeURIComponent(query)}`;
@@ -135,10 +136,10 @@ const searchAndExtractProducts = async (page, query, maxScrollAttempts = 15) => 
     // Use the extractProductsFromPage function with infinite scroll
     const products = await extractProductsFromPage(page, null, maxScrollAttempts);
 
-    console.log(`BB: Found ${products.length} unique products for "${query}"`);
+    logger.info(`BB: Found ${products.length} unique products for "${query}"`);
     return products;
   } catch (error) {
-    console.error(`BB: Error searching for "${query}":`, error);
+    logger.error(`BB: Error searching for "${query}":`, error);
     return [];
   }
 };
@@ -171,7 +172,7 @@ export const searchProducts = async (req, res, next) => {
       method: "web-scraping",
     });
   } catch (error) {
-    console.error("BB: BigBasket scraping error:", error);
+    logger.error("BB: BigBasket scraping error:", error);
     next(error instanceof AppError ? error : AppError.internalError("Failed to fetch BigBasket products"));
   } finally {
     if (page) await page.close();
@@ -183,7 +184,7 @@ const extractProductsFromPage = async (page, category = null, maxScrollAttempts 
   try {
     // If category is provided, navigate to category page first
     if (category) {
-      console.log(`BB: Processing category: ${category.name}`);
+      logger.info(`BB: Processing category: ${category.name}`);
       const categoryUrl = `https://www.bigbasket.com/${category.url}/`;
       await page.goto(categoryUrl, { waitUntil: "domcontentloaded" });
     }
@@ -195,7 +196,7 @@ const extractProductsFromPage = async (page, category = null, maxScrollAttempts 
     const cookies = await page.evaluate(() => {
       return document.cookie;
     });
-    console.log(`BB: Retrieved cookies from browser`);
+    logger.info(`BB: Retrieved cookies from browser`);
 
     const allProducts = [];
     let currentPage = 1;
@@ -205,7 +206,7 @@ const extractProductsFromPage = async (page, category = null, maxScrollAttempts 
     while (hasMoreProducts) {
       try {
         const apiUrl = `https://www.bigbasket.com/listing-svc/v2/products?type=pc&slug=${category.slug}&page=${currentPage}`;
-        console.log(`BB: Fetching page ${currentPage} from API`);
+        logger.info(`BB: Fetching page ${currentPage} from API`);
 
         // Perform the listing API call inside the browser context so the request
         // uses the real browser cookies (including HttpOnly) and client behavior.
@@ -227,7 +228,7 @@ const extractProductsFromPage = async (page, category = null, maxScrollAttempts 
           }, apiUrl);
 
           if (browserResp && browserResp.error) {
-            console.error('BB: Browser fetch error:', browserResp.error);
+            logger.error('BB: Browser fetch error:', browserResp.error);
             respData = {};
           } else if (browserResp && browserResp.json) {
             respData = browserResp.json;
@@ -236,7 +237,7 @@ const extractProductsFromPage = async (page, category = null, maxScrollAttempts 
             respData = {};
           }
         } catch (e) {
-          console.error('BB: Failed to fetch listing inside browser context:', e);
+          logger.error('BB: Failed to fetch listing inside browser context:', e);
           respData = {};
         }
 
@@ -292,7 +293,7 @@ const extractProductsFromPage = async (page, category = null, maxScrollAttempts 
                 allProducts.push(product);
               }
             } catch (err) {
-              console.error("BB: Error transforming product:", err);
+              logger.error("BB: Error transforming product:", err);
             }
           });
         }
@@ -312,17 +313,17 @@ const extractProductsFromPage = async (page, category = null, maxScrollAttempts 
           await page.waitForTimeout(500);
         }
       } catch (apiError) {
-        console.error(`BB: Error fetching products from API for page ${currentPage}:`, apiError?.message || apiError);
+        logger.error(`BB: Error fetching products from API for page ${currentPage}:`, apiError?.message || apiError);
         hasMoreProducts = false;
       }
     }
 
     const contextInfo = category ? `category ${category.name}` : "page";
-    console.log(`BB: Successfully extracted ${allProducts.length} products from ${contextInfo}`);
+    logger.info(`BB: Successfully extracted ${allProducts.length} products from ${contextInfo}`);
     return allProducts;
   } catch (error) {
     const contextInfo = category ? `category ${category.name}` : "page";
-    console.error(`BB: Error fetching products for ${contextInfo}:`, error);
+    logger.error(`BB: Error fetching products for ${contextInfo}:`, error);
     await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
     return [];
   }
@@ -338,27 +339,27 @@ export const startTrackingHandler = async (location) => {
     try {
       // Skip if it's night time (12 AM to 6 AM IST)
       if (isNightTimeIST()) {
-        console.log("BB: Skipping price tracking during night hours");
+        logger.info("BB: Skipping price tracking during night hours");
         // Wait for 5 minutes before checking night time status again
         await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
         continue;
       }
 
       const startTime = new Date();
-      console.log("BB: Starting product search at:", startTime.toLocaleString());
+      logger.info("BB: Starting product search at:", startTime.toLocaleString());
 
       // Setup the context for the location
       const context = await setLocation(location);
 
       // Check if the location is serviceable
       if (!contextManager.getWebsiteServiceabilityStatus(location, "bigbasket")) {
-        console.log(`BB: Location ${location} is not serviceable, stopping crawler`);
+        logger.info(`BB: Location ${location} is not serviceable, stopping crawler`);
         break;
       }
 
       const categories = await fetchCategories(); // Contains all the final categories in flattened format
       if (!categories || categories.length === 0) {
-        console.log("BB: No categories found");
+        logger.info("BB: No categories found");
         continue;
       }
 
@@ -368,7 +369,7 @@ export const startTrackingHandler = async (location) => {
 
       for (let i = 0; i < categories.length; i += PARALLEL_SEARCHES) {
         const currentBatch = categories.slice(i, i + PARALLEL_SEARCHES);
-        console.log(`BB: Processing categories ${i + 1} to ${i + currentBatch.length} of ${categories.length}`);
+        logger.info(`BB: Processing categories ${i + 1} to ${i + currentBatch.length} of ${categories.length}`);
 
         const batchPromises = currentBatch.map(async (category) => {
           try {
@@ -408,22 +409,22 @@ export const startTrackingHandler = async (location) => {
                 });
 
                 totalProcessedProducts += processedCount;
-                console.log(`BB: Processed ${processedCount} products for ${category.name}`);
+                logger.info(`BB: Processed ${processedCount} products for ${category.name}`);
               } else {
-                console.log(`BB: No products found for ${category.name}`);
+                logger.info(`BB: No products found for ${category.name}`);
               }
             } catch (error) {
-              console.error(`BB: Error processing category ${category.name}:`, error);
+              logger.error(`BB: Error processing category ${category.name}:`, error);
             } finally {
               if (page) await page.close();
             }
           } catch (error) {
-            console.error(`BB: Error processing category ${category.name}:`, error);
+            logger.error(`BB: Error processing category ${category.name}:`, error);
           }
         });
 
         await Promise.all(batchPromises);
-        console.log(
+        logger.info(
           `BB: Categories Processed: ${i + currentBatch.length} of ${categories.length} and Time taken: ${(
             (new Date().getTime() - startTime.getTime()) /
             60000
@@ -431,12 +432,12 @@ export const startTrackingHandler = async (location) => {
         );
       }
 
-      console.log(`BB: Total processed products: ${totalProcessedProducts}`);
-      console.log(`BB: Total time taken: ${((new Date().getTime() - startTime.getTime()) / 60000).toFixed(2)} minutes`);
+      logger.info(`BB: Total processed products: ${totalProcessedProducts}`);
+      logger.info(`BB: Total time taken: ${((new Date().getTime() - startTime.getTime()) / 60000).toFixed(2)} minutes`);
     } catch (error) {
       // Wait for 5 minutes
       await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
-      console.error("BB: Error in crawler:", error);
+      logger.error("BB: Error in crawler:", error);
     }
   }
 };
@@ -449,7 +450,7 @@ export const startTracking = async (req, res, next) => {
     }
     // Start the search process in the background
     startTrackingHandler(location).catch((error) => {
-      console.error("BB: Error in search handler:", error);
+      logger.error("BB: Error in search handler:", error);
     });
 
     res.status(200).json({
@@ -492,7 +493,7 @@ export const fetchCategories = async () => {
 
     return processedCategories;
   } catch (error) {
-    console.error("Error fetching categories:", error.response?.data || error.message);
+    logger.error("Error fetching categories:", error.response?.data || error.message);
     throw AppError.internalError("Failed to fetch categories");
   }
 };

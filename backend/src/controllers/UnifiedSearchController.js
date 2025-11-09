@@ -1,3 +1,4 @@
+import logger from "../utils/logger.js";
 import axios from "axios";
 import { AppError } from "../utils/errorHandling.js";
 import { performZeptoSearch } from "./ZeptoController.js";
@@ -36,7 +37,7 @@ export const unifiedSearch = async (req, res, next) => {
       throw AppError.badRequest(`Invalid providers: ${invalidProviders.join(', ')}`);
     }
 
-    console.log(`UNIFIED: Starting search for "${query}" in location "${location}" across providers: ${providersToSearch.join(', ')}`);
+    logger.info(`UNIFIED: Starting search for "${query}" in location "${location}" across providers: ${providersToSearch.join(', ')}`);
 
     // Execute searches in parallel
     const searchPromises = providersToSearch.map(async (providerKey) => {
@@ -59,9 +60,9 @@ export const unifiedSearch = async (req, res, next) => {
       }
       
       try {
-        console.log(`UNIFIED: Searching ${provider.name}...`);
+        logger.info(`UNIFIED: Searching ${provider.name}...`);
         const result = await provider.searchFunction(location, query);
-        console.log(`UNIFIED: ${provider.name} returned ${result.products?.length || 0} products`);
+        logger.info(`UNIFIED: ${provider.name} returned ${result.products?.length || 0} products`);
         return {
           provider: providerKey,
           success: true,
@@ -70,7 +71,7 @@ export const unifiedSearch = async (req, res, next) => {
           error: null
         };
       } catch (error) {
-        console.error(`UNIFIED: Error searching ${provider.name}:`, error.message);
+        logger.error(`UNIFIED: Error searching ${provider.name}:`, error.message);
         return {
           provider: providerKey,
           success: false,
@@ -128,7 +129,7 @@ export const unifiedSearch = async (req, res, next) => {
     });
 
   } catch (error) {
-    console.error("UNIFIED: Search error:", error);
+    logger.error("UNIFIED: Search error:", error);
     next(error instanceof AppError ? error : AppError.internalError("Failed to perform unified search"));
   }
 };

@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import logger from "./src/utils/logger.js";
 import { errorHandler } from "./src/utils/errorHandling.js";
 import { connectDB } from "./src/database.js"; // Import the database connection function
 import instamartRouter from "./src/routes/api/instamart/instamart.js"; // Import the instamart route
@@ -74,10 +75,10 @@ const startServer = async () => {
   try {
     // Wait for database connection before starting the server
     await connectDB();
-    console.log("Database connected, starting server...");
+    logger.info("Database connected, starting server...");
 
     app.listen(port, () => {
-      console.log(`Server is running on port - ${port}`);
+      logger.info(`Server is running on port - ${port}`);
 
       if (process.env.ENVIRONMENT === "production") {
         setTimeout(() => startAmazonTrackingWithoutBrowswer("500064"), 0); // For Amazon Fresh
@@ -92,7 +93,7 @@ const startServer = async () => {
       }
     });
   } catch (error) {
-    console.error("Failed to start server:", error);
+    logger.error("Failed to start server:", error);
     process.exit(1);
   }
 };

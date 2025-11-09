@@ -1,3 +1,4 @@
+import logger from "./logger.js";
 import { sendEmailWithDroppedProducts, sendTelegramMessage } from "../services/NotificationService.js";
 
 /**
@@ -109,26 +110,26 @@ export const processProducts = async (products, categoryName, options = {}) => {
 
         // Send notifications for price drops
         if (droppedProducts.length > 0) {
-            console.log(`${logPrefix} Found ${droppedProducts.length} dropped products from ${categoryName}`);
+            logger.info(`${logPrefix} Found ${droppedProducts.length} dropped products from ${categoryName}`);
             try {
                 await Promise.all([
                     telegramNotification && sendTelegramMessage(droppedProducts, source, 60),
                     emailNotification && sendEmailWithDroppedProducts(droppedProducts, source),
                 ]);
             } catch (error) {
-                console.error(`${logPrefix} Error sending notification:`, error);
+                logger.error(`${logPrefix} Error sending notification:`, error);
             }
         }
 
         // Perform bulk write operation
         if (bulkOps.length > 0) {
             await model.bulkWrite(bulkOps, { ordered: false });
-            console.log(`${logPrefix} Updated ${bulkOps.length} products from ${categoryName}`);
+            logger.info(`${logPrefix} Updated ${bulkOps.length} products from ${categoryName}`);
         }
 
         return bulkOps.length;
     } catch (error) {
-        console.error(`Error processing products for ${source}:`, error);
+        logger.error(`Error processing products for ${source}:`, error);
         throw error;
     }
 };

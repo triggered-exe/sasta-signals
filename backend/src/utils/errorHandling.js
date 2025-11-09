@@ -1,4 +1,6 @@
 // Custom Error class
+import logger from './logger.js';
+
 class AppError extends Error {
   constructor(message = 'An error occurred', statusCode = 500) {
     super(message);
@@ -36,7 +38,7 @@ const errorHandler = (err, req, res, next) => {
     error = new AppError(err.message || 'Something went wrong', statusCode);
   }
 
-  console.error(error.stack);
+  logger.error(error.stack);
 
   res.status(error.statusCode).json({
     status: error.status,

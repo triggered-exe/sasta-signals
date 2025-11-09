@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { Resend } from 'resend';
+import logger from '../utils/logger.js';
 import { chunk } from '../utils/priceTracking.js';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -18,7 +19,7 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 export const sendTelegramMessage = async (droppedProducts, source, minDiscountThreshold = 50) => {
     try {
         if (!droppedProducts || droppedProducts.length === 0) {
-            console.log(`${source}: No dropped products to send Telegram message for`);
+            logger.debug(`${source}: No dropped products to send Telegram message for`);
             return;
         }
 
@@ -37,12 +38,12 @@ export const sendTelegramMessage = async (droppedProducts, source, minDiscountTh
         );
 
         if (uniqueFilteredProducts.length !== filteredProducts.length) {
-            console.log(`${source}: Removed ${filteredProducts.length - uniqueFilteredProducts.length} duplicate products from Telegram notification`);
+            logger.debug(`${source}: Removed ${filteredProducts.length - uniqueFilteredProducts.length} duplicate products from Telegram notification`);
         }
 
         // Chunk products into groups of 10-15 for readability
         const productChunks = chunk(uniqueFilteredProducts, 10);
-        console.log(`${source}: Sending Telegram messages for ${uniqueFilteredProducts.length} products`);
+        logger.info(`${source}: Sending Telegram messages for ${uniqueFilteredProducts.length} products`);
 
         for (let i = 0; i < productChunks.length; i++) {
             const products = productChunks[i];
@@ -74,9 +75,9 @@ export const sendTelegramMessage = async (droppedProducts, source, minDiscountTh
             }
         }
 
-        console.log(`${source}: Sent notifications for ${uniqueFilteredProducts.length} products`);
+        logger.info(`${source}: Sent notifications for ${uniqueFilteredProducts.length} products`);
     } catch (error) {
-        console.error(`${source}: Error sending Telegram message:`, error?.response?.data || error);
+        logger.error(`${source}: Error sending Telegram message:`, error?.response?.data || error);
         throw error;
     }
 };
@@ -91,7 +92,7 @@ export const sendEmailWithDroppedProducts = async (droppedProducts, source) => {
     try {
         // Skip sending email if no dropped products
         if (!droppedProducts || droppedProducts.length === 0) {
-            console.log(`${source}: No dropped products to send email for`);
+            logger.debug(`${source}: No dropped products to send email for`);
             return;
         }
 
@@ -101,12 +102,12 @@ export const sendEmailWithDroppedProducts = async (droppedProducts, source) => {
         );
 
         if (uniqueDroppedProducts.length !== droppedProducts.length) {
-            console.log(`${source}: Removed ${droppedProducts.length - uniqueDroppedProducts.length} duplicate products from email notification`);
+            logger.debug(`${source}: Removed ${droppedProducts.length - uniqueDroppedProducts.length} duplicate products from email notification`);
         }
 
         // Chunk products into groups of 10 for better email rendering
         const productChunks = chunk(uniqueDroppedProducts, 10);
-        console.log(`${source}: Sending email for ${uniqueDroppedProducts.length} products in ${productChunks.length} chunks`);
+        logger.info(`${source}: Sending email for ${uniqueDroppedProducts.length} products in ${productChunks.length} chunks`);
 
         for (let i = 0; i < productChunks.length; i++) {
             const products = productChunks[i];
@@ -157,9 +158,9 @@ export const sendEmailWithDroppedProducts = async (droppedProducts, source) => {
             }
         }
 
-        console.log(`${source}: Email notifications sent successfully for ${uniqueDroppedProducts.length} unique products`);
+        logger.info(`${source}: Email notifications sent successfully for ${uniqueDroppedProducts.length} unique products`);
     } catch (error) {
-        console.error(`${source}: Error sending email:`, error);
+        logger.error(`${source}: Error sending email:`, error);
         throw error;
     }
 };
@@ -180,6 +181,6 @@ export const sendPriceDropNotifications = async (droppedProducts, source) => {
             sendTelegramMessage(droppedProducts, source)
         ]);
     } catch (error) {
-        console.error(`${source}: Error in sendPriceDropNotifications:`, error);
+        logger.error(`${source}: Error in sendPriceDropNotifications:`, error);
     }
 }; 
