@@ -179,8 +179,6 @@ const extractProductsFromPage = async (page, url, query) => {
   }
 };
 
-
-
 export const startTracking = async (_, res, next) => {
   try {
     // Start the search process in the background
@@ -448,7 +446,7 @@ const extractCategories = async (pincode = "500064") => {
 
 
 // Core search function that can be used by unified search
-export const performFlipkartSearch = async (location, query) => {
+export const search = async (location, query) => {
   try {
     // Set up location context
     const context = await setLocation(location);

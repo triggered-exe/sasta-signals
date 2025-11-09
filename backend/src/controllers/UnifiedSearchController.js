@@ -1,19 +1,37 @@
 import logger from "../utils/logger.js";
 import axios from "axios";
 import { AppError } from "../utils/errorHandling.js";
-import { performZeptoSearch } from "./ZeptoController.js";
-import { performFlipkartSearch } from "./FlipkartGroceryController.js";
+import { search as zeptoSearch } from "./ZeptoController.js";
+import { search as flipkartSearch } from "./FlipkartGroceryController.js";
+import { search as jiomartSearch } from "./jiomartController.js";
+import { search as bigbasketSearch } from "./BigBasketController.js";
+import { search as amazonFreshSearch } from "./AmazonFreshController.js";
 
 // Provider registry mapping provider names to their search functions and configurations
 const providerRegistry = {
   'zepto': {
     name: 'Zepto',
-    searchFunction: performZeptoSearch,
+    searchFunction: zeptoSearch,
     locationParam: 'location'
   },
   'flipkart-grocery': {
     name: 'Flipkart Grocery',
-    searchFunction: performFlipkartSearch,
+    searchFunction: flipkartSearch,
+    locationParam: 'pincode'
+  },
+  'jiomart': {
+    name: 'JioMart',
+    searchFunction: jiomartSearch,
+    locationParam: 'pincode'
+  },
+  'bigbasket': {
+    name: 'BigBasket',
+    searchFunction: bigbasketSearch,
+    locationParam: 'pincode'
+  },
+  'amazon-fresh': {
+    name: 'Amazon Fresh',
+    searchFunction: amazonFreshSearch,
     locationParam: 'pincode'
   }
 };
@@ -42,7 +60,7 @@ export const unifiedSearch = async (req, res, next) => {
     // Execute searches in parallel
     const searchPromises = providersToSearch.map(async (providerKey) => {
       const provider = providerRegistry[providerKey];
-      
+
       // Validate location parameter for this provider
       if (provider.locationParam === 'pincode') {
         // Check if location is a valid 6-digit pincode
@@ -58,7 +76,7 @@ export const unifiedSearch = async (req, res, next) => {
           };
         }
       }
-      
+
       try {
         logger.info(`UNIFIED: Searching ${provider.name}...`);
         const result = await provider.searchFunction(location, query);

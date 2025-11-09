@@ -519,7 +519,7 @@ const extractProducts = async (page, options = {}) => {
 };
 
 // Core search function that can be used by unified search
-export const performZeptoSearch = async (location, query) => {
+export const search = async (location, query) => {
   try {
     // Set up location context
     const context = await setLocation(location);

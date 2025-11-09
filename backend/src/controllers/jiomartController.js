@@ -8,10 +8,15 @@ import { isNightTimeIST } from "../utils/priceTracking.js";
 import { processProducts as globalProcessProducts } from "../utils/productProcessor.js";
 
 const setLocation = async (location) => {
-  let page = null;
-  try {
-    // Get or create context
-    const context = await contextManager.getContext(location);
+   // Validate that location is a numerical pincode
+   if (!location || !/^\d+$/.test(location)) {
+     throw AppError.badRequest("Location must be a valid numerical pincode");
+   }
+
+   let page = null;
+   try {
+     // Get or create context
+     const context = await contextManager.getContext(location);
 
     // Return existing context if already set up and serviceable
     if (contextManager.getWebsiteServiceabilityStatus(location, "jiomart-grocery")) {
@@ -44,8 +49,7 @@ const setLocation = async (location) => {
     const pincodePopupVisible = await pincodePopup.evaluate((el) => el.style.display !== "none");
     if (pincodePopupVisible) {
       // Fill the input , by focusing on the input field
-      await page.focus("#rel_pincode");
-      await page.keyboard.type(location);
+      await page.fill('#rel_pincode', location);
       await page.waitForTimeout(5000); // Wait for 5 seconds
       // Check if the delivery is availale at the location by checking the info message in the modal
       const deliveryInfo = await page.$("#delivery_pin_msg");
@@ -55,6 +59,16 @@ const setLocation = async (location) => {
       }
       await page.keyboard.press("Enter");
       await page.waitForTimeout(5000); // Wait for 5 seconds for page to reload and setup
+    }
+
+
+    // Check whether the location is set correctly by checking the cookie
+
+    const cookies = await page.context().cookies();
+    const pincodeCookie = cookies.find(cookie => cookie.name === 'nms_mgo_pincode');
+
+    if (!pincodeCookie || pincodeCookie.value !== location) {
+      throw new AppError.badRequest(`Failed to set location to ${location}. Pincode cookie is not set correctly.`);
     }
 
     // Location is serviceable - mark it as such
@@ -639,6 +653,12 @@ const extractProductsFromPage = async (page, url, MAX_LOAD_MORE_ATTEMPTS = 15) =
       timeout: 10000, // 10 second timeout
     });
 
+    // If its a normal search instaead of category page, use legacy method
+    if (url.includes('/search')) {
+      logger.info('JIO: Detected search URL, using legacy DOM extraction method');
+      return await extractProductsFromPageLegacy(page, url, MAX_LOAD_MORE_ATTEMPTS);
+    }
+
     // Try to extract a category id from the URL - if present, use trex/search
     const { categoryId, categoryName } = extractCategoryIdAndNameFromUrl(url);
     if (categoryId) {
@@ -766,55 +786,41 @@ export const startTrackingHandler = async (location) => {
   }
 };
 
-// Search endpoint handler for Jiomart
-export const searchProducts = async (req, res, next) => {
-  let page = null;
+// Core search function that can be used by unified search
+export const search = async (location, query) => {
   try {
-    const { query, location } = req.body;
-
-    if (!query || !location) {
-      throw AppError.badRequest("Query and location are required");
-    }
-
-    logger.info(`JIO: Starting search for "${query}" in location ${location}`);
-
     // Get or create context for the location
     const context = await setLocation(location);
 
     // Check if the location is serviceable
     if (!contextManager.getWebsiteServiceabilityStatus(location, "jiomart-grocery")) {
-      throw AppError.badRequest(`Location ${location} is not serviceable by JioMart`);
+      throw new Error(`Location ${location} is not serviceable by JioMart`);
     }
 
     // Create a new page for search
-    page = await context.newPage();
+    const page = await context.newPage();
 
-    // Navigate to search page
-    const searchUrl = `https://www.jiomart.com/search?q=${encodeURIComponent(query)}`;
-    logger.debug(`JIO: Navigating to search URL: ${searchUrl}`);
+    try {
+      // Navigate to search page
+      const searchUrl = `https://www.jiomart.com/search?q=${encodeURIComponent(query)}`;
+      logger.debug(`JIO: Navigating to search URL: ${searchUrl}`);
 
-    // Extract products from the page using existing function
-    const { products } = await extractProductsFromPage(page, searchUrl, 5);
+      // Extract products from the page using existing function
+      const { products } = await extractProductsFromPage(page, searchUrl, 3);
 
-    logger.info(`JIO: Found ${products.length} products for query "${query}"`);
+      logger.info(`JIO: Found ${products.length} products for query "${query}"`);
 
-    res.status(200).json({
-      success: true,
-      products: products,
-      total: products.length,
-      query: query,
-      location: location,
-    });
-  } catch (error) {
-    logger.error("JIO: Search error:", error);
-    next(
-      error instanceof AppError ? error : AppError.internalError(`Failed to search JioMart products: ${error.message}`)
-    );
-  } finally {
-    if (page) {
-      logger.debug("JIO: Closing search page");
+      return {
+        success: true,
+        products: products || [],
+        total: products?.length || 0,
+      };
+    } finally {
       await page.close();
     }
+  } catch (error) {
+    logger.error('JIO: Search error:', error.message);
+    throw error;
   }
 };
 

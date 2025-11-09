@@ -124,79 +124,57 @@ const setLocation = async (pincode) => {
   }
 };
 
-// Function to search and extract products for a query
-const searchAndExtractProducts = async (page, query, maxScrollAttempts = 15) => {
+// Core search function that can be used by unified search
+export const search = async (location, query) => {
   try {
-    logger.info(`BB: Searching for "${query}"`);
+    // Set up location context (pincode)
+    const context = await setLocation(location);
 
-    // Navigate to search page
-    const searchUrl = `https://www.bigbasket.com/ps/?q=${encodeURIComponent(query)}`;
-    await page.goto(searchUrl, { waitUntil: "domcontentloaded" });
+    // Create a new page for search
+    const page = await context.newPage();
 
-    // Use the extractProductsFromPage function with infinite scroll
-    const products = await extractProductsFromPage(page, null, maxScrollAttempts);
+    try {
+      // Search and extract products
+      const allProducts = await extractProductsFromPage(page, null, query, 3);
 
-    logger.info(`BB: Found ${products.length} unique products for "${query}"`);
-    return products;
-  } catch (error) {
-    logger.error(`BB: Error searching for "${query}":`, error);
-    return [];
-  }
-};
+      // Sort by price
+      allProducts.sort((a, b) => a.price - b.price);
 
-// Search endpoint handler using web scraping
-export const searchProducts = async (req, res, next) => {
-  let page = null;
-
-  try {
-    const { query, pincode } = req.body;
-
-    if (!query || !pincode) {
-      throw AppError.badRequest("Query and pincode are required");
+      return {
+        success: true,
+        products: allProducts || [],
+        total: allProducts?.length || 0,
+      };
+    } finally {
+      await page.close();
     }
-
-    // Get or create context for this pincode
-    const context = await setLocation(pincode);
-    page = await context.newPage();
-
-    // Search and extract products
-    const allProducts = await searchAndExtractProducts(page, query, 3);
-
-    // Sort by price
-    allProducts.sort((a, b) => a.price - b.price);
-
-    res.status(200).json({
-      success: true,
-      products: allProducts,
-      total: allProducts.length,
-      method: "web-scraping",
-    });
   } catch (error) {
-    logger.error("BB: BigBasket scraping error:", error);
-    next(error instanceof AppError ? error : AppError.internalError("Failed to fetch BigBasket products"));
-  } finally {
-    if (page) await page.close();
+    logger.error('BB: Search error:', error.message);
+    throw error;
   }
 };
 
 // Extract products from a page - can handle both category pages and search pages
-const extractProductsFromPage = async (page, category = null, maxScrollAttempts = 25) => {
+const extractProductsFromPage = async (page, category = null, searchQuery = null, maxPagesToFetch = 25) => {
   try {
     // If category is provided, navigate to category page first
-    if (category) {
+    let pageUrl = '';
+    if (category?.url) {
       logger.info(`BB: Processing category: ${category.name}`);
-      const categoryUrl = `https://www.bigbasket.com/${category.url}/`;
-      await page.goto(categoryUrl, { waitUntil: "domcontentloaded" });
+      pageUrl = `https://www.bigbasket.com/${category.url}/`;
+    } else if (searchQuery) {
+      logger.info(`BB: Processing search query: ${searchQuery}`);
+      pageUrl = `https://www.bigbasket.com/ps/?q=${encodeURIComponent(searchQuery)}`;
     }
+
+    if (!pageUrl) {
+      throw new Error("BB: No category or search query provided for product extraction");
+    }
+
+    await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
 
     // Wait for the page to load completely
     await page.waitForTimeout(3000);
-
-    // Get cookies from the browser
-    const cookies = await page.evaluate(() => {
-      return document.cookie;
-    });
-    logger.info(`BB: Retrieved cookies from browser`);
 
     const allProducts = [];
     let currentPage = 1;
@@ -205,7 +183,8 @@ const extractProductsFromPage = async (page, category = null, maxScrollAttempts 
     // Fetch products using API calls instead of scrolling
     while (hasMoreProducts) {
       try {
-        const apiUrl = `https://www.bigbasket.com/listing-svc/v2/products?type=pc&slug=${category.slug}&page=${currentPage}`;
+        const slug = category?.slug || searchQuery;
+        const apiUrl = `https://www.bigbasket.com/listing-svc/v2/products?type=pc&slug=${slug}&page=${currentPage}`;
         logger.info(`BB: Fetching page ${currentPage} from API`);
 
         // Perform the listing API call inside the browser context so the request
@@ -309,6 +288,9 @@ const extractProductsFromPage = async (page, category = null, maxScrollAttempts 
         } else {
           // Advance to next page
           currentPage = pageFromResp + 1;
+          if (currentPage > maxPagesToFetch) {
+            hasMoreProducts = false;
+          }
           // Safety: avoid hammering the API
           await page.waitForTimeout(500);
         }
@@ -378,8 +360,7 @@ export const startTrackingHandler = async (location) => {
             try {
               page = await context.newPage();
 
-              // Extract products using the extractProductsFromPage function
-              const products = await extractProductsFromPage(page, category, 25);
+              const products = await extractProductsFromPage(page, category, null, 25);
 
               if (products.length > 0) {
                 const transformedProducts = products.map((product) => ({

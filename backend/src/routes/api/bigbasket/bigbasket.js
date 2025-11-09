@@ -9,7 +9,6 @@ router.get('/', (req, res) => {
     });
 });
 
-router.post('/search', BigBasketController.searchProducts);
 router.get('/categories', BigBasketController.fetchCategories);
 router.post('/start-tracking', BigBasketController.startTracking);
 

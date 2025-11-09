@@ -152,40 +152,32 @@ const getNextPageUrl = async (page) => {
     return lastButton?.text === "Next" && lastButton.href ? `https://www.amazon.in${lastButton.href}` : null;
 };
 
-// Search endpoint handler
-export const searchQuery = async (req, res, next) => {
-    let page = null;
-
+// Core search function that can be used by unified search
+export const search = async (location, query) => {
     try {
-        const { query, pincode } = req.body;
+        // Set up location context (pincode)
+        const context = await setLocation(location);
 
-        if (!query || !pincode) {
-            throw AppError.badRequest("Query and pincode are required");
+        // Create a new page for search
+        const page = await context.newPage();
+
+        try {
+            const allProducts = await searchAndExtractProducts(page, query, 3);
+
+            // Sort by price
+            allProducts.sort((a, b) => a.price - b.price);
+
+            return {
+                success: true,
+                products: allProducts || [],
+                total: allProducts?.length || 0,
+            };
+        } finally {
+            await page.close();
         }
-
-        // Get or create context for this pincode
-        const context = await setLocation(pincode);
-        page = await context.newPage();
-
-        const allProducts = await searchAndExtractProducts(page, query, 3);
-
-        // Sort by price
-        allProducts.sort((a, b) => a.price - b.price);
-
-        // logger.info(`AF: Found total ${allProducts.length} products for query "${query}"`);
-
-        res.status(200).json({
-            success: true,
-            products: allProducts,
-            total: allProducts.length,
-            totalPages: Math.ceil(allProducts.length / allProducts.length),
-            processedPages: Math.ceil(allProducts.length / allProducts.length),
-        });
     } catch (error) {
-        logger.error("AF: Amazon Fresh error:", error);
-        next(error);
-    } finally {
-        if (page) await page.close();
+        logger.error('AF: Search error:', error.message);
+        throw error;
     }
 };
 
