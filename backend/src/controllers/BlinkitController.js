@@ -109,12 +109,12 @@ const extractProductsFromPageAPI = async (page, categoryUrl) => {
                     if (response.status === 429) {
                         if (retryCount < MAX_RETRIES) {
                             const delay = BASE_DELAY * Math.pow(2, retryCount); // Exponential backoff: 2s, 4s, 8s
-                            logger.info(`BLINKIT API: Rate limited (429). Retrying in ${delay / 1000}s (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+                            console.log(`BLINKIT API: Rate limited (429). Retrying in ${delay / 1000}s (attempt ${retryCount + 1}/${MAX_RETRIES})`);
 
                             await new Promise(resolve => setTimeout(resolve, delay));
                             return await fetchData(url, options, retryCount + 1);
                         } else {
-                            logger.error(`BLINKIT API: Max retries (${MAX_RETRIES}) exceeded for 429 error`);
+                            console.error(`BLINKIT API: Max retries (${MAX_RETRIES}) exceeded for 429 error`);
                             return null;
                         }
                     }
@@ -132,14 +132,14 @@ const extractProductsFromPageAPI = async (page, categoryUrl) => {
                         retryCount
                     };
                     errors.push(errorInfo);
-                    logger.error(`BLINKIT API: Error fetching data from ${url}:`, error);
+                    console.error(`BLINKIT API: Error fetching data from ${url}:`, error);
                     return null;
                 }
             };
 
             // Main loop to fetch all products using pagination
             while (nextUrl) {
-                logger.info(`BLINKIT API: Fetching Page ${pageCounter}...`);
+                console.log(`BLINKIT API: Fetching Page ${pageCounter}...`);
                 // The previous code is incorrect: document.cookie is a string, not an object. Must parse manually.
                 const lat = parseFloat(
                     document.cookie
@@ -154,7 +154,7 @@ const extractProductsFromPageAPI = async (page, categoryUrl) => {
                         ?.split('=')[1]
                 );
                 if (!lat || !lon) {
-                    logger.error("BLINKIT API: No latitude or longitude found in cookies");
+                    console.error("BLINKIT API: No latitude or longitude found in cookies");
                     return [];
                 }
                 const options = {
@@ -179,7 +179,7 @@ const extractProductsFromPageAPI = async (page, categoryUrl) => {
 
                     if (products.length > 0) {
                         allProducts.push(...products);
-                        logger.info(`BLINKIT API: Page ${pageCounter}: Found ${products.length} products.`);
+                        console.log(`BLINKIT API: Page ${pageCounter}: Found ${products.length} products.`);
                     } else {
                         const errorInfo = {
                             url: nextUrl,
@@ -188,15 +188,15 @@ const extractProductsFromPageAPI = async (page, categoryUrl) => {
                             pageCounter
                         };
                         errors.push(errorInfo);
-                        logger.info(`BLINKIT API: Page ${pageCounter}: No products found in this response.`);
+                        console.log(`BLINKIT API: Page ${pageCounter}: No products found in this response.`);
                     }
 
                     // Check for the next URL to continue pagination
                     if (data?.response?.pagination?.next_url) {
                         nextUrl = apiDomain + data.response.pagination.next_url;
-                        logger.info(`BLINKIT API: Next page URL found, continuing...`);
+                        console.log(`BLINKIT API: Next page URL found, continuing...`);
                     } else {
-                        logger.info('BLINKIT API: Last page reached. No next_url found.');
+                        console.log('BLINKIT API: Last page reached. No next_url found.');
                         nextUrl = null; // End the loop
                     }
                 } else {
@@ -207,7 +207,7 @@ const extractProductsFromPageAPI = async (page, categoryUrl) => {
                         pageCounter
                     };
                     errors.push(errorInfo);
-                    logger.info(`BLINKIT API: Page ${pageCounter}: Response structure was not as expected. Stopping.`);
+                    console.log(`BLINKIT API: Page ${pageCounter}: Response structure was not as expected. Stopping.`);
                     nextUrl = null; // End the loop if the response is invalid
                 }
 
@@ -220,10 +220,10 @@ const extractProductsFromPageAPI = async (page, categoryUrl) => {
                 }
             }
 
-            logger.info(`BLINKIT API: Total Pages Fetched: ${pageCounter - 1}`);
-            logger.info(`BLINKIT API: Total Products Fetched: ${allProducts.length}`);
+            console.log(`BLINKIT API: Total Pages Fetched: ${pageCounter - 1}`);
+            console.log(`BLINKIT API: Total Products Fetched: ${allProducts.length}`);
             if (errors.length > 0) {
-                logger.info(`BLINKIT API: Encountered ${errors.length} errors during fetching`);
+                console.log(`BLINKIT API: Encountered ${errors.length} errors during fetching`);
             }
             return { products: allProducts, errors };
         }, { l0_cat, l1_cat });

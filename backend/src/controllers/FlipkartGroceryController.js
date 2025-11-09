@@ -164,7 +164,7 @@ const extractProductsFromPage = async (page, url, query) => {
         );
         return nextButton ? nextButton.getAttribute("href") : null;
       } catch (err) {
-        logger.error("FK: Error finding next page:", err);
+        console.error("FK: Error finding next page:", err);
         return null;
       }
     });

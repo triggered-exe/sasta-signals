@@ -343,7 +343,7 @@ const extractProductsFromPageLegacy = async (page, url, MAX_SCROLL_ATTEMPTS = 25
             inStock,
           });
         } catch (error) {
-          logger.error("JIO: Error extracting product data:", error);
+          console.error("JIO: Error extracting product data:", error);
         }
       });
 

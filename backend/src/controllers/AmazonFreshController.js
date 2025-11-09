@@ -125,13 +125,13 @@ const extractProductsFromPage = async (page) => {
 
                     // Validate the data
                     if (isNaN(data.price) || data.price <= 0) {
-                        logger.info("AF: Invalid price for product:", data.productName);
+                        console.log("AF: Invalid price for product:", data.productName);
                         return null;
                     }
 
                     return data;
                 } catch (err) {
-                    logger.error("AF: Error extracting product:", err);
+                    console.error("AF: Error extracting product:", err);
                     return null;
                 }
             })
@@ -635,7 +635,7 @@ export const extractCategories = async (req, res, next) => {
                         });
                     }
                 } catch (error) {
-                    logger.error('Error extracting category:', error);
+                    console.error('Error extracting category:', error);
                 }
             });
 

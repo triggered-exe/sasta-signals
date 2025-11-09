@@ -348,7 +348,7 @@ const extractProducts = async (page, options = {}) => {
           const isOutOfStock = lastCard.getAttribute("data-is-out-of-stock") === "true";
 
           if (isOutOfStock) {
-            logger.info("Last product is out of stock, stopping scroll");
+            console.log("Last product is out of stock, stopping scroll");
             return { shouldStopScrolling: true };
           }
 
@@ -462,10 +462,10 @@ const extractProducts = async (page, options = {}) => {
                 mrp = parseFloat(mrpMatch[1].replace(/,/g, "")) || 0;
               }
 
-              logger.info(`Extracted price: ${price}, MRP: ${mrp} for product ID: ${variantId} and product Name: ${productName}`);
+              console.log(`Extracted price: ${price}, MRP: ${mrp} for product ID: ${variantId} and product Name: ${productName}`);
             }
 
-            logger.info(`ZEPTO: Extracted product - ID: ${variantId}, Name: ${productName}, Weight: ${weight}, Price: ${price}, MRP: ${mrp}`);
+            console.log(`ZEPTO: Extracted product - ID: ${variantId}, Name: ${productName}, Weight: ${weight}, Price: ${price}, MRP: ${mrp}`);
 
             // If no MRP found, use price as MRP
             if (mrp === 0) {
@@ -500,7 +500,7 @@ const extractProducts = async (page, options = {}) => {
               inStock: !isOutOfStock,
             };
           } catch (error) {
-            logger.error("Error extracting product data:", error);
+            console.error("Error extracting product data:", error);
             return null;
           }
         })
