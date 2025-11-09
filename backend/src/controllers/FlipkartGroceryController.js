@@ -147,7 +147,8 @@ const extractProductsFromPage = async (page, url, query) => {
               outOfStockMessage: outOfStockElement ? outOfStockElement.textContent.trim() : null,
             };
           } catch (err) {
-            logger.error("FK: Error processing product:", err);
+            // Note: console.error works in browser context (page.evaluate)
+            console.error("FK: Error processing product:", err);
             return null;
           }
         })

@@ -81,7 +81,8 @@ const setLocation = async (pincode) => {
 const extractProductsFromPage = async (page) => {
     return await page.evaluate(() => {
         const results = document.querySelectorAll('div[role="listitem"]');
-        logger.info("AF: Found results:", results.length);
+        // Note: console.log works in browser context (page.evaluate)
+        console.log("AF: Found results:", results.length);
 
         return Array.from(results)
             .map((el) => {
