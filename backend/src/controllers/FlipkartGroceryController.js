@@ -364,7 +364,7 @@ const extractCategories = async (pincode = "500064") => {
       const text = await link.textContent();
 
       // Look for category links that have the structure /grocery/category/subcategory/pr
-      if (href && href.includes('/grocery/') && href.includes('/pr?') && text && text.length > 3) {
+      if (href && href.includes('/grocery/') && href.includes('/pr?')) {
         const urlMatch = href.match(/\/grocery\/([^\/]+)\/([^\/]+)\/pr/);
         if (urlMatch) {
           categoryLinkToClick = link;
