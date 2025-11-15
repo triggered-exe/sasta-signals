@@ -89,7 +89,7 @@ const startServer = async () => {
         setTimeout(() => blinkitStartTrackingHandler("500064"), 180 * 1000); // For Blinkit
         setTimeout(() => jiomartStartTrackingHandler("500064"), 210 * 1000); // For JioMart
       } else {
-        setTimeout(() => jiomartStartTrackingHandler("500064"), 0); // For BigBasket
+        // setTimeout(() => jiomartStartTrackingHandler("500064"), 0); // For BigBasket
       }
     });
   } catch (error) {
