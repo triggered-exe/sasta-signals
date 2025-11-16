@@ -4,664 +4,581 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Deals Checker - System Monitoring Dashboard</title>
+    <title>Deals Checker - Professional Monitoring Dashboard</title>
+    <title>System Monitoring Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: #333;
-            padding: 20px;
-            min-height: 100vh;
-        }
-
-        .container {
-            max-width: 1600px;
-            margin: 0 auto;
-        }
-
-        header {
-            background: white;
-            border-radius: 12px;
-            padding: 20px 30px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-
-        h1 {
-            color: #667eea;
-            font-size: 2rem;
-            margin-bottom: 10px;
-        }
-
-        .status-bar {
-            display: flex;
-            gap: 20px;
-            flex-wrap: wrap;
-            align-items: center;
-        }
-
-        .status-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 16px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            font-size: 0.9rem;
-        }
-
-        .status-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            animation: pulse 2s infinite;
-        }
-
-        .status-dot.green {
-            background: #10b981;
-        }
-
-        .status-dot.yellow {
-            background: #f59e0b;
-        }
-
-        .status-dot.red {
-            background: #ef4444;
-        }
-
-        @keyframes pulse {
-
-            0%,
-            100% {
-                opacity: 1;
-            }
-
-            50% {
-                opacity: 0.5;
-            }
-        }
-
-        .metrics-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-
-        .metric-card {
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            transition: transform 0.2s;
-        }
-
-        .metric-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
-        }
-
-        .metric-label {
-            font-size: 0.85rem;
-            color: #6b7280;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 8px;
-        }
-
-        .metric-value {
-            font-size: 2rem;
-            font-weight: bold;
-            color: #1f2937;
-            margin-bottom: 5px;
-        }
-
-        .metric-subtext {
-            font-size: 0.85rem;
-            color: #9ca3af;
-        }
-
-        .metric-change {
-            font-size: 0.85rem;
-            padding: 4px 8px;
-            border-radius: 4px;
-            display: inline-block;
-            margin-top: 5px;
-        }
-
-        .metric-change.up {
-            background: #fee2e2;
-            color: #dc2626;
-        }
-
-        .metric-change.down {
-            background: #d1fae5;
-            color: #059669;
-        }
-
-        .charts-grid {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-
-        .chart-card {
-            background: white;
-            border-radius: 12px;
-            padding: 25px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-
-        .chart-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-
-        .chart-title {
-            font-size: 1.25rem;
-            font-weight: 600;
-            color: #1f2937;
-        }
-
-        .chart-controls {
-            display: flex;
-            gap: 10px;
-        }
-
-        .btn {
-            padding: 8px 16px;
-            border: none;
-            border-radius: 6px;
-            font-size: 0.875rem;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-weight: 500;
-        }
-
-        .btn-primary {
-            background: #667eea;
-            color: white;
-        }
-
-        .btn-primary:hover {
-            background: #5568d3;
-        }
-
-        .btn-secondary {
-            background: #e5e7eb;
-            color: #374151;
-        }
-
-        .btn-secondary:hover {
-            background: #d1d5db;
-        }
-
-        .btn-danger {
-            background: #ef4444;
-            color: white;
-        }
-
-        .btn-danger:hover {
-            background: #dc2626;
-        }
-
-        .chart-container {
-            position: relative;
-            height: 350px;
-        }
-
-        .contexts-section {
-            background: white;
-            border-radius: 12px;
-            padding: 25px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            margin-bottom: 20px;
-        }
-
-        .contexts-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-
-        .context-card {
-            background: #f9fafb;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 15px;
-        }
-
-        .context-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-
-        .context-location {
-            font-weight: 600;
-            font-size: 1.1rem;
-            color: #1f2937;
-        }
-
-        .context-status {
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 0.8rem;
-            font-weight: 600;
-        }
-
-        .context-status.active {
-            background: #d1fae5;
-            color: #059669;
-        }
-
-        .pages-list {
-            display: grid;
-            gap: 8px;
-            margin-top: 10px;
-        }
-
-        .page-item {
-            background: white;
-            padding: 10px;
-            border-radius: 6px;
-            border-left: 3px solid #667eea;
-            font-size: 0.85rem;
-        }
-
-        .page-url {
-            color: #6b7280;
-            word-break: break-all;
-        }
-
-        .alert {
-            padding: 15px 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .alert-warning {
-            background: #fef3c7;
-            color: #92400e;
-            border: 1px solid #fbbf24;
-        }
-
-        .alert-error {
-            background: #fee2e2;
-            color: #7f1d1d;
-            border: 1px solid #f87171;
-        }
-
-        .loading {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid #f3f4f6;
-            border-top: 3px solid #667eea;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            0% {
-                transform: rotate(0deg);
-            }
-
-            100% {
-                transform: rotate(360deg);
-            }
-        }
-
-        .footer {
-            text-align: center;
-            color: white;
-            padding: 20px;
-            font-size: 0.9rem;
-            opacity: 0.8;
-        }
-
-        @media (max-width: 768px) {
-            .metrics-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .status-bar {
-                flex-direction: column;
-                align-items: flex-start;
-            }
-        }
-    </style>
+    <!-- Tailwind via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
 
-<body>
-    <div class="container">
-        <header>
-            <h1>🔍 Deals Checker - System Monitor</h1>
-            <div class="status-bar">
-                <div class="status-item">
-                    <div class="status-dot green" id="serverStatus"></div>
-                    <span id="serverStatusText">Server Active</span>
+<body class="bg-gradient-to-br from-[#0a0e27] to-[#1a1f3a] text-slate-100 p-6 min-h-screen font-sans">
+
+    <div class="dashboard grid grid-cols-1 md:grid-cols-12 gap-6 max-w-[1800px] mx-auto">
+        <header
+            class="md:col-span-12 bg-gradient-to-br from-slate-800/80 to-slate-900/80 p-6 rounded-xl border border-slate-700 shadow-xl flex justify-between items-center relative overflow-hidden">
+            <h1
+                class="text-2xl font-extrabold bg-gradient-to-br from-indigo-400 to-cyan-400 bg-clip-text text-transparent flex items-center gap-3">
+                System Monitor</h1>
+            <div class="flex items-center gap-3">
+                <div class="text-sm text-slate-300 bg-white/5 rounded-md px-3 py-1 flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block"></span>
+                    <span id="last-updated">Last updated: --</span>
                 </div>
-                <div class="status-item">
-                    <span>⏱️ Uptime: <strong id="uptime">--</strong></span>
-                </div>
-                <div class="status-item">
-                    <span>🕐 <span id="currentTime">--</span></span>
-                </div>
-                <div class="status-item">
-                    <span>🔄 Auto-refresh: <strong>5s</strong></span>
-                </div>
+                <button
+                    class="bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg px-4 py-2 font-semibold shadow-sm flex items-center gap-2"
+                    id="refresh-btn">
+                    <span>🔄</span>
+                    <span>Refresh</span>
+                </button>
+                <button
+                    class="bg-red-600 hover:bg-red-500 text-white rounded-lg px-4 py-2 font-semibold shadow-sm flex items-center gap-2"
+                    id="cleanup-btn">
+                    <span>🧹</span>
+                    <span>Cleanup</span>
+                </button>
             </div>
         </header>
 
-        <div id="alertContainer"></div>
-
-        <div class="metrics-grid">
-            <div class="metric-card">
-                <div class="metric-label">RSS Memory</div>
-                <div class="metric-value" id="rssMemory">-- MB</div>
-                <div class="metric-subtext">Resident Set Size</div>
-                <div class="metric-change" id="rssChange"></div>
-            </div>
-
-            <div class="metric-card">
-                <div class="metric-label">Heap Used</div>
-                <div class="metric-value" id="heapUsed">-- MB</div>
-                <div class="metric-subtext" id="heapSubtext">of -- MB total</div>
-                <div class="metric-change" id="heapChange"></div>
-            </div>
-
-            <div class="metric-card">
-                <div class="metric-label">External Memory</div>
-                <div class="metric-value" id="externalMemory">-- MB</div>
-                <div class="metric-subtext">ArrayBuffers: <span id="arrayBuffers">--</span> MB</div>
-                <div class="metric-change" id="externalChange"></div>
-            </div>
-
-            <div class="metric-card">
-                <div class="metric-label">CPU Load</div>
-                <div class="metric-value" id="cpuLoad">-- %</div>
-                <div class="metric-subtext">1-min average</div>
-            </div>
-
-            <div class="metric-card">
-                <div class="metric-label">System Memory</div>
-                <div class="metric-value" id="systemMemory">-- %</div>
-                <div class="metric-subtext" id="systemMemorySubtext">-- GB / -- GB</div>
-            </div>
-
-            <div class="metric-card">
-                <div class="metric-label">Browser Contexts</div>
-                <div class="metric-value" id="totalContexts">--</div>
-                <div class="metric-subtext">Total Pages: <span id="totalPages">--</span></div>
-            </div>
-        </div>
-
-        <div class="charts-grid">
-            <div class="chart-card">
-                <div class="chart-header">
-                    <h2 class="chart-title">📈 Memory Usage Over Time</h2>
-                    <div class="chart-controls">
-                        <button class="btn btn-secondary" onclick="clearHistory()">Clear History</button>
+        <div
+            class="card card-4 col-span-12 md:col-span-6 xl:col-span-4 bg-gradient-to-br from-slate-800/75 to-slate-900/75 p-6 rounded-xl border border-slate-700 shadow-md">
+            <h2 class="text-lg font-bold mb-4 text-slate-100">🖥️ System & CPU</h2>
+            <div class="grid grid-cols-2 sm:grid-cols-2 gap-4">
+                <div class="p-2 bg-white/5 rounded-md border border-white/5 flex flex-col items-start w-full h-20">
+                    <div class="text-xs text-slate-400 uppercase tracking-wide font-semibold">Hostname</div>
+                    <div class="text-lg font-bold text-slate-100 mt-2" id="sys-hostname">--</div>
+                </div>
+                <div class="p-2 bg-white/5 rounded-md border border-white/5 flex flex-col items-start w-full h-20">
+                    <div class="text-xs text-slate-400 uppercase tracking-wide font-semibold">Platform</div>
+                    <div class="text-lg font-bold text-slate-100 mt-2" id="sys-platform">--</div>
+                </div>
+                <div class="p-2 bg-white/5 rounded-md border border-white/5 flex flex-col items-start w-full h-20">
+                    <div class="text-xs text-slate-400 uppercase tracking-wide font-semibold">Uptime</div>
+                    <div class="text-lg font-bold text-slate-100 mt-2" id="sys-uptime">--</div>
+                </div>
+                <div class="p-2 bg-white/5 rounded-md border border-white/5 flex flex-col items-start w-full h-20">
+                    <div class="text-xs text-slate-400 uppercase tracking-wide font-semibold">CPU</div>
+                    <div class="relative w-full h-10 mt-2 bg-white/5 rounded overflow-hidden">
+                        <div id="cpu-tile-fill"
+                            class="absolute bottom-0 left-0 w-full bg-gradient-to-t from-cyan-500 to-indigo-500 transition-[height]">
+                        </div>
+                        <div id="cpu-tile-label"
+                            class="absolute inset-0 flex items-center justify-center text-sm font-semibold text-slate-100"
+                            style="text-shadow:0 2px 6px rgba(0,0,0,0.9)">--%</div>
                     </div>
-                </div>
-                <div class="chart-container">
-                    <canvas id="memoryChart"></canvas>
-                </div>
-            </div>
-
-            <div class="chart-card">
-                <div class="chart-header">
-                    <h2 class="chart-title">🖥️ CPU & System Resources</h2>
-                    <div class="chart-controls">
-                        <button class="btn btn-secondary" onclick="exportData()">Export Data</button>
-                    </div>
-                </div>
-                <div class="chart-container">
-                    <canvas id="cpuChart"></canvas>
-                </div>
-            </div>
-
-            <div class="chart-card">
-                <div class="chart-header">
-                    <h2 class="chart-title">📊 Memory Growth Rate</h2>
-                    <div class="chart-controls">
-                        <span style="font-size: 0.9rem; color: #6b7280;">Rate (last-min): <strong
-                                id="memoryGrowthRate">-- MB/min</strong></span>
-                        <span style="font-size: 0.9rem; color: #6b7280; margin-left:12px;">Avg (all): <strong
-                                id="memoryAverageGrowthRate">-- MB/min</strong></span>
-                    </div>
-                </div>
-                <div class="chart-container">
-                    <canvas id="growthRateChart"></canvas>
                 </div>
             </div>
         </div>
 
-        <div class="contexts-section">
-            <div class="contexts-header">
-                <h2 class="chart-title">🌐 Browser Contexts & Pages</h2>
-                <button class="btn btn-primary" onclick="refreshData()">
-                    <span id="refreshBtn">Refresh Now</span>
-                </button>
-            </div>
-            <div id="contextsContainer">
-                <div style="text-align: center; padding: 20px; color: #9ca3af;">
-                    <div class="loading"></div>
-                    <p style="margin-top: 10px;">Loading contexts...</p>
+        <div
+            class="card card-4 col-span-12 md:col-span-6 xl:col-span-4 bg-gradient-to-br from-slate-800/75 to-slate-900/75 p-6 rounded-xl border border-slate-700 shadow-md">
+            <h2 class="text-lg font-bold mb-4 text-slate-100">💾 Memory</h2>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="p-2 bg-white/5 rounded-md border border-white/5 flex flex-col items-start">
+                    <div class="text-xs text-slate-400 mb-1 uppercase tracking-wide font-semibold">System Memory</div>
+                    <div class="text-lg font-bold text-slate-100" id="mem-sys-used">--</div>
+                </div>
+                <div class="p-2 bg-white/5 rounded-md border border-white/5 flex flex-col items-start">
+                    <div class="text-xs text-slate-400 mb-1 uppercase tracking-wide font-semibold">Total App</div>
+                    <div class="text-lg font-bold text-slate-100" id="mem-app-total">--</div>
+                </div>
+                <div class="p-2 bg-white/5 rounded-md border border-white/5 flex flex-col items-start">
+                    <div class="text-xs text-slate-400 mb-1 uppercase tracking-wide font-semibold">Node Process</div>
+                    <div class="text-lg font-bold text-slate-100" id="mem-app-node">--</div>
+                </div>
+                <div class="p-2 bg-white/5 rounded-md border border-white/5 flex flex-col items-start">
+                    <div class="text-xs text-slate-400 mb-1 uppercase tracking-wide font-semibold">Browser Processes
+                    </div>
+                    <div class="text-lg font-bold text-slate-100" id="mem-app-browser">--</div>
                 </div>
             </div>
         </div>
 
-        <footer class="footer">
-            <p>Deals Checker System Monitor • Node.js v<span id="nodeVersion">--</span> • Built with ❤️</p>
-        </footer>
+        <div
+            class="card card-4 col-span-12 md:col-span-6 xl:col-span-4 bg-gradient-to-br from-slate-800/75 to-slate-900/75 p-6 rounded-xl border border-slate-700 shadow-md">
+            <h2 class="text-lg font-bold mb-4 text-slate-100">🌐 Browser Contexts</h2>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="p-2 bg-white/5 rounded-md border border-white/5 flex flex-col items-start">
+                    <div class="text-xs text-slate-400 mb-1 uppercase tracking-wide font-semibold">Status</div>
+                    <div class="text-lg font-bold text-slate-100" id="ctx-status">--</div>
+                </div>
+                <div class="p-2 bg-white/5 rounded-md border border-white/5 flex flex-col items-start">
+                    <div class="text-xs text-slate-400 mb-1 uppercase tracking-wide font-semibold">Utilization</div>
+                    <div class="text-lg font-bold text-slate-100" id="ctx-util">--</div>
+                </div>
+                <div class="p-2 bg-white/5 rounded-md border border-white/5 flex flex-col items-start">
+                    <div class="text-xs text-slate-400 mb-1 uppercase tracking-wide font-semibold">Active</div>
+                    <div class="text-lg font-bold text-slate-100" id="ctx-active">--</div>
+                </div>
+                <div class="p-2 bg-white/5 rounded-md border border-white/5 flex flex-col items-start">
+                    <div class="text-xs text-slate-400 mb-1 uppercase tracking-wide font-semibold">Total Pages</div>
+                    <div class="text-lg font-bold text-slate-100" id="ctx-pages">--</div>
+                </div>
+            </div>
+        </div>
+
+        <div
+            class="card card-full col-span-12 bg-gradient-to-br from-slate-800/75 to-slate-900/75 p-6 rounded-xl border border-slate-700 shadow-md">
+            <h2 class="text-lg font-bold mb-4 text-slate-100">📈 Memory Usage Over Time</h2>
+            <div class="relative h-[350px]">
+                <canvas id="memoryChart"></canvas>
+            </div>
+        </div>
+
+        <div
+            class="card card-full col-span-12 bg-gradient-to-br from-slate-800/75 to-slate-900/75 p-6 rounded-xl border border-slate-700 shadow-md">
+            <h2 class="text-lg font-bold mb-4 text-slate-100">🌐 Browser Contexts Details</h2>
+            <div class="max-h-[450px] overflow-y-auto rounded-md">
+                <table id="contexts-table" class="min-w-full divide-y divide-slate-700">
+                    <thead class="bg-white/3 sticky top-0">
+                        <tr>
+                            <th class="px-4 py-3 text-xs text-slate-200 font-semibold text-left">Address</th>
+                            <th class="px-4 py-3 text-xs text-slate-200 font-semibold text-left">Status</th>
+                            <th class="px-4 py-3 text-xs text-slate-200 font-semibold text-left">Age</th>
+                            <th class="px-4 py-3 text-xs text-slate-200 font-semibold text-left">Websites</th>
+                            <th class="px-4 py-3 text-xs text-slate-200 font-semibold text-left">Pages</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-transparent">
+                        <tr>
+                            <td colspan="5" class="text-center py-6">Loading...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div
+            class="card card-full col-span-12 bg-gradient-to-br from-slate-800/75 to-slate-900/75 p-6 rounded-xl border border-slate-700 shadow-md">
+            <h2 class="text-lg font-bold mb-4 text-slate-100">⚙️ Process Details</h2>
+            <div class="max-h-[450px] overflow-y-auto rounded-md">
+                <table id="procs-table" class="min-w-full divide-y divide-slate-700">
+                    <thead class="bg-white/3 sticky top-0">
+                        <tr>
+                            <th class="px-4 py-3 text-xs text-slate-200 font-semibold text-left">Type</th>
+                            <th class="px-4 py-3 text-xs text-slate-200 font-semibold text-left">PID/Count</th>
+                            <th class="px-4 py-3 text-xs text-slate-200 font-semibold text-left">Memory (MB)</th>
+                            <th class="px-4 py-3 text-xs text-slate-200 font-semibold text-left">Details</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-transparent">
+                        <tr>
+                            <td colspan="4" class="text-center py-6">Loading...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
 
-    <script>
-        // Configuration
-        const API_BASE = 'http://localhost:8000/api/monitoring';
-        const REFRESH_INTERVAL = 5000; // 5 seconds
-        const MAX_DATA_POINTS = 360; // Show last 30 minutes (360 points at 5s intervals)
+    <div id="toast"></div>
+    <div id="alert-container"></div>
 
-        // Data storage
-        let dataHistory = {
-            timestamps: [],
-            rss: [],
-            heapUsed: [],
-            heapTotal: [],
-            external: [],
-            arrayBuffers: [],
-            cpuLoad: [],
-            systemMemoryUsed: [],
-            systemMemoryPercent: []
+    <script>
+        const API_ENDPOINT = '/api/monitoring/system';
+        const CLEANUP_ENDPOINT = '/api/monitoring/contexts/cleanup';
+        const REFRESH_INTERVAL = 5000; // 5 seconds
+        const MAX_DATA_POINTS = 60; // Last 5 minutes
+
+        const refreshBtn = document.getElementById('refresh-btn');
+        const cleanupBtn = document.getElementById('cleanup-btn');
+
+        let memoryChart;
+        const memoryHistory = {
+            labels: [],
+            total: [],
+            node: [],
+            browser: []
         };
 
-        let previousData = null;
+        function formatUptime(seconds) {
+            const d = Math.floor(seconds / (3600 * 24));
+            const h = Math.floor(seconds % (3600 * 24) / 3600);
+            const m = Math.floor(seconds % 3600 / 60);
+            return `${d}d ${h}h ${m}m`;
+        }
 
-        // Initialize charts
-        let memoryChart, cpuChart, growthRateChart;
+        function showToast(message, isError = false) {
+            const toast = document.getElementById('toast');
+            const base = 'fixed bottom-8 left-1/2 transform -translate-x-1/2 rounded-lg font-semibold transition-opacity z-50 px-6 py-3 opacity-0 pointer-events-none';
+            const colorClass = isError ? 'bg-red-600 text-white' : 'bg-emerald-500 text-white';
+            toast.className = `${base} ${colorClass}`;
+            toast.textContent = message;
+            // show
+            setTimeout(() => {
+                toast.classList.remove('opacity-0');
+                toast.classList.add('opacity-100', 'pointer-events-auto');
+            }, 50);
+            // hide after 3s
+            setTimeout(() => {
+                toast.classList.remove('opacity-100', 'pointer-events-auto');
+                toast.classList.add('opacity-0');
+            }, 3000);
+        }
 
-        function initCharts() {
-            const commonOptions = {
-                responsive: true,
-                maintainAspectRatio: false,
-                interaction: {
-                    mode: 'index',
-                    intersect: false,
+        function showAlert(title, message, type = 'info') {
+            const container = document.getElementById('alert-container');
+            const alertId = 'alert-' + Date.now();
+            const alertDiv = document.createElement('div');
+            alertDiv.id = alertId;
+            // choose colors
+            let bg = '#6366f1';
+            if (type === 'warning') bg = '#f59e0b';
+            if (type === 'error') bg = '#ef4444';
+            alertDiv.style.background = bg;
+            alertDiv.style.color = '#fff';
+            alertDiv.style.borderRadius = '8px';
+            alertDiv.style.padding = '12px 16px';
+            alertDiv.style.boxShadow = '0 10px 20px rgba(0,0,0,0.3)';
+            alertDiv.style.position = 'fixed';
+            alertDiv.style.top = '20px';
+            alertDiv.style.right = '20px';
+            alertDiv.style.maxWidth = '420px';
+            alertDiv.style.transform = 'translateX(500px)';
+            alertDiv.style.transition = 'transform 0.25s ease';
+            alertDiv.innerHTML = `
+                <div style="font-size:1.25rem; margin-right:8px">${type === 'warning' ? '⚠️' : type === 'error' ? '❌' : 'ℹ️'}</div>
+                <div style="flex:1">
+                    <div style="font-weight:700">${title}</div>
+                    <div style="opacity:0.95; margin-top:4px; font-size:0.95rem">${message}</div>
+                </div>
+                <button style="background:transparent;border:none;color:#fff;font-size:1rem;cursor:pointer;margin-left:8px" onclick="document.getElementById('${alertId}').remove()">✕</button>
+            `;
+            alertDiv.style.display = 'flex';
+            alertDiv.style.alignItems = 'flex-start';
+            alertDiv.style.gap = '10px';
+
+            container.appendChild(alertDiv);
+            // slide in
+            setTimeout(() => { alertDiv.style.transform = 'translateX(0)'; }, 100);
+            // Auto-remove after 8 seconds
+            setTimeout(() => {
+                alertDiv.style.transform = 'translateX(500px)';
+                setTimeout(() => alertDiv.remove(), 300);
+            }, 8000);
+        }
+
+        function checkForAlerts(data) {
+            // Alerts for memory usage removed as per user request
+            // Visual indicators in the UI (badges, colors) still provide feedback
+        }
+
+        function renderSystemInfo(data) {
+            document.getElementById('sys-hostname').textContent = data.system.hostname;
+            document.getElementById('sys-platform').textContent = `${data.system.platform} (${data.system.architecture})`;
+            document.getElementById('sys-uptime').textContent = formatUptime(data.system.uptimeSeconds);
+
+            const currentLoad = data.cpu.loadAveragePercent['1min'];
+
+            // Update CPU usage bar
+            updateCpuUsage(currentLoad);
+        }
+
+        function updateCpuUsage(value) {
+            const fill = document.getElementById('cpu-tile-fill');
+            const label = document.getElementById('cpu-tile-label');
+            const pct = Math.min(value, 100);
+            fill.style.height = `${pct}%`;
+            label.textContent = `${value}%`;
+            const base = 'absolute bottom-0 left-0 w-full transition-[height] rounded-b-lg';
+            if (value >= 90) {
+                fill.className = base + ' bg-gradient-to-t from-red-500 to-rose-600';
+            } else if (value >= 70) {
+                fill.className = base + ' bg-gradient-to-t from-yellow-400 to-orange-500';
+            } else {
+                fill.className = base + ' bg-gradient-to-t from-cyan-500 to-indigo-500';
+            }
+        }
+
+        function renderMemoryInfo(data) {
+            // System memory with badge
+            const sysUsagePercent = data.system.usagePercent;
+            let sysBadgeClass = 'bg-emerald-100 text-emerald-600';
+            let sysLabel = 'Good';
+            if (sysUsagePercent >= 90) { sysBadgeClass = 'bg-red-100 text-red-600'; sysLabel = 'Critical'; }
+            else if (sysUsagePercent >= 75) { sysBadgeClass = 'bg-amber-100 text-amber-600'; sysLabel = 'High'; }
+            else if (sysUsagePercent >= 50) { sysBadgeClass = 'bg-indigo-100 text-indigo-600'; sysLabel = 'Normal'; }
+            const sysBadge = `<span class="inline-block text-xs font-semibold px-2 py-0.5 rounded ${sysBadgeClass}">${sysLabel}</span>`;
+            document.getElementById('mem-sys-used').innerHTML = `${data.system.usedMB} / ${data.system.totalMB} MB ${sysBadge}`;
+
+            // Application memory
+            document.getElementById('mem-app-total').innerHTML = `${data.application.totalMB} MB`;
+
+            // Node memory with percentage badge
+            const nodeBadge = `<span class="inline-block text-xs font-semibold px-2 py-0.5 rounded bg-indigo-100 text-indigo-600">${data.application.breakdownPercent.node}%</span>`;
+            document.getElementById('mem-app-node').innerHTML = `${data.application.nodeMB} MB ${nodeBadge}`;
+
+            // Browser memory with percentage badge and alert
+            let browserBadgeClass = 'bg-indigo-100 text-indigo-600';
+            if (data.application.browserMB > 1500) browserBadgeClass = 'bg-red-100 text-red-600';
+            else if (data.application.browserMB > 1000) browserBadgeClass = 'bg-amber-100 text-amber-600';
+            const browserBadge = `<span class="inline-block text-xs font-semibold px-2 py-0.5 rounded ${browserBadgeClass}">${data.application.breakdownPercent.browser}%</span>`;
+            document.getElementById('mem-app-browser').innerHTML = `${data.application.browserMB} MB ${browserBadge}`;
+        }
+
+        function renderContextsSummary(data) {
+            // Status with badge
+            let statusBadge = '';
+            if (data.status === 'running') {
+                statusBadge = `<span class="inline-block text-xs font-semibold px-2 py-0.5 rounded bg-emerald-100 text-emerald-600">✓</span>`;
+            } else {
+                statusBadge = `<span class="inline-block text-xs font-semibold px-2 py-0.5 rounded bg-red-100 text-red-600">✗</span>`;
+            }
+            document.getElementById('ctx-status').innerHTML = `${data.status} ${statusBadge}`;
+
+            // Utilization with color coding
+            let utilBadge = '';
+            if (data.utilizationPercent >= 90) {
+                utilBadge = `<span class="inline-block text-xs font-semibold px-2 py-0.5 rounded bg-red-100 text-red-600">Full</span>`;
+            } else if (data.utilizationPercent >= 70) {
+                utilBadge = `<span class="inline-block text-xs font-semibold px-2 py-0.5 rounded bg-amber-100 text-amber-600">High</span>`;
+            } else {
+                utilBadge = `<span class="inline-block text-xs font-semibold px-2 py-0.5 rounded bg-emerald-100 text-emerald-600">OK</span>`;
+            }
+            document.getElementById('ctx-util').innerHTML = `${data.total} / ${data.max} ${utilBadge}`;
+
+            document.getElementById('ctx-active').textContent = data.active;
+            document.getElementById('ctx-pages').textContent = data.totalPages;
+        }
+
+        function renderContextsTable(contexts) {
+            const tbody = document.querySelector('#contexts-table tbody');
+            if (!contexts || !Array.isArray(contexts.list) || contexts.list.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="5">
+                            <div class="empty-state">
+                                <div class="empty-state-icon">🌐</div>
+                                <div class="empty-state-text">No browser contexts found</div>
+                            </div>
+                        </td>
+                    </tr>`;
+                return;
+            }
+
+            // Helper to derive serviceable websites for a context
+            function extractSites(ctx) {
+                // Prefer explicit fields if provided by backend
+                if (Array.isArray(ctx.serviceableWebsites) && ctx.serviceableWebsites.length) return ctx.serviceableWebsites;
+                if (Array.isArray(ctx.serviceable) && ctx.serviceable.length) return ctx.serviceable;
+                if (Array.isArray(ctx.sites) && ctx.sites.length) return ctx.sites;
+
+                // Fallback: derive hostnames from pages array
+                if (Array.isArray(ctx.pages) && ctx.pages.length) {
+                    const hosts = ctx.pages.map(p => {
+                        try {
+                            const u = p.url || p.originalUrl || p.address || '';
+                            if (!u) return (p.title || '').slice(0, 40);
+                            const parsed = new URL(u);
+                            return parsed.hostname.replace(/^www\./i, '');
+                        } catch (e) {
+                            return (p.title || '').slice(0, 40);
+                        }
+                    }).filter(Boolean);
+                    return Array.from(new Set(hosts));
+                }
+
+                return [];
+            }
+
+            tbody.innerHTML = contexts.list.map(ctx => {
+                const isOld = ctx.ageMinutes > 30;
+                const ageClass = isOld ? 'text-amber-400' : 'text-slate-200';
+                let dotColor = 'bg-emerald-500';
+                if (ctx.status && ctx.status !== 'running') dotColor = 'bg-rose-500';
+
+                // Pages HTML (existing) — render inside a fixed-height, scrollable container to avoid huge rows
+                const pagesHtml = (Array.isArray(ctx.pages) && ctx.pages.length > 0) ? `
+                    <div class="max-h-40 overflow-y-auto mt-2 pr-1">
+                        <ul class="space-y-1">
+                            ${ctx.pages.map(p => `<li class="text-sm text-slate-400 bg-white/3 rounded px-2 py-1">📄 ${p.title || 'Untitled'}</li>`).join('')}
+                        </ul>
+                    </div>` : '';
+
+                // Sites / serviceable websites column - show all sites and allow wrapping
+                const sites = extractSites(ctx);
+                let sitesHtml = '—';
+                if (sites.length > 0) {
+                    // render all sites as small badges inside a wrapping flex container so they can flow to multiple rows
+                    sitesHtml = `<div class="flex flex-wrap items-center -mr-1">${sites.map(s => `<span class="inline-block text-xs bg-white/5 text-slate-200 px-2 py-0.5 rounded mr-1 mb-1">${s}</span>`).join('')}</div>`;
+                }
+
+                return `
+                    <tr class="odd:bg-transparent even:bg-white/2">
+                        <td class="px-4 py-3 font-semibold">${ctx.originalAddress}</td>
+                        <td class="px-4 py-3"><span class="inline-block w-2 h-2 rounded-full mr-3 ${dotColor}"></span>${ctx.status}</td>
+                        <td class="px-4 py-3 ${ageClass}">${ctx.ageMinutes} min</td>
+                        <td class="px-4 py-3">${sitesHtml}</td>
+                        <td class="px-4 py-3">
+                            <strong>${(Array.isArray(ctx.pages) ? ctx.pages.length : 0)} page${(Array.isArray(ctx.pages) && ctx.pages.length) !== 1 ? 's' : ''}</strong>
+                            ${pagesHtml}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function renderProcessesTable(data) {
+            const tbody = document.querySelector('#procs-table tbody');
+            const node = data.node;
+            const browser = data.browser;
+            let rows = '';
+            rows += `
+                <tr class="bg-white/3 border-l-2 border-indigo-500/30">
+                    <td class="px-4 py-3 font-semibold">🟣 Node.js</td>
+                    <td class="px-4 py-3">PID ${node.pid}</td>
+                    <td class="px-4 py-3 font-bold">${node.memoryMB.rss}</td>
+                    <td class="px-4 py-3">Heap: ${node.memoryMB.heapUsed} / ${node.memoryMB.heapTotal} MB <span class="text-slate-400 ml-4">External: ${node.memoryMB.external} MB</span></td>
+                </tr>
+                <tr class="bg-white/3 border-l-2 border-sky-500/30">
+                    <td class="px-4 py-3 font-semibold">🔵 Browser</td>
+                    <td class="px-4 py-3">${browser.processCount} process${browser.processCount !== 1 ? 'es' : ''}</td>
+                    <td class="px-4 py-3 font-bold">${browser.totalMemoryMB}</td>
+                    <td class="px-4 py-3">Avg: ${browser.averageMemoryMB} MB / process</td>
+                </tr>
+            `;
+
+            if (browser.list.length > 0) {
+                rows += browser.list.map((p, idx) => `
+                    <tr class="bg-sky-900/5 border-l-4 border-sky-500/20">
+                        <td class="px-4 py-3 text-slate-400">└─ Process ${idx + 1}</td>
+                        <td class="px-4 py-3 text-slate-400">PID ${p.pid}</td>
+                        <td class="px-4 py-3">${p.memoryMB}</td>
+                        <td class="px-4 py-3 text-slate-400 font-mono text-sm truncate max-w-[500px]">${p.command}</td>
+                    </tr>
+                `).join('');
+            } else if (browser.processCount === 0) {
+                rows += `
+                    <tr>
+                        <td colspan="4">
+                            <div class="p-6 text-center text-slate-400">
+                                <div class="text-2xl mb-2">🔍</div>
+                                <div class="font-semibold">No browser processes detected</div>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }
+
+            tbody.innerHTML = rows;
+        }
+
+        function initMemoryChart() {
+            const ctx = document.getElementById('memoryChart').getContext('2d');
+            memoryChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: memoryHistory.labels,
+                    datasets: [
+                        {
+                            label: 'Total App Memory',
+                            data: memoryHistory.total,
+                            borderColor: 'rgba(129, 140, 248, 1)',
+                            backgroundColor: 'rgba(129, 140, 248, 0.15)',
+                            borderWidth: 3,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 3,
+                            pointHoverRadius: 6,
+                            pointBackgroundColor: 'rgba(129, 140, 248, 1)',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 2
+                        },
+                        {
+                            label: 'Browser Memory',
+                            data: memoryHistory.browser,
+                            borderColor: 'rgba(6, 182, 212, 1)',
+                            backgroundColor: 'rgba(6, 182, 212, 0.15)',
+                            borderWidth: 3,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 3,
+                            pointHoverRadius: 6,
+                            pointBackgroundColor: 'rgba(6, 182, 212, 1)',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 2
+                        },
+                        {
+                            label: 'Node Memory',
+                            data: memoryHistory.node,
+                            borderColor: 'rgba(16, 185, 129, 1)',
+                            backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                            borderWidth: 3,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 3,
+                            pointHoverRadius: 6,
+                            pointBackgroundColor: 'rgba(16, 185, 129, 1)',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 2
+                        }
+                    ]
                 },
-                plugins: {
-                    legend: {
-                        display: true,
-                        position: 'top',
-                    },
-                    tooltip: {
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
                         mode: 'index',
                         intersect: false,
-                    }
-                },
-                scales: {
-                    x: {
-                        display: true,
-                        title: {
-                            display: true,
-                            text: 'Time'
+                    },
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: '#f3f4f6',
+                                font: {
+                                    size: 13,
+                                    weight: '600'
+                                },
+                                usePointStyle: true,
+                                padding: 20
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(26, 31, 58, 0.95)',
+                            titleColor: '#f3f4f6',
+                            bodyColor: '#d1d5db',
+                            borderColor: '#2d3748',
+                            borderWidth: 1,
+                            padding: 12,
+                            displayColors: true,
+                            callbacks: {
+                                label: function (context) {
+                                    return context.dataset.label + ': ' + context.parsed.y + ' MB';
+                                }
+                            }
                         }
                     },
-                    y: {
-                        display: true,
-                        beginAtZero: true
-                    }
-                }
-            };
-
-            // Memory Chart
-            const memoryCtx = document.getElementById('memoryChart').getContext('2d');
-            memoryChart = new Chart(memoryCtx, {
-                type: 'line',
-                data: {
-                    labels: [],
-                    datasets: [
-                        {
-                            label: 'RSS Memory (MB)',
-                            data: [],
-                            borderColor: '#ef4444',
-                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                            tension: 0.4,
-                            fill: true
-                        },
-                        {
-                            label: 'Heap Used (MB)',
-                            data: [],
-                            borderColor: '#3b82f6',
-                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                            tension: 0.4,
-                            fill: true
-                        },
-                        {
-                            label: 'External (MB)',
-                            data: [],
-                            borderColor: '#10b981',
-                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                            tension: 0.4,
-                            fill: true
-                        }
-                    ]
-                },
-                options: {
-                    ...commonOptions,
                     scales: {
-                        ...commonOptions.scales,
-                        y: {
-                            ...commonOptions.scales.y,
-                            title: {
-                                display: true,
-                                text: 'Memory (MB)'
-                            }
-                        }
-                    }
-                }
-            });
-
-            // CPU Chart
-            const cpuCtx = document.getElementById('cpuChart').getContext('2d');
-            cpuChart = new Chart(cpuCtx, {
-                type: 'line',
-                data: {
-                    labels: [],
-                    datasets: [
-                        {
-                            label: 'CPU Load (%)',
-                            data: [],
-                            borderColor: '#f59e0b',
-                            backgroundColor: 'rgba(245, 158, 11, 0.1)',
-                            tension: 0.4,
-                            fill: true,
-                            yAxisID: 'y'
-                        },
-                        {
-                            label: 'System Memory Usage (%)',
-                            data: [],
-                            borderColor: '#8b5cf6',
-                            backgroundColor: 'rgba(139, 92, 246, 0.1)',
-                            tension: 0.4,
-                            fill: true,
-                            yAxisID: 'y1'
-                        }
-                    ]
-                },
-                options: {
-                    ...commonOptions,
-                    scales: {
-                        x: commonOptions.scales.x,
-                        y: {
-                            type: 'linear',
-                            display: true,
-                            position: 'left',
-                            title: {
-                                display: true,
-                                text: 'CPU Load (%)'
+                        x: {
+                            ticks: {
+                                color: '#9ca3af',
+                                font: { size: 11 }
                             },
-                            max: 100
-                        },
-                        y1: {
-                            type: 'linear',
-                            display: true,
-                            position: 'right',
-                            title: {
-                                display: true,
-                                text: 'System Memory (%)'
-                            },
-                            max: 100,
                             grid: {
-                                drawOnChartArea: false,
-                            },
-                        }
-                    }
-                }
-            });
-
-            // Growth Rate Chart
-            const growthCtx = document.getElementById('growthRateChart').getContext('2d');
-            growthRateChart = new Chart(growthCtx, {
-                type: 'bar',
-                data: {
-                    labels: [],
-                    datasets: [
-                        {
-                            label: 'Memory Growth Rate (MB/min)',
-                            data: [],
-                            backgroundColor: 'rgba(239, 68, 68, 0.6)',
-                            borderColor: '#ef4444',
-                            borderWidth: 1
-                        }
-                    ]
-                },
-                options: {
-                    ...commonOptions,
-                    scales: {
-                        ...commonOptions.scales,
+                                color: 'rgba(255, 255, 255, 0.05)',
+                                drawBorder: false
+                            }
+                        },
                         y: {
-                            ...commonOptions.scales.y,
+                            ticks: {
+                                color: '#9ca3af',
+                                font: { size: 11 },
+                                callback: function (value) {
+                                    return value + ' MB';
+                                }
+                            },
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.05)',
+                                drawBorder: false
+                            },
+                            beginAtZero: true,
                             title: {
                                 display: true,
-                                text: 'Growth Rate (MB/min)'
+                                text: 'Memory (MB)',
+                                color: '#d1d5db',
+                                font: {
+                                    size: 13,
+                                    weight: '600'
+                                }
                             }
                         }
                     }
@@ -669,319 +586,116 @@
             });
         }
 
-        function formatBytes(bytes, decimals = 2) {
-            if (bytes === 0) return '0 MB';
-            const mb = bytes / (1024 * 1024);
-            return mb.toFixed(decimals);
+        function updateMemoryChart(timestamp, memoryData) {
+            memoryHistory.labels.push(timestamp);
+            memoryHistory.total.push(memoryData.application.totalMB);
+            memoryHistory.node.push(memoryData.application.nodeMB);
+            memoryHistory.browser.push(memoryData.application.browserMB);
+
+            if (memoryHistory.labels.length > MAX_DATA_POINTS) {
+                memoryHistory.labels.shift();
+                memoryHistory.total.shift();
+                memoryHistory.node.shift();
+                memoryHistory.browser.shift();
+            }
+
+            memoryChart.update('none');
         }
 
-        function formatUptime(seconds) {
-            const hours = Math.floor(seconds / 3600);
-            const minutes = Math.floor((seconds % 3600) / 60);
-            const secs = Math.floor(seconds % 60);
-            return `${hours}h ${minutes}m ${secs}s`;
-        }
-
-        function calculateGrowthRate() {
-            if (dataHistory.rss.length < 2) return 0;
-
-            const recentPoints = Math.min(12, dataHistory.rss.length); // Last minute (12 points at 5s intervals)
-            const oldValue = dataHistory.rss[dataHistory.rss.length - recentPoints];
-            const newValue = dataHistory.rss[dataHistory.rss.length - 1];
-            const timeDiff = (recentPoints * REFRESH_INTERVAL) / 1000 / 60; // in minutes
-
-            return ((newValue - oldValue) / timeDiff).toFixed(2);
-        }
-
-        // Average growth rate calculated across all available data points in dataHistory.rss
-        function calculateAverageGrowthRate() {
-            const n = dataHistory.rss.length;
-            if (n < 2) return 0;
-
-            // Use first and last values to compute average slope over the full available time
-            const firstValue = dataHistory.rss[0];
-            const lastValue = dataHistory.rss[n - 1];
-
-            // total time in minutes between first and last sample
-            const timeDiffMinutes = ((n - 1) * REFRESH_INTERVAL) / 1000 / 60;
-            if (timeDiffMinutes === 0) return 0;
-
-            return ((lastValue - firstValue) / timeDiffMinutes).toFixed(2);
-        }
+        let isFirstLoad = true;
+        // prevent overlapping requests — if a fetch is in-flight, skip starting another
+        let isFetching = false;
 
         async function fetchData() {
-            try {
-                const response = await fetch(`${API_BASE}/contexts`);
-                if (!response.ok) throw new Error('Failed to fetch data');
-
-                const data = await response.json();
-                updateUI(data);
-                updateCharts(data);
-                updateContexts(data);
-                previousData = data;
-
-                // Update server status
-                document.getElementById('serverStatus').className = 'status-dot green';
-                document.getElementById('serverStatusText').textContent = 'Server Active';
-
-                // Clear alerts
-                document.getElementById('alertContainer').innerHTML = '';
-            } catch (error) {
-                console.error('Error fetching data:', error);
-                document.getElementById('serverStatus').className = 'status-dot red';
-                document.getElementById('serverStatusText').textContent = 'Server Error';
-
-                // Show alert
-                showAlert('Unable to connect to the monitoring server. Please check if the backend is running.', 'error');
-            }
-        }
-
-        function showAlert(message, type = 'warning') {
-            const alertContainer = document.getElementById('alertContainer');
-            const alertClass = type === 'error' ? 'alert-error' : 'alert-warning';
-            const icon = type === 'error' ? '❌' : '⚠️';
-
-            alertContainer.innerHTML = `
-                <div class="alert ${alertClass}">
-                    <span>${icon}</span>
-                    <span>${message}</span>
-                </div>
-            `;
-        }
-
-        function updateUI(data) {
-            const memory = data.systemMetrics.process.memory;
-            const cpu = data.systemMetrics.cpu.loadPercent;
-            const system = data.systemMetrics.memory;
-
-            // Update metrics
-            document.getElementById('rssMemory').textContent = formatBytes(memory.rss * 1024 * 1024);
-            document.getElementById('heapUsed').textContent = formatBytes(memory.heapUsed * 1024 * 1024);
-            document.getElementById('heapSubtext').textContent = `of ${formatBytes(memory.heapTotal * 1024 * 1024)} total`;
-            document.getElementById('externalMemory').textContent = formatBytes(memory.external * 1024 * 1024);
-            document.getElementById('arrayBuffers').textContent = formatBytes(memory.arrayBuffers * 1024 * 1024);
-            document.getElementById('cpuLoad').textContent = cpu['1min'] + '%';
-            document.getElementById('systemMemory').textContent = system.usagePercent + '%';
-            document.getElementById('systemMemorySubtext').textContent =
-                `${(system.used / 1024).toFixed(1)} GB / ${(system.total / 1024).toFixed(1)} GB`;
-            document.getElementById('totalContexts').textContent = data.totalContexts;
-            document.getElementById('totalPages').textContent = data.contexts.reduce((sum, ctx) => sum + ctx.totalPages, 0);
-
-            // Update header info
-            document.getElementById('uptime').textContent = formatUptime(data.systemMetrics.process.uptime);
-            document.getElementById('currentTime').textContent = new Date(data.timestamp).toLocaleTimeString();
-            document.getElementById('nodeVersion').textContent = data.systemMetrics.process.nodeVersion;
-
-            // Update changes
-            if (previousData) {
-                const prevMemory = previousData.systemMetrics.process.memory;
-                updateChange('rssChange', memory.rss, prevMemory.rss, 'MB');
-                updateChange('heapChange', memory.heapUsed, prevMemory.heapUsed, 'MB');
-                updateChange('externalChange', memory.external, prevMemory.external, 'MB');
-            }
-
-            // Check for high memory usage
-            if (memory.rss > 1024) { // > 1GB
-                showAlert(`High memory usage detected: ${formatBytes(memory.rss * 1024 * 1024)}. Consider restarting the server or investigating memory leaks.`, 'warning');
-            }
-        }
-
-        function updateChange(elementId, current, previous, unit) {
-            const change = current - previous;
-            const element = document.getElementById(elementId);
-
-            if (Math.abs(change) < 0.01) {
-                element.style.display = 'none';
+            // skip if a previous fetch is still pending
+            if (isFetching) {
+                // silently skip; optional: console.debug or lightweight toast
+                console.debug('fetchData: previous request still pending — skipping');
                 return;
             }
 
-            element.style.display = 'inline-block';
-            const changeClass = change > 0 ? 'up' : 'down';
-            const arrow = change > 0 ? '↑' : '↓';
-            element.className = `metric-change ${changeClass}`;
-            element.textContent = `${arrow} ${Math.abs(change).toFixed(2)} ${unit}`;
-        }
+            isFetching = true;
+            refreshBtn.disabled = true;
+            const refreshText = refreshBtn.querySelector('span:last-child');
+            refreshText.textContent = 'Refreshing...';
 
-        function updateCharts(data) {
-            const memory = data.systemMetrics.process.memory;
-            const cpu = data.systemMetrics.cpu.loadPercent;
-            const system = data.systemMetrics.memory;
-            const timestamp = new Date(data.timestamp).toLocaleTimeString();
-
-            // Add new data point
-            dataHistory.timestamps.push(timestamp);
-            dataHistory.rss.push(memory.rss);
-            dataHistory.heapUsed.push(memory.heapUsed);
-            dataHistory.heapTotal.push(memory.heapTotal);
-            dataHistory.external.push(memory.external);
-            dataHistory.arrayBuffers.push(memory.arrayBuffers);
-            dataHistory.cpuLoad.push(cpu['1min']);
-            dataHistory.systemMemoryUsed.push(system.used);
-            dataHistory.systemMemoryPercent.push(system.usagePercent);
-
-            // Keep only last MAX_DATA_POINTS
-            if (dataHistory.timestamps.length > MAX_DATA_POINTS) {
-                Object.keys(dataHistory).forEach(key => {
-                    dataHistory[key].shift();
-                });
-            }
-
-            // Update memory chart
-            memoryChart.data.labels = dataHistory.timestamps;
-            memoryChart.data.datasets[0].data = dataHistory.rss;
-            memoryChart.data.datasets[1].data = dataHistory.heapUsed;
-            memoryChart.data.datasets[2].data = dataHistory.external;
-            memoryChart.update('none');
-
-            // Update CPU chart
-            cpuChart.data.labels = dataHistory.timestamps;
-            cpuChart.data.datasets[0].data = dataHistory.cpuLoad;
-            cpuChart.data.datasets[1].data = dataHistory.systemMemoryPercent;
-            cpuChart.update('none');
-
-            // Update growth rate chart
-            const growthRate = calculateGrowthRate();
-            const avgGrowthRate = calculateAverageGrowthRate();
-            document.getElementById('memoryGrowthRate').textContent = `${growthRate} MB/min`;
-            document.getElementById('memoryAverageGrowthRate').textContent = `${avgGrowthRate} MB/min`;
-
-            if (dataHistory.timestamps.length >= 2) {
-                const growthRates = [];
-                for (let i = 1; i < dataHistory.rss.length; i++) {
-                    const rate = ((dataHistory.rss[i] - dataHistory.rss[i - 1]) / (REFRESH_INTERVAL / 1000 / 60));
-                    growthRates.push(rate);
+            try {
+                const res = await fetch(API_ENDPOINT);
+                if (!res.ok) {
+                    throw new Error(`Server responded with status ${res.status}`);
                 }
+                const data = await res.json();
+                const timestamp = new Date(data.timestamp).toLocaleTimeString();
 
-                growthRateChart.data.labels = dataHistory.timestamps.slice(1);
-                growthRateChart.data.datasets[0].data = growthRates;
-                growthRateChart.update('none');
+                document.getElementById('last-updated').textContent = `Last updated: ${timestamp}`;
+                renderSystemInfo(data);
+                renderMemoryInfo(data.memory);
+                renderContextsSummary(data.browserContexts);
+                renderContextsTable(data.browserContexts);
+                renderProcessesTable(data.processes);
+                updateMemoryChart(timestamp, data.memory);
+
+                // Check for alerts (only after first load to avoid initial spam)
+                if (!isFirstLoad) {
+                    checkForAlerts(data);
+                }
+                isFirstLoad = false;
+
+            } catch (error) {
+                showToast('Failed to fetch data: ' + error.message, true);
+                console.error('Fetch error:', error);
+            } finally {
+                isFetching = false;
+                refreshBtn.disabled = false;
+                refreshText.textContent = 'Refresh';
             }
         }
 
-        function updateContexts(data) {
-            const container = document.getElementById('contextsContainer');
-
-            if (data.contexts.length === 0) {
-                container.innerHTML = `
-                    <div style="text-align: center; padding: 40px; color: #9ca3af;">
-                        <p style="font-size: 1.1rem;">No active browser contexts</p>
-                    </div>
-                `;
+        async function cleanupContexts() {
+            if (!confirm('Are you sure you want to clean up idle browser contexts?')) {
                 return;
             }
+            cleanupBtn.disabled = true;
+            const cleanupText = cleanupBtn.querySelector('span:last-child');
+            cleanupText.textContent = 'Cleaning...';
 
-            container.innerHTML = data.contexts.map(ctx => `
-                <div class="context-card">
-                    <div class="context-header">
-                        <div class="context-location">📍 Location: ${ctx.originalAddress}</div>
-                        <div class="context-status active">${ctx.contextStatus}</div>
-                    </div>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 10px;">
-                        <div style="font-size: 0.85rem;">
-                            <span style="color: #6b7280;">Created:</span> 
-                            <strong>${new Date(ctx.createdAt).toLocaleString()}</strong>
-                        </div>
-                        <div style="font-size: 0.85rem;">
-                            <span style="color: #6b7280;">Total Pages:</span> 
-                            <strong>${ctx.totalPages}</strong>
-                        </div>
-                        <div style="font-size: 0.85rem;">
-                            <span style="color: #6b7280;">Serviceable:</span> 
-                            <strong>${ctx.serviceableWebsites.join(', ')}</strong>
-                        </div>
-                    </div>
-                    ${ctx.pages && ctx.pages.length > 0 ? `
-                        <div style="margin-top: 10px;">
-                            <div style="font-size: 0.9rem; font-weight: 600; margin-bottom: 8px; color: #374151;">Active Pages:</div>
-                            <div class="pages-list">
-                                ${ctx.pages.map(page => `
-                                    <div class="page-item">
-                                        <div style="font-weight: 600; margin-bottom: 4px;">${page.title || 'Untitled Page'}</div>
-                                        <div class="page-url">${page.url}</div>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        </div>
-                    ` : ''}
-                </div>
-            `).join('');
-        }
-
-        async function forceGC() {
             try {
-                const response = await fetch(`${API_BASE}/gc`, { method: 'POST' });
-                const result = await response.json();
-
-                if (result.success) {
-                    showAlert('Garbage collection completed successfully. Memory freed: ' + JSON.stringify(result.memoryFreed), 'info');
-                    setTimeout(fetchData, 1000); // Refresh after 1 second
+                const res = await fetch(CLEANUP_ENDPOINT, { method: 'POST' });
+                const result = await res.json();
+                if (!res.ok) {
+                    throw new Error(result.message || 'Cleanup failed');
                 }
+
+                const message = result.cleanedContexts > 0
+                    ? `✓ Cleaned up ${result.cleanedContexts} context${result.cleanedContexts !== 1 ? 's' : ''}`
+                    : '✓ No contexts needed cleanup';
+                showToast(message);
+
+                // Show memory delta if available
+                if (result.memoryDelta) {
+                    const delta = result.memoryDelta.rss;
+                    if (delta < 0) {
+                        showAlert('Memory Freed', `Freed ${Math.abs(delta)} MB of memory`, 'info');
+                    }
+                }
+
+                setTimeout(fetchData, 1000); // Refresh data after cleanup
             } catch (error) {
-                showAlert('Failed to trigger garbage collection: ' + error.message, 'error');
+                showToast('Cleanup failed: ' + error.message, true);
+                console.error('Cleanup error:', error);
+            } finally {
+                cleanupBtn.disabled = false;
+                cleanupText.textContent = 'Cleanup';
             }
         }
 
-        function clearHistory() {
-            if (confirm('Are you sure you want to clear the monitoring history?')) {
-                dataHistory = {
-                    timestamps: [],
-                    rss: [],
-                    heapUsed: [],
-                    heapTotal: [],
-                    external: [],
-                    arrayBuffers: [],
-                    cpuLoad: [],
-                    systemMemoryUsed: [],
-                    systemMemoryPercent: []
-                };
-
-                memoryChart.data.labels = [];
-                memoryChart.data.datasets.forEach(ds => ds.data = []);
-                memoryChart.update();
-
-                cpuChart.data.labels = [];
-                cpuChart.data.datasets.forEach(ds => ds.data = []);
-                cpuChart.update();
-
-                growthRateChart.data.labels = [];
-                growthRateChart.data.datasets.forEach(ds => ds.data = []);
-                growthRateChart.update();
-
-                document.getElementById('memoryGrowthRate').textContent = '-- MB/min';
-            }
-        }
-
-        function exportData() {
-            const csvContent = [
-                ['Timestamp', 'RSS (MB)', 'Heap Used (MB)', 'Heap Total (MB)', 'External (MB)', 'CPU Load (%)', 'System Memory (%)'].join(','),
-                ...dataHistory.timestamps.map((ts, i) =>
-                    [ts, dataHistory.rss[i], dataHistory.heapUsed[i], dataHistory.heapTotal[i],
-                        dataHistory.external[i], dataHistory.cpuLoad[i], dataHistory.systemMemoryPercent[i]].join(',')
-                )
-            ].join('\n');
-
-            const blob = new Blob([csvContent], { type: 'text/csv' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `monitoring-data-${new Date().toISOString()}.csv`;
-            a.click();
-            window.URL.revokeObjectURL(url);
-        }
-
-        function refreshData() {
-            const btn = document.getElementById('refreshBtn');
-            btn.innerHTML = '<div class="loading" style="width: 16px; height: 16px; border-width: 2px;"></div>';
-            fetchData().then(() => {
-                btn.textContent = 'Refresh Now';
-            });
-        }
-
-        // Initialize
         document.addEventListener('DOMContentLoaded', () => {
-            initCharts();
-            fetchData();
+            initMemoryChart();
+            fetchData(); // Initial fetch
             setInterval(fetchData, REFRESH_INTERVAL);
+
+            refreshBtn.addEventListener('click', fetchData);
+            cleanupBtn.addEventListener('click', cleanupContexts);
         });
     </script>
 </body>
