@@ -134,7 +134,7 @@
                             <th class="px-4 py-3 text-xs text-slate-200 font-semibold text-left">Address</th>
                             <th class="px-4 py-3 text-xs text-slate-200 font-semibold text-left">Status</th>
                             <th class="px-4 py-3 text-xs text-slate-200 font-semibold text-left">Age</th>
-                            <th class="px-4 py-3 text-xs text-slate-200 font-semibold text-left">Websites</th>
+                            <th class="px-4 py-3 text-xs text-slate-200 font-semibold text-left">Serviceability</th>
                             <th class="px-4 py-3 text-xs text-slate-200 font-semibold text-left">Pages</th>
                         </tr>
                     </thead>
@@ -355,12 +355,34 @@
                 return;
             }
 
-            // Helper to derive serviceable websites for a context
+            // Helper to derive serviceable and unserviceable websites for a context
             function extractSites(ctx) {
+                // Check if serviceability object is available
+                if (ctx.serviceability && typeof ctx.serviceability === 'object') {
+                    const serviceable = [];
+                    const unserviceable = [];
+                    
+                    for (const [website, isServiceable] of Object.entries(ctx.serviceability)) {
+                        if (isServiceable === true) {
+                            serviceable.push(website);
+                        } else if (isServiceable === false) {
+                            unserviceable.push(website);
+                        }
+                    }
+                    
+                    return { serviceable, unserviceable };
+                }
+                
                 // Prefer explicit fields if provided by backend
-                if (Array.isArray(ctx.serviceableWebsites) && ctx.serviceableWebsites.length) return ctx.serviceableWebsites;
-                if (Array.isArray(ctx.serviceable) && ctx.serviceable.length) return ctx.serviceable;
-                if (Array.isArray(ctx.sites) && ctx.sites.length) return ctx.sites;
+                if (Array.isArray(ctx.serviceableWebsites) && ctx.serviceableWebsites.length) {
+                    return { serviceable: ctx.serviceableWebsites, unserviceable: [] };
+                }
+                if (Array.isArray(ctx.serviceable) && ctx.serviceable.length) {
+                    return { serviceable: ctx.serviceable, unserviceable: [] };
+                }
+                if (Array.isArray(ctx.sites) && ctx.sites.length) {
+                    return { serviceable: ctx.sites, unserviceable: [] };
+                }
 
                 // Fallback: derive hostnames from pages array
                 if (Array.isArray(ctx.pages) && ctx.pages.length) {
@@ -374,10 +396,10 @@
                             return (p.title || '').slice(0, 40);
                         }
                     }).filter(Boolean);
-                    return Array.from(new Set(hosts));
+                    return { serviceable: Array.from(new Set(hosts)), unserviceable: [] };
                 }
 
-                return [];
+                return { serviceable: [], unserviceable: [] };
             }
 
             tbody.innerHTML = contexts.list.map(ctx => {
@@ -394,12 +416,29 @@
                         </ul>
                     </div>` : '';
 
-                // Sites / serviceable websites column - show all sites and allow wrapping
-                const sites = extractSites(ctx);
+                // Sites / serviceability column - show both serviceable and unserviceable websites
+                const sitesData = extractSites(ctx);
                 let sitesHtml = '—';
-                if (sites.length > 0) {
-                    // render all sites as small badges inside a wrapping flex container so they can flow to multiple rows
-                    sitesHtml = `<div class="flex flex-wrap items-center -mr-1">${sites.map(s => `<span class="inline-block text-xs bg-white/5 text-slate-200 px-2 py-0.5 rounded mr-1 mb-1">${s}</span>`).join('')}</div>`;
+                
+                if (sitesData.serviceable.length > 0 || sitesData.unserviceable.length > 0) {
+                    let serviceableHtml = '';
+                    let unserviceableHtml = '';
+                    
+                    // Serviceable websites (green badges)
+                    if (sitesData.serviceable.length > 0) {
+                        serviceableHtml = sitesData.serviceable.map(s =>
+                            `<span class="inline-block text-xs bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded mr-1 mb-1">✓ ${s}</span>`
+                        ).join('');
+                    }
+                    
+                    // Unserviceable websites (red badges)
+                    if (sitesData.unserviceable.length > 0) {
+                        unserviceableHtml = sitesData.unserviceable.map(s =>
+                            `<span class="inline-block text-xs bg-red-500/20 text-red-300 px-2 py-0.5 rounded mr-1 mb-1">✗ ${s}</span>`
+                        ).join('');
+                    }
+                    
+                    sitesHtml = `<div class="flex flex-wrap items-center -mr-1">${serviceableHtml}${unserviceableHtml}</div>`;
                 }
 
                 return `
