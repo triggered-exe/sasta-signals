@@ -8,15 +8,15 @@ import { isNightTimeIST } from "../utils/priceTracking.js";
 import { processProducts as globalProcessProducts } from "../utils/productProcessor.js";
 
 const setLocation = async (location) => {
-   // Validate that location is a numerical pincode
-   if (!location || !/^\d+$/.test(location)) {
-     throw AppError.badRequest("Location must be a valid numerical pincode");
-   }
+  // Validate that location is a numerical pincode
+  if (!location || !/^\d+$/.test(location)) {
+    throw AppError.badRequest("Location must be a valid numerical pincode");
+  }
 
-   let page = null;
-   try {
-     // Get or create context
-     const context = await contextManager.getContext(location);
+  let page = null;
+  try {
+    // Get or create context
+    const context = await contextManager.getContext(location);
 
     // Return existing context if already set up and serviceable
     if (contextManager.getWebsiteServiceabilityStatus(location, "jiomart-grocery")) {

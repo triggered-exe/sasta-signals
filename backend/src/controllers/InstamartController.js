@@ -463,7 +463,8 @@ export const trackProductPrices = async (location = "500064") => {
                 continue;
             }
 
-            logger.info("IM: Starting new tracking cycle at:", new Date().toISOString());
+            const cycleStartTime = new Date();
+            logger.info("IM: Starting new tracking cycle at:", cycleStartTime.toISOString());
 
             // Setup the context for the location
             const context = await setLocation(location);
@@ -491,6 +492,8 @@ export const trackProductPrices = async (location = "500064") => {
             }
 
             logger.info("IM: Tracking cycle completed at:", new Date().toISOString());
+            const totalDurationMinutes = ((Date.now() - cycleStartTime.getTime()) / 60000).toFixed(2);
+            logger.info(`IM: Total time taken: ${totalDurationMinutes} minutes`);
 
             // Add a delay before starting the next cycle
             await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));

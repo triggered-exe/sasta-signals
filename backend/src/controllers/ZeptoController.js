@@ -554,6 +554,7 @@ export const search = async (location, query) => {
 
 export const startTrackingHelper = async (location = "500064") => {
   while (true) {
+    let cycleStartTime = null;
     try {
       // Skip if it's night time (12 AM to 6 AM IST)
       if (isNightTimeIST()) {
@@ -569,7 +570,8 @@ export const startTrackingHelper = async (location = "500064") => {
         throw new Error("ZEPTO: Failed to set location for Zepto");
       }
 
-      logger.info("Zepto: Starting new tracking cycle at:", new Date().toISOString());
+      cycleStartTime = new Date();
+      logger.info("Zepto: Starting new tracking cycle at:", cycleStartTime.toISOString());
 
       // Get all categories and flatten subcategories into a single array
       const categories = await fetchCategories();
@@ -657,6 +659,10 @@ export const startTrackingHelper = async (location = "500064") => {
     } catch (error) {
       logger.error("Zepto: Failed to track prices:", error);
     } finally {
+      if (cycleStartTime) {
+        const totalDurationMinutes = ((Date.now() - cycleStartTime.getTime()) / 60000).toFixed(2);
+        logger.info(`Zepto: Total time taken: ${totalDurationMinutes} minutes`);
+      }
       logger.info("Zepto: Tracking cycle completed at:", new Date().toISOString());
       // Add a delay before starting the next cycle
       await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000)); // 1 minute

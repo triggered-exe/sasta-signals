@@ -27,7 +27,7 @@ class ContextManager {
   // Function to clean and normalize address to create a consistent key
   cleanAddressKey(address) {
     if (!address) return '';
-    
+
     // Convert to string and normalize
     const cleaned = String(address)
       .toLowerCase()
@@ -49,7 +49,7 @@ class ContextManager {
       // Final cleanup of multiple spaces
       .replace(/\s+/g, ' ')
       .trim();
-    
+
     return cleaned;
   }
 
@@ -159,27 +159,34 @@ class ContextManager {
 
       // Return existing context if available
       if (this.contextMap.has(addressKey)) {
-        const contextData = this.contextMap.get(addressKey);
-        // Check if context is still valid before using it - prevents the "Target closed" error
-        try {
-          const pages = await contextData.context.pages();
-          logger.info(`[ctx]: Using cached context for address: ${address} (${pages.length} pages)`);
-          return contextData.context;
-        } catch (error) {
-          // If context is invalid, clean it up and create a new one
-          logger.info(
-            `[ctx]: Context for address ${address} is invalid, creating new one`
-          );
-          await this.cleanupAddress(addressKey);
+        // First check if context is too old and needs to be closed
+        const TIME_LIMIT_HOURS = 1;
+        const wasClosed = await this.closeOldContext(address, TIME_LIMIT_HOURS);
+
+        // If context was closed due to age, it will be recreated below
+        if (!wasClosed && this.contextMap.has(addressKey)) {
+          const contextData = this.contextMap.get(addressKey);
+          // Check if context is still valid before using it - prevents the "Target closed" error
+          try {
+            const pages = await contextData.context.pages();
+            logger.info(`[ctx]: Using cached context for address: ${address} (${pages.length} pages)`);
+            return contextData.context;
+          } catch (error) {
+            // If context is invalid, clean it up and create a new one
+            logger.info(
+              `[ctx]: Context for address ${address} is invalid, creating new one`
+            );
+            await this.cleanupAddress(addressKey);
+          }
         }
       }
 
       // Memory management: prevent exceeding context limit
       if (this.contextMap.size >= this.MAX_CONTEXTS) {
         logger.info("[ctx]: Context limit reached, attempting cleanup...");
-        
+
         const cleanedCount = await this.cleanupIdleContexts();
-        
+
         if (cleanedCount === 0) {
           // No contexts were cleaned up, all are busy
           const activeContexts = Array.from(this.contextMap.entries())
@@ -188,7 +195,7 @@ class ContextManager {
               serviceableWebsites: Object.keys(data.serviceability).filter(w => data.serviceability[w] === true).length,
               lastUsed: data.lastUsed
             }));
-          
+
           throw new Error(
             `All ${this.MAX_CONTEXTS} contexts are active with open pages. ` +
             `Active contexts: ${activeContexts.map(c => `${c.address} (${c.serviceableWebsites} serviceable)`).join(', ')}. ` +
@@ -355,7 +362,7 @@ class ContextManager {
     if (this.contextMap.has(addressKey)) {
       const contextData = this.contextMap.get(addressKey);
       contextData.serviceability[website] = isServiceable;
-      
+
       this.updateLastUsed(address);
       await contextManager.cleanupIdleContexts();
       logger.info(`[ctx]: Marked ${website} as ${isServiceable ? 'serviceable' : 'not serviceable'} for address: ${address}`);
@@ -476,6 +483,58 @@ class ContextManager {
     } catch (error) {
       logger.error("[ctx]: Error during idle contexts cleanup:", error);
       throw error;
+    }
+  }
+
+  // Close context if it's been running for more than specified hours (default 2 hours)
+  async closeOldContext(address, maxAgeHours = 2) {
+    const addressKey = this.cleanAddressKey(address);
+
+    if (!this.contextMap.has(addressKey)) {
+      logger.info(`[ctx]: No context found for address: ${address}`);
+      return false;
+    }
+
+    const data = this.contextMap.get(addressKey);
+    const now = getCurrentIST();
+    // data.createdAt is already an IST Date from getCurrentIST()
+    const createdAt = new Date(data.createdAt);
+    const ageMs = now.getTime() - createdAt.getTime();
+    const ageHours = ageMs / (1000 * 60 * 60);
+
+    if (ageHours >= maxAgeHours) {
+      logger.info(`[ctx]: Context for ${data.originalAddress} is ${ageHours.toFixed(2)} hours old, closing it`);
+
+      try {
+        // Close all pages first
+        const pages = await data.context.pages();
+        logger.info(`[ctx]: Closing ${pages.length} pages before context cleanup`);
+        await Promise.all(pages.map(page => page.close().catch(e =>
+          logger.warn(`[ctx]: Failed to close page: ${e.message}`)
+        )));
+
+        // Close the context
+        await data.context.close();
+        this.contextMap.delete(addressKey);
+
+        logger.info(`[ctx]: Successfully closed old context for ${data.originalAddress}`);
+
+        // Trigger garbage collection if available
+        if (global.gc) {
+          global.gc();
+          logger.info(`[ctx]: Triggered garbage collection`);
+        }
+
+        return true;
+      } catch (error) {
+        logger.error(`[ctx]: Error closing old context for ${data.originalAddress}:`, error);
+        // Force remove from map even if close failed
+        this.contextMap.delete(addressKey);
+        return false;
+      }
+    } else {
+      logger.info(`[ctx]: Context for ${data.originalAddress} is only ${ageHours.toFixed(2)} hours old, keeping it`);
+      return false;
     }
   }
 
