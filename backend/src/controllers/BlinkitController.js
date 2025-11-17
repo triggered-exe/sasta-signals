@@ -681,7 +681,7 @@ export const startTrackingHandler = async (location = "bahadurpura police statio
                 // Log completion and wait before next cycle
                 const endTime = new Date();
                 const totalDuration = (endTime - startTime) / 1000 / 60;
-                logger.info(`BLINKIT: Tracking completed in :  ${totalDuration.toFixed(2)} minutes`);
+                logger.info(`BLINKIT: Total time taken For Tracking completion is:  ${totalDuration.toFixed(2)} minutes`);
                 await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000)); // Wait for 1 minute before next iteration
             } catch (error) {
                 logger.error("BLINKIT: Error in tracking handler:", error);
