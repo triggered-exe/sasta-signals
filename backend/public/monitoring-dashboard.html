@@ -177,7 +177,7 @@
         const API_ENDPOINT = '/api/monitoring/system';
         const CLEANUP_ENDPOINT = '/api/monitoring/contexts/cleanup';
         const REFRESH_INTERVAL = 5000; // 5 seconds
-        const MAX_DATA_POINTS = 60; // Last 5 minutes
+        const MAX_DATA_POINTS = 720; // Last 1 hour (720 * 5s = 3600s)
 
         const refreshBtn = document.getElementById('refresh-btn');
         const cleanupBtn = document.getElementById('cleanup-btn');
@@ -361,7 +361,7 @@
                 if (ctx.serviceability && typeof ctx.serviceability === 'object') {
                     const serviceable = [];
                     const unserviceable = [];
-                    
+
                     for (const [website, isServiceable] of Object.entries(ctx.serviceability)) {
                         if (isServiceable === true) {
                             serviceable.push(website);
@@ -369,10 +369,10 @@
                             unserviceable.push(website);
                         }
                     }
-                    
+
                     return { serviceable, unserviceable };
                 }
-                
+
                 // Prefer explicit fields if provided by backend
                 if (Array.isArray(ctx.serviceableWebsites) && ctx.serviceableWebsites.length) {
                     return { serviceable: ctx.serviceableWebsites, unserviceable: [] };
@@ -419,25 +419,25 @@
                 // Sites / serviceability column - show both serviceable and unserviceable websites
                 const sitesData = extractSites(ctx);
                 let sitesHtml = '—';
-                
+
                 if (sitesData.serviceable.length > 0 || sitesData.unserviceable.length > 0) {
                     let serviceableHtml = '';
                     let unserviceableHtml = '';
-                    
+
                     // Serviceable websites (green badges)
                     if (sitesData.serviceable.length > 0) {
                         serviceableHtml = sitesData.serviceable.map(s =>
                             `<span class="inline-block text-xs bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded mr-1 mb-1">✓ ${s}</span>`
                         ).join('');
                     }
-                    
+
                     // Unserviceable websites (red badges)
                     if (sitesData.unserviceable.length > 0) {
                         unserviceableHtml = sitesData.unserviceable.map(s =>
                             `<span class="inline-block text-xs bg-red-500/20 text-red-300 px-2 py-0.5 rounded mr-1 mb-1">✗ ${s}</span>`
                         ).join('');
                     }
-                    
+
                     sitesHtml = `<div class="flex flex-wrap items-center -mr-1">${serviceableHtml}${unserviceableHtml}</div>`;
                 }
 
