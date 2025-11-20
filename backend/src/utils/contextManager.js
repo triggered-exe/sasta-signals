@@ -1,6 +1,7 @@
 import logger from "./logger.js";
 import { firefox } from "playwright";
 import { getCurrentIST } from "./dateUtils.js";
+import { getBrowserProcessMetrics } from "./browserMetrics.js";
 
 // Real Firefox user agents that are commonly used
 const REAL_FIREFOX_USER_AGENTS = [
@@ -407,20 +408,39 @@ class ContextManager {
     if (this.contextMap.has(addressKey)) {
       const data = this.contextMap.get(addressKey);
       try {
+        // If there's no browser context (serviceability-only entry), just remove it safely
+        if (!data || !data.context) {
+          logger.info(`[ctx]: No browser context for ${data?.originalAddress || addressKey}, removing entry`);
+          this.contextMap.delete(addressKey);
+          logger.info(`[ctx]: Removed entry for address: ${data?.originalAddress || addressKey} (remaining contexts: ${this.contextMap.size})`);
+          return;
+        }
+
         // Log page count before cleanup
         let pagesBefore = [];
         try {
           pagesBefore = await data.context.pages();
         } catch (e) {
-          // Ignore errors if context is already closed
+          // Ignore errors if context is already closed or invalid
         }
         logger.info(`[ctx]: Cleaning up context for ${data.originalAddress || addressKey} (${pagesBefore.length} pages)`);
 
-        await data.context.close();
+        try {
+          await data.context.close();
+        } catch (closeErr) {
+          logger.warn(`[ctx]: Failed to close context for ${data.originalAddress || addressKey}: ${closeErr?.message || closeErr}`);
+        }
+
         this.contextMap.delete(addressKey);
         logger.info(`[ctx]: Closed context for address: ${data.originalAddress || addressKey} (remaining contexts: ${this.contextMap.size})`);
       } catch (error) {
         logger.error(`[ctx]: Error closing context for address ${data.originalAddress || addressKey}:`, error);
+        // Ensure the map entry is removed to avoid repeated failures
+        try {
+          this.contextMap.delete(addressKey);
+        } catch (e) {
+          logger.warn(`[ctx]: Failed to delete map entry for ${addressKey}: ${e?.message || e}`);
+        }
       }
     }
   }
@@ -504,17 +524,42 @@ class ContextManager {
 
     if (ageHours >= maxAgeHours) {
       logger.info(`[ctx]: Context for ${data.originalAddress} is ${ageHours.toFixed(2)} hours old, closing it`);
-
       try {
+        // Log browser memory before closing
+        try {
+          const browserMetricsBefore = await getBrowserProcessMetrics();
+          logger.info(`[ctx]: Browser memory before closing context for ${data.originalAddress}: total=${browserMetricsBefore.totalMemoryMB}MB processes=${browserMetricsBefore.processCount}`);
+        } catch (browserErr) {
+          logger.warn(`[ctx]: Failed to read browser memory before closing context: ${browserErr?.message || browserErr}`);
+        }
+
+        // If there's no context (serviceability-only entry), just remove it
+        if (!data.context) {
+          logger.info(`[ctx]: No browser context for ${data.originalAddress}, removing entry`);
+          this.contextMap.delete(addressKey);
+          return true;
+        }
+
         // Close all pages first
-        const pages = await data.context.pages();
+        let pages = [];
+        try {
+          pages = await data.context.pages();
+        } catch (e) {
+          logger.warn(`[ctx]: Could not read pages for ${data.originalAddress}: ${e?.message || e}`);
+        }
+
         logger.info(`[ctx]: Closing ${pages.length} pages before context cleanup`);
         await Promise.all(pages.map(page => page.close().catch(e =>
-          logger.warn(`[ctx]: Failed to close page: ${e.message}`)
+          logger.warn(`[ctx]: Failed to close page: ${e?.message || e}`)
         )));
 
         // Close the context
-        await data.context.close();
+        try {
+          await data.context.close();
+        } catch (closeErr) {
+          logger.warn(`[ctx]: Failed to close context for ${data.originalAddress}: ${closeErr?.message || closeErr}`);
+        }
+
         this.contextMap.delete(addressKey);
 
         logger.info(`[ctx]: Successfully closed old context for ${data.originalAddress}`);
@@ -523,6 +568,13 @@ class ContextManager {
         if (global.gc) {
           global.gc();
           logger.info(`[ctx]: Triggered garbage collection`);
+        }
+        // Log browser memory after closing
+        try {
+          const browserMetricsAfter = await getBrowserProcessMetrics();
+          logger.info(`[ctx]: Browser memory after closing context for ${data.originalAddress}: total=${browserMetricsAfter.totalMemoryMB}MB processes=${browserMetricsAfter.processCount}`);
+        } catch (browserErr) {
+          logger.warn(`[ctx]: Failed to read browser memory after closing context: ${browserErr?.message || browserErr}`);
         }
 
         return true;

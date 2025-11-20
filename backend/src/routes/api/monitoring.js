@@ -191,14 +191,16 @@ router.get("/system", async (req, res) => {
 
 /**
  * POST /api/monitoring/contexts/cleanup
- * Trigger cleanup of non-serviceable contexts
+ * Trigger cleanup of ALL contexts (force clear, regardless of usage)
  */
 router.post("/contexts/cleanup", async (req, res) => {
   try {
     const memBefore = process.memoryUsage();
-    logger.info(`[cleanup]: Starting cleanup - RSS: ${Math.round(memBefore.rss / 1024 / 1024)}MB, External: ${Math.round(memBefore.external / 1024 / 1024)}MB, ArrayBuffers: ${Math.round(memBefore.arrayBuffers / 1024 / 1024)}MB`);
+    logger.info(`[cleanup]: Starting FORCE cleanup - RSS: ${Math.round(memBefore.rss / 1024 / 1024)}MB, External: ${Math.round(memBefore.external / 1024 / 1024)}MB, ArrayBuffers: ${Math.round(memBefore.arrayBuffers / 1024 / 1024)}MB`);
 
-    const cleanedCount = await contextManager.cleanupIdleContexts();
+    const contextsBefore = contextManager.contextMap.size;
+    await contextManager.cleanup();
+    const cleanedCount = contextsBefore;
 
     const memAfter = process.memoryUsage();
     const memDelta = {
@@ -207,10 +209,10 @@ router.post("/contexts/cleanup", async (req, res) => {
       arrayBuffers: Math.round((memAfter.arrayBuffers - memBefore.arrayBuffers) / 1024 / 1024)
     };
 
-    logger.info(`[cleanup]: Completed - cleaned ${cleanedCount} contexts, Memory delta - RSS: ${memDelta.rss}MB, External: ${memDelta.external}MB, ArrayBuffers: ${memDelta.arrayBuffers}MB`);
+    logger.info(`[cleanup]: FORCE cleanup completed - cleaned ALL contexts, Memory delta - RSS: ${memDelta.rss}MB, External: ${memDelta.external}MB, ArrayBuffers: ${memDelta.arrayBuffers}MB`);
 
     res.json({
-      message: "Cleanup completed",
+      message: "FORCE cleanup completed - ALL contexts cleared",
       cleanedContexts: cleanedCount,
       remainingContexts: contextManager.contextMap.size,
       memoryDelta: memDelta,
@@ -218,9 +220,9 @@ router.post("/contexts/cleanup", async (req, res) => {
       timezone: getISTInfo().timezone
     });
   } catch (error) {
-    logger.error("Error during cleanup:", error);
+    logger.error("Error during FORCE cleanup:", error);
     res.status(500).json({
-      error: "Failed to cleanup contexts",
+      error: "Failed to FORCE cleanup contexts",
       message: error.message,
       timestamp: formatISTString(new Date()),
       timezone: getISTInfo().timezone
