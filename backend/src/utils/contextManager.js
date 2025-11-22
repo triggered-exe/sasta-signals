@@ -1,21 +1,19 @@
 import logger from "./logger.js";
-import { firefox } from "playwright";
+import { chromium } from "playwright";
 import { getCurrentIST } from "./dateUtils.js";
 import { getBrowserProcessMetrics } from "./browserMetrics.js";
 
-// Real Firefox user agents that are commonly used
-const REAL_FIREFOX_USER_AGENTS = [
-  //'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 OPR/118.0.0.0', // Not working for Blinkit
-  // 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.3a/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 OPR/117.0.0.', //Chrome 134.0.0, Linux // Working for 
-
-  // 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:136.0) Gecko/20100101 Firefox/136.0', // Working for Blinkit not working for BigBasket
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.3', //Chrome 107.0.0, Windows // Working for Blinkit
-  // 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0', // Edge on Linux // Working for Blinkit not working for BigBasket
+// Real Chromium user agents that are commonly used
+const REAL_CHROMIUM_USER_AGENTS = [
+  // 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  // 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36', // Not working for bigbasket
+  // 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36', // Not working for bibbasket
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
 ];
 
-// Function to get a random Firefox user agent
+// Function to get a random Chromium user agent
 const getRandomUserAgent = () => {
-  return REAL_FIREFOX_USER_AGENTS[Math.floor(Math.random() * REAL_FIREFOX_USER_AGENTS.length)];
+  return REAL_CHROMIUM_USER_AGENTS[Math.floor(Math.random() * REAL_CHROMIUM_USER_AGENTS.length)];
 };
 
 class ContextManager {
@@ -59,95 +57,55 @@ class ContextManager {
     if (!this.browser) {
       const isDevMode = process.env.ENVIRONMENT === "development";
 
-      this.browser = await firefox.launch({
+      // Chromium launch args for memory optimization and stealth
+      const chromiumArgs = [
+        // Memory optimization flags
+        '--disable-dev-shm-usage', // Reduce shared memory usage
+        '--disable-gpu', // Disable GPU acceleration
+        '--disable-software-rasterizer',
+        '--disk-cache-size=67108864', // 64MB cache (matching Firefox config)
+        '--renderer-process-limit=2', // Limit renderer processes (matching Firefox dom.ipc.processCount)
+
+        // Disable unnecessary features
+        '--disable-extensions',
+        '--disable-background-networking',
+        '--disable-sync',
+        '--metrics-recording-only',
+        '--disable-default-apps',
+        '--mute-audio',
+        '--no-first-run',
+        '--disable-breakpad',
+        '--disable-component-extensions-with-background-pages',
+        '--disable-features=TranslateUI,BlinkGenPropertyTrees',
+
+        // Stealth flags to avoid detection
+        '--disable-blink-features=AutomationControlled',
+        '--disable-infobars',
+        '--disable-web-security', // May help with CORS issues during scraping
+        '--disable-features=IsolateOrigins,site-per-process',
+
+        // Network and timeout settings
+        '--disable-hang-monitor',
+        '--disable-prompt-on-repost',
+
+        // Additional performance flags
+        '--no-sandbox', // Use cautiously - only in controlled environments
+        '--disable-setuid-sandbox',
+        '--disable-accelerated-2d-canvas',
+        '--disable-background-timer-throttling',
+        '--disable-renderer-backgrounding',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-ipc-flooding-protection',
+      ];
+
+      // Add development mode specific args
+      if (isDevMode) {
+        chromiumArgs.push('--start-maximized');
+      }
+
+      this.browser = await chromium.launch({
         headless: !isDevMode,
-        // Additional args for development mode
-        args: isDevMode ? [
-          '--start-maximized',  // Start maximized to be more visible and prevent being hidden
-        ] : [],
-        firefoxUserPrefs: {
-          // Stealth preferences to avoid detection
-          "general.useragent.override": getRandomUserAgent(),
-
-          // Memory optimization preferences for low-RAM VMs
-          "browser.cache.disk.enable": true,
-          "browser.cache.memory.enable": true,
-          "browser.cache.memory.capacity": 65536, // 64MB cache
-
-          // Disable memory-intensive features
-          "browser.sessionhistory.max_total_viewers": 2,
-          "browser.tabs.animate": false,
-          "browser.fullscreen.animate": false,
-
-          // Disable unnecessary features
-          "browser.safebrowsing.enabled": false,
-          "browser.safebrowsing.malware.enabled": false,
-          "browser.safebrowsing.phishing.enabled": false,
-          "extensions.update.enabled": false,
-          "app.update.enabled": false,
-
-          // Performance optimizations
-          "dom.ipc.processCount": 2,
-          "browser.tabs.remote.autostart": true,
-
-          // Disable telemetry and data collection
-          "toolkit.telemetry.enabled": false,
-          "datareporting.healthreport.uploadEnabled": false,
-          "datareporting.policy.dataSubmissionEnabled": false,
-
-          // Privacy settings to look more like a real browser
-          "privacy.trackingprotection.enabled": false,
-          "privacy.trackingprotection.pbmode.enabled": false,
-          "privacy.donottrackheader.enabled": false,
-
-          // Disable service workers to avoid extra navigations/iframes caused by
-          // third-party scripts (helps on Linux where service workers may cause
-          // additional frame navigations like googletagmanager service worker iframe)
-          // This is low-risk and prevents service-worker-driven reloads.
-          "dom.serviceWorkers.enabled": false,
-          "dom.serviceWorkers.testing.enabled": false,
-          "dom.serviceWorkers.controller.enabled": false,
-
-          // Disable WebDriver flag
-          "marionette.enabled": false,
-          "marionette.port": 0,
-
-          // Disable automation indicators
-          "dom.webdriver.enabled": false,
-          "useAutomationExtension": false,
-
-          // Set realistic preferences
-          "media.peerconnection.enabled": true,
-          "media.navigator.enabled": true,
-          "geo.enabled": false,
-          "geo.provider.use_corelocation": true,
-          "geo.prompt.testing": false,
-          "geo.prompt.testing.allow": false,
-
-          // Network settings
-          "network.http.connection-timeout": 90,
-          "network.http.response.timeout": 300,
-
-          // Disable Firefox-specific automation detection
-          "devtools.console.stdout.chrome": false,
-          "devtools.debugger.remote-enabled": false,
-
-          // Make it look like a real browser
-          "browser.startup.homepage": "about:blank",
-          "browser.newtabpage.enabled": false,
-          "browser.newtab.preload": false,
-
-          // Disable features that might cause detection
-          "browser.contentblocking.category": "standard",
-          "privacy.resistFingerprinting": false, // Don't use this as it can be detected
-
-          // Set language preferences
-          "intl.accept_languages": "en-US, en",
-          "intl.locale.requested": "en-US",
-        },
-        args: [
-          // Firefox-specific stealth arguments
-        ],
+        args: chromiumArgs,
       });
     }
     return this.browser;
@@ -210,9 +168,17 @@ class ContextManager {
       // Create new context with stealth configuration
       const browser = await this.initBrowser();
       const userAgent = getRandomUserAgent();
+      logger.info(`[ctx]: Selected User Agent for ${address}: ${userAgent}`);
+
+      let platformHeader = '"Windows"';
+      if (userAgent.includes('Macintosh')) {
+        platformHeader = '"macOS"';
+      } else if (userAgent.includes('Linux')) {
+        platformHeader = '"Linux"';
+      }
 
       const context = await browser.newContext({
-        // Use a real Firefox user agent
+        // Use a real Chromium user agent
         userAgent: userAgent,
         // Emulate a larger desktop screen size
         viewport: { width: 1920, height: 1080 },
@@ -231,10 +197,10 @@ class ContextManager {
         // },
         // Set permissions
         // permissions: ['geolocation'],
-        // Set extra HTTP headers to look more like a real Firefox browser
+        // Set extra HTTP headers to look more like a real Chromium browser
         extraHTTPHeaders: {
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+          'Accept-Language': 'en-US,en;q=0.9',
           'Accept-Encoding': 'gzip, deflate, br',
           'DNT': '1',
           'Connection': 'keep-alive',
@@ -243,6 +209,9 @@ class ContextManager {
           'Sec-Fetch-Mode': 'navigate',
           'Sec-Fetch-Site': 'none',
           'Sec-Fetch-User': '?1',
+          'Sec-Ch-Ua': '"Chromium";v="131", "Not_A Brand";v="24"',
+          'Sec-Ch-Ua-Mobile': '?0',
+          'Sec-Ch-Ua-Platform': platformHeader,
           'Cache-Control': 'max-age=0'
         },
         // Enable JavaScript
@@ -251,51 +220,47 @@ class ContextManager {
         colorScheme: 'light',
         // Set reduced motion preference
         reducedMotion: 'no-preference',
-        // Set Firefox-specific options
+        // Set Chromium-specific options
         hasTouch: false,
         isMobile: false
       });
 
       // Add stealth scripts to the context to hide automation
-      await context.addInitScript(() => {
-        // Remove webdriver property (Firefox-specific)
+      await context.addInitScript((ua) => {
+        // Explicitly override user agent
+        Object.defineProperty(navigator, 'userAgent', { get: () => ua });
+
+        // Remove webdriver property
         Object.defineProperty(navigator, 'webdriver', {
           get: () => false,
         });
 
-        // Mock realistic plugins for Firefox
+        // Override the automation flag
+        Object.defineProperty(navigator, 'automation', {
+          get: () => false,
+        });
+
+        // Mock realistic plugins for Chromium
         Object.defineProperty(navigator, 'plugins', {
           get: () => {
             return [
               {
-                name: 'PDF Viewer',
+                name: 'Chrome PDF Plugin',
                 description: 'Portable Document Format',
                 filename: 'internal-pdf-viewer',
-                length: 2
+                length: 1
               },
               {
                 name: 'Chrome PDF Viewer',
                 description: 'Portable Document Format',
-                filename: 'internal-pdf-viewer',
+                filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai',
                 length: 1
               },
               {
-                name: 'Chromium PDF Viewer',
-                description: 'Portable Document Format',
-                filename: 'internal-pdf-viewer',
-                length: 1
-              },
-              {
-                name: 'Microsoft Edge PDF Viewer',
-                description: 'Portable Document Format',
-                filename: 'internal-pdf-viewer',
-                length: 1
-              },
-              {
-                name: 'WebKit built-in PDF',
-                description: 'Portable Document Format',
-                filename: 'internal-pdf-viewer',
-                length: 1
+                name: 'Native Client',
+                description: '',
+                filename: 'internal-nacl-plugin',
+                length: 2
               }
             ];
           },
@@ -323,6 +288,14 @@ class ContextManager {
           get: () => 8,
         });
 
+        // Override chrome runtime
+        if (!window.chrome) {
+          window.chrome = {};
+        }
+        if (!window.chrome.runtime) {
+          window.chrome.runtime = {};
+        }
+
         // Remove automation indicators
         delete window._phantom;
         delete window._selenium;
@@ -330,7 +303,38 @@ class ContextManager {
         delete window.callSelenium;
         delete window.__nightmare;
         delete window.__webdriver_script_fn;
-      });
+        delete window.__webdriver_evaluate;
+        delete window.__webdriver_script_function;
+        delete window.__driver_evaluate;
+        delete window.__webdriver_unwrapped;
+        delete window.__driver_unwrapped;
+
+        // Override vendor
+        Object.defineProperty(navigator, 'vendor', {
+          get: () => 'Google Inc.',
+        });
+
+        // Override platform to match the header we set
+        let platform = 'Win32';
+        if (ua.includes('Macintosh')) {
+          platform = 'MacIntel';
+        } else if (ua.includes('Linux')) {
+          platform = 'Linux x86_64';
+        }
+        Object.defineProperty(navigator, 'platform', {
+          get: () => platform,
+        });
+
+        // Mock connection
+        Object.defineProperty(navigator, 'connection', {
+          get: () => ({
+            effectiveType: '4g',
+            rtt: 50,
+            downlink: 10,
+            saveData: false,
+          }),
+        });
+      }, userAgent);
 
       // Store context with metadata including tracking when it was last used
       this.contextMap.set(addressKey, {

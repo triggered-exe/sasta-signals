@@ -7,7 +7,7 @@ const execAsync = promisify(exec);
 
 /**
  * Get memory usage of browser processes launched by Playwright
- * This function queries the OS for Firefox/browser processes and aggregates their memory usage
+ * This function queries the OS for Chromium/browser processes and aggregates their memory usage
  */
 export async function getBrowserProcessMetrics() {
   try {
@@ -18,12 +18,12 @@ export async function getBrowserProcessMetrics() {
 
     if (platform === "linux" || platform === "darwin") {
       // Use ps command for Linux and macOS
-      // Look for firefox processes (Playwright launches Firefox)
+      // Look for chrome/chromium processes (Playwright launches Chromium)
       // ps aux shows: USER PID %CPU %MEM VSZ RSS TTY STAT START TIME COMMAND
       // We're interested in RSS (Resident Set Size) which is actual physical memory used
       try {
         const { stdout } = await execAsync(
-          "ps aux | grep -E '[f]irefox|[p]laywright'"
+          "ps aux | grep -E '[c]hrome|[c]hromium|[p]laywright'"
         );
         
         const lines = stdout.trim().split("\n").filter(line => line.length > 0);
@@ -61,7 +61,7 @@ export async function getBrowserProcessMetrics() {
       // Use tasklist command for Windows
       try {
         const { stdout } = await execAsync(
-          'tasklist /FI "IMAGENAME eq firefox.exe" /FO CSV /NH'
+          'tasklist /FI "IMAGENAME eq chrome.exe" /FO CSV /NH'
         );
         
         const lines = stdout.trim().split("\n").filter(line => line.length > 0);

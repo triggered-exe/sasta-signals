@@ -12,10 +12,10 @@ const placesData = {};
 // Constants for parallel processing
 const CATEGORY_CHUNK_SIZE = 1; // Number of categories to process in parallel
 const SUBCATEGORY_CHUNK_SIZE = 1; // Number of subcategories to process in parallel
-// Real Firefox browser headers that match our stealth configuration
+// Real Chromium browser headers that match our stealth configuration
 const getRealisticHeaders = (cookies) => ({
     accept: "application/json, text/plain, */*",
-    "accept-language": "en-US,en;q=0.5",
+    "accept-language": "en-US,en;q=0.9",
     "accept-encoding": "gzip, deflate, br",
     "content-type": "application/json",
     "cache-control": "no-cache",
@@ -23,7 +23,7 @@ const getRealisticHeaders = (cookies) => ({
     "sec-fetch-dest": "empty",
     "sec-fetch-mode": "cors",
     "sec-fetch-site": "same-origin",
-    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     "origin": "https://www.swiggy.com",
     "referer": "https://www.swiggy.com/instamart",
     "connection": "keep-alive",
