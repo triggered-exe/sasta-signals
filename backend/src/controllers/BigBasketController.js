@@ -175,6 +175,13 @@ const extractProductsFromPage = async (page, category = null, searchQuery = null
     // Wait for the page to load completely
     await page.waitForTimeout(3000);
 
+    // Check for Access Denied
+    const accessDeniedElement = await page.$('h1:has-text("Access Denied")');
+    if (accessDeniedElement) {
+      logger.info("BB: Access denied - IP appears to be blocked by BigBasket");
+      throw AppError.badRequest("BB: Access denied - IP appears to be blocked by BigBasket");
+    }
+
     const allProducts = [];
     let currentPage = 1;
     let hasMoreProducts = true;
@@ -394,6 +401,10 @@ export const startTrackingHandler = async (location) => {
                 logger.info(`BB: No products found for ${category.name}`);
               }
             } catch (error) {
+              // If we get an error specific to access denied, re-throw it to stop the crawler
+              if (error.message && error.message.includes("Access denied")) {
+                throw error;
+              }
               logger.error(`BB: Error processing category ${category.name}:`, error);
             } finally {
               if (page) await page.close();

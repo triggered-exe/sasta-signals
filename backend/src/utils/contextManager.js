@@ -456,6 +456,12 @@ class ContextManager {
       const addressesToCleanup = [];
       const beforeCount = this.contextMap.size;
 
+      // If size is only one context, skip cleanup
+      if (beforeCount <= 1) {
+        logger.info("[ctx]: Only one or zero contexts present, skipping idle cleanup");
+        return 0;
+      }
+
       // Find contexts to cleanup (idle or non-serviceable)
       for (const [addressKey, data] of this.contextMap.entries()) {
         let shouldCleanup = false;
