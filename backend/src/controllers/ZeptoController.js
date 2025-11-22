@@ -30,17 +30,15 @@ const setLocation = async (location) => {
     // Click on the location selection button
     logger.info(`ZEPTO: Setting location for ${location}...`);
     await page.waitForSelector('button[aria-label="Select Location"]', {
-      timeout: 5000,
+      timeout: 10000,
     });
+    // Wait for a short time before clicking
+    await page.waitForTimeout(2000);
     await page.click('button[aria-label="Select Location"]');
 
     // Wait for the location search input to appear
-    await page.waitForSelector('input[placeholder="Search a new address"]', {
-      timeout: 5000,
-    });
-
     let inputSelector = 'input[placeholder="Search a new address"]';
-    await page.waitForSelector(inputSelector, { timeout: 3000 });
+    await page.waitForSelector(inputSelector, { timeout: 5000 });
     await page.click(inputSelector);
     await page.fill(inputSelector, location);
 
@@ -54,11 +52,11 @@ const setLocation = async (location) => {
     logger.info("ZEPTO: Clicked first suggestion using data-testid selector");
 
     // Click the "Confirm & Continue" button on the map modal
-    await page.waitForSelector('[data-testid="location-confirm-btn"]', {
-      timeout: 5000,
-    });
-    logger.info("ZEPTO: Clicking Confirm & Continue button");
-    await page.click('[data-testid="location-confirm-btn"]');
+    // await page.waitForSelector('[data-testid="location-confirm-btn"]', {
+    //   timeout: 10000,
+    // });
+    // logger.info("ZEPTO: Clicking Confirm & Continue button");
+    // await page.click('[data-testid="location-confirm-btn"]');
 
     // Wait for 2 seconds
     await page.waitForTimeout(2000);
