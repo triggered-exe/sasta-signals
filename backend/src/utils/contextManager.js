@@ -326,15 +326,6 @@ class ContextManager {
           get: () => platform,
         });
 
-        // Mock connection
-        Object.defineProperty(navigator, 'connection', {
-          get: () => ({
-            effectiveType: '4g',
-            rtt: 50,
-            downlink: 10,
-            saveData: false,
-          }),
-        });
       }, userAgent);
 
       // Store context with metadata including tracking when it was last used
