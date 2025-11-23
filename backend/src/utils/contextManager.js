@@ -1,15 +1,12 @@
 import logger from "./logger.js";
-import { chromium } from "playwright";
+import { chromium } from 'playwright-extra';
+import stealth from 'puppeteer-extra-plugin-stealth';
 import { getCurrentIST } from "./dateUtils.js";
 import { getBrowserProcessMetrics } from "./browserMetrics.js";
 
 // Real Chromium user agents that are commonly used
 const REAL_CHROMIUM_USER_AGENTS = [
-  // 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-  // 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36', // Not working for bigbasket
-  // 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36', // Not working for bibbasket
-  // 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36'
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
 ];
 
 // Function to get a random Chromium user agent
@@ -58,51 +55,13 @@ class ContextManager {
     if (!this.browser) {
       const isDevMode = process.env.ENVIRONMENT === "development";
 
-      // Chromium launch args for memory optimization and stealth
+      chromium.use(stealth());
+
+      // Chromium launch args for stealth
       const chromiumArgs = [
-        // Memory optimization flags
-        '--disable-dev-shm-usage', // Reduce shared memory usage
-        '--disable-gpu', // Disable GPU acceleration
-        '--disable-software-rasterizer',
-        '--disk-cache-size=67108864', // 64MB cache (matching Firefox config)
-        '--renderer-process-limit=2', // Limit renderer processes (matching Firefox dom.ipc.processCount)
-
-        // Disable unnecessary features
-        '--disable-extensions',
-        '--disable-background-networking',
-        '--disable-sync',
-        '--metrics-recording-only',
-        '--disable-default-apps',
-        '--mute-audio',
-        '--no-first-run',
-        '--disable-breakpad',
-        '--disable-component-extensions-with-background-pages',
-        '--disable-features=TranslateUI,BlinkGenPropertyTrees',
-
-        // Stealth flags to avoid detection
         '--disable-blink-features=AutomationControlled',
-        '--disable-infobars',
-        '--disable-web-security', // May help with CORS issues during scraping
-        '--disable-features=IsolateOrigins,site-per-process',
-
-        // Network and timeout settings
-        '--disable-hang-monitor',
-        '--disable-prompt-on-repost',
-
-        // Additional performance flags
-        '--no-sandbox', // Use cautiously - only in controlled environments
-        '--disable-setuid-sandbox',
-        '--disable-accelerated-2d-canvas',
-        '--disable-background-timer-throttling',
-        '--disable-renderer-backgrounding',
-        '--disable-backgrounding-occluded-windows',
-        '--disable-ipc-flooding-protection',
+        '--start-maximized'
       ];
-
-      // Add development mode specific args
-      if (isDevMode) {
-        chromiumArgs.push('--start-maximized');
-      }
 
       this.browser = await chromium.launch({
         headless: !isDevMode,
@@ -171,171 +130,25 @@ class ContextManager {
       const userAgent = getRandomUserAgent();
       logger.info(`[ctx]: Selected User Agent for ${address}: ${userAgent}`);
 
-      let platformHeader = '"Windows"';
-      if (userAgent.includes('Macintosh')) {
-        platformHeader = '"macOS"';
-      } else if (userAgent.includes('Linux')) {
-        platformHeader = '"Linux"';
-      }
-
       const context = await browser.newContext({
         // Use a real Chromium user agent
         userAgent: userAgent,
-        // Emulate a larger desktop screen size
-        viewport: { width: 1920, height: 1080 },
-        // Set realistic screen properties
-        screen: { width: 1920, height: 1080 },
-        // Set device scale factor
-        deviceScaleFactor: 1,
+        // Set Viewport to null (browser decides) to avoid "bot" screen dimensions
+        viewport: null,
         // Set timezone to match India
         timezoneId: 'Asia/Kolkata',
         // Set locale to English India
         locale: 'en-IN',
-        // Set geolocation to a random location in India
-        // geolocation: {
-        //   latitude: 17.3850 + (Math.random() - 0.5) * 0.1, // Hyderabad area with some randomness
-        //   longitude: 78.4867 + (Math.random() - 0.5) * 0.1
-        // },
-        // Set permissions
-        // permissions: ['geolocation'],
         // Set extra HTTP headers to look more like a real Chromium browser
         extraHTTPHeaders: {
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
           'Accept-Language': 'en-US,en;q=0.9',
-          'Accept-Encoding': 'gzip, deflate, br',
-          'DNT': '1',
-          'Connection': 'keep-alive',
-          'Upgrade-Insecure-Requests': '1',
           'Sec-Fetch-Dest': 'document',
           'Sec-Fetch-Mode': 'navigate',
           'Sec-Fetch-Site': 'none',
-          'Sec-Fetch-User': '?1',
-          'Sec-Ch-Ua': '"Chromium";v="131", "Not_A Brand";v="24"',
-          'Sec-Ch-Ua-Mobile': '?0',
-          'Sec-Ch-Ua-Platform': platformHeader,
-          'Cache-Control': 'max-age=0'
-        },
-        // Enable JavaScript
-        javaScriptEnabled: true,
-        // Set realistic color scheme
-        colorScheme: 'light',
-        // Set reduced motion preference
-        reducedMotion: 'no-preference',
-        // Set Chromium-specific options
-        hasTouch: false,
-        isMobile: false
+          'Sec-Fetch-User': '?1'
+        }
       });
-
-      // Add stealth scripts to the context to hide automation
-      await context.addInitScript((ua) => {
-        // Explicitly override user agent
-        Object.defineProperty(navigator, 'userAgent', { get: () => ua });
-
-        // Remove webdriver property
-        Object.defineProperty(navigator, 'webdriver', {
-          get: () => false,
-        });
-
-        // Override the automation flag
-        Object.defineProperty(navigator, 'automation', {
-          get: () => false,
-        });
-
-        // Mock realistic plugins for Chromium
-        Object.defineProperty(navigator, 'plugins', {
-          get: () => {
-            return [
-              {
-                name: 'Chrome PDF Plugin',
-                description: 'Portable Document Format',
-                filename: 'internal-pdf-viewer',
-                length: 1
-              },
-              {
-                name: 'Chrome PDF Viewer',
-                description: 'Portable Document Format',
-                filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai',
-                length: 1
-              },
-              {
-                name: 'Native Client',
-                description: '',
-                filename: 'internal-nacl-plugin',
-                length: 2
-              }
-            ];
-          },
-        });
-
-        // Mock languages
-        Object.defineProperty(navigator, 'languages', {
-          get: () => ['en-US', 'en'],
-        });
-
-        // Override the permissions query
-        const originalQuery = window.navigator.permissions.query;
-        window.navigator.permissions.query = (parameters) => (
-          parameters.name === 'notifications' ?
-            Promise.resolve({ state: Notification.permission }) :
-            originalQuery(parameters)
-        );
-
-        // Add realistic properties
-        Object.defineProperty(navigator, 'hardwareConcurrency', {
-          get: () => 8,
-        });
-
-        Object.defineProperty(navigator, 'deviceMemory', {
-          get: () => 8,
-        });
-
-        // Override chrome runtime
-        if (!window.chrome) {
-          window.chrome = {};
-        }
-        if (!window.chrome.runtime) {
-          window.chrome.runtime = {};
-        }
-
-        // Remove automation indicators
-        delete window._phantom;
-        delete window._selenium;
-        delete window.callPhantom;
-        delete window.callSelenium;
-        delete window.__nightmare;
-        delete window.__webdriver_script_fn;
-        delete window.__webdriver_evaluate;
-        delete window.__webdriver_script_function;
-        delete window.__driver_evaluate;
-        delete window.__webdriver_unwrapped;
-        delete window.__driver_unwrapped;
-
-        // Override vendor
-        Object.defineProperty(navigator, 'vendor', {
-          get: () => 'Google Inc.',
-        });
-
-        // Override platform to match the header we set
-        let platform = 'Win32';
-        if (ua.includes('Macintosh')) {
-          platform = 'MacIntel';
-        } else if (ua.includes('Linux')) {
-          platform = 'Linux x86_64';
-        }
-        Object.defineProperty(navigator, 'platform', {
-          get: () => platform,
-        });
-
-        // Mock connection
-        Object.defineProperty(navigator, 'connection', {
-          get: () => ({
-            effectiveType: '4g',
-            rtt: 50,
-            downlink: 10,
-            saveData: false,
-          }),
-        });
-      }, userAgent);
 
       // Store context with metadata including tracking when it was last used
       this.contextMap.set(addressKey, {

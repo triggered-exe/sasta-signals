@@ -89,7 +89,13 @@ const startServer = async () => {
         setTimeout(() => blinkitStartTrackingHandler("500064"), 180 * 1000); // For Blinkit
         setTimeout(() => jiomartStartTrackingHandler("500064"), 210 * 1000); // For JioMart
       } else {
-        // setTimeout(() => jiomartStartTrackingHandler("500064"), 0); // For BigBasket
+        setTimeout(() => startAmazonTrackingWithoutBrowswer("500064"), 0); // For Amazon Fresh
+        setTimeout(() => zeptoStartTrackingHandler("500064"), 60 * 1000); // For Zepto
+        setTimeout(() => BigBasketStartTrackingHandler("500064"), 90 * 1000); // For BigBasket
+        setTimeout(() => flipkartStartTrackingHandler("500064"), 120 * 1000); // For Flipkart
+        setTimeout(() => instamartStartTrackingHandler("500064"), 150 * 1000); // For Instamart
+        setTimeout(() => blinkitStartTrackingHandler("500064"), 180 * 1000); // For Blinkit
+        setTimeout(() => jiomartStartTrackingHandler("500064"), 210 * 1000); // For JioMart
       }
     });
   } catch (error) {

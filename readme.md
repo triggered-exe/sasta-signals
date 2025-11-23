@@ -34,7 +34,7 @@ Sasta Signals is a comprehensive price tracking and deal alerts application that
 
 ### Backend (Node.js/Express)
 
-- **Web Scraping**: Playwright with Firefox automation
+- **Web Scraping**: Playwright with Chromium automation and stealth plugins for anti-detection
 - **Database**: MongoDB with platform-specific collections
 - **API**: RESTful endpoints for product search and tracking
 - **Notifications**: Telegram Bot API and Resend email service
@@ -64,6 +64,8 @@ Each platform has its own MongoDB collection with fields:
 - **Express.js** - Web framework
 - **Mongoose** - MongoDB ODM
 - **Playwright** - Browser automation
+- **playwright-extra** - Extends Playwright for plugin support
+- **puppeteer-extra-plugin-stealth** - Anti-bot detection plugin (used via `playwright-extra`)
 - **Axios** - HTTP client
 - **Resend** - Email service
 - **MailerSend** - Alternative email service
@@ -191,8 +193,8 @@ cd backend && pnpm start
 
 ### Browser Settings
 
-- **User Agent**: iPad emulation for better compatibility
-- **Viewport**: 1280x1024 (iPad portrait)
+- **User Agent**: Real Chromium/Chrome user agent (Windows Chrome by default in code)
+- **Viewport**: `null` — let the browser decide (contexts use default browser viewport)
 - **Memory Optimization**: Reduced cache and process limits
 - **Context Management**: Maximum 3 concurrent contexts
 
