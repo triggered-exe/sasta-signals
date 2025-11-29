@@ -417,14 +417,14 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, location) => {
                                 const updatedCount = await processProducts(allProducts, category, subCategory, location);
                             }
                         } catch (error) {
-                            logger.error(`IM: Error processing subcategory ${subCategory.name}:`, error.response);
+                            logger.error(`IM: Error processing subcategory ${subCategory.name}:`, error.message || error);
                             await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
                             // Refresh cookies when we hit errors
                             try {
                                 logger.info(`IM: Refreshing cookies due to error in subcategory ${subCategory.name}`);
                                 await extractBrowserData(location, true);
                             } catch (refreshError) {
-                                logger.error(`IM: Failed to refresh cookies:`, refreshError);
+                                logger.error(`IM: Failed to refresh cookies:`, refreshError.message || refreshError);
                             }
 
                             // Continue with next subcategory even if one fails
@@ -433,7 +433,7 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, location) => {
                     }));
                 }
             } catch (error) {
-                logger.error(`IM: Error processing category ${category.name}:`, error);
+                logger.error(`IM: Error processing category ${category.name}:`, error.message || error);
                 // Continue with next category even if one fails
                 continue;
             }

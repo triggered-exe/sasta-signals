@@ -122,10 +122,13 @@ const extractProductsFromPage = async (page, url, query) => {
         .map((element) => {
           try {
             const nameElement = element.querySelector("a[title]");
-            const priceElement = element.querySelector("div.Nx9bqj.GvWNMG");
-            const mrpElement = element.querySelector("div.yRaY8j");
-            const imageElement = element.querySelector("img");
-            const outOfStockElement = element.querySelector(".NuZA8L");
+            // Updated selectors based on new HTML structure
+            const priceElement = element.querySelector("div.hZ3P6w.UqO8i8");
+            const mrpElement = element.querySelector("div.kRYCnD");
+            const imageElement = element.querySelector("img.UCc1lI");
+            // Check for out of stock - look for "Currently unavailable" text in div.tSXtJx
+            const unavailableElement = element.querySelector("div.tSXtJx");
+            const isOutOfStock = unavailableElement && unavailableElement.textContent.toLowerCase().includes("unavailable");
 
             const price = priceElement ? Number(priceElement.textContent.replace(/[^0-9.]/g, "")) : 0;
             const mrp = mrpElement ? Number(mrpElement.textContent.replace(/[^0-9.]/g, "")) : price;
@@ -143,8 +146,7 @@ const extractProductsFromPage = async (page, url, query) => {
               price: price,
               mrp: mrp,
               discount: mrp > 0 ? Math.floor(((mrp - price) / mrp) * 100) : 0,
-              inStock: !outOfStockElement,
-              outOfStockMessage: outOfStockElement ? outOfStockElement.textContent.trim() : null,
+              inStock: !isOutOfStock,
             };
           } catch (err) {
             // Note: console.error works in browser context (page.evaluate)
@@ -158,9 +160,9 @@ const extractProductsFromPage = async (page, url, query) => {
     // Check for next page
     const nextPageUrl = await page.evaluate(() => {
       try {
-        const paginationButtons = document.querySelectorAll("a._9QVEpD");
-        const nextButton = Array.from(paginationButtons).find((button) =>
-          button.textContent.trim().toLowerCase().includes("next")
+        // Look for anchor tag with class jgg0SZ containing "Next" text
+        const nextButton = Array.from(document.querySelectorAll("a")).find((a) =>
+          a.textContent.trim().toLowerCase() === "next"
         );
         return nextButton ? nextButton.getAttribute("href") : null;
       } catch (err) {
@@ -220,7 +222,7 @@ export const startTrackingHandler = async (pincode = "500064") => {
       const categories = await extractCategories(pincode);
       logger.info(`FK: Found ${categories.length} categories to process`);
 
-      const PARALLEL_CATEGORIES = 2;
+      const PARALLEL_CATEGORIES = 1; // Flipkart is fast so 1 seems sufficient
       let totalProcessedProducts = 0;
 
       // Set up context with location once for all categories
