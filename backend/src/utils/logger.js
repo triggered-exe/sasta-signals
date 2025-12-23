@@ -82,6 +82,7 @@ const transports = [
         format: fileFormat,
         maxsize: 10485760, // 10MB
         maxFiles: 5,
+        tailable: true,
     }),
 ];
 

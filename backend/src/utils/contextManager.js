@@ -9,6 +9,7 @@ const REAL_CHROMIUM_USER_AGENTS = [
   // 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36', // Not working for bigbasket
   // 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36', // Not working for bibbasket
   // 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  // 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1', // Ipad mini user agent
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36'
 ];
 
@@ -119,25 +120,18 @@ class ContextManager {
 
       // Return existing context if available
       if (this.contextMap.has(addressKey)) {
-        // First check if context is too old and needs to be closed
-        const TIME_LIMIT_HOURS = 1;
-        const wasClosed = await this.closeOldContext(address, TIME_LIMIT_HOURS);
-
-        // If context was closed due to age, it will be recreated below
-        if (!wasClosed && this.contextMap.has(addressKey)) {
-          const contextData = this.contextMap.get(addressKey);
-          // Check if context is still valid before using it - prevents the "Target closed" error
-          try {
-            const pages = await contextData.context.pages();
-            logger.info(`[ctx]: Using cached context for address: ${address} (${pages.length} pages)`);
-            return contextData.context;
-          } catch (error) {
-            // If context is invalid, clean it up and create a new one
-            logger.info(
-              `[ctx]: Context for address ${address} is invalid, creating new one`
-            );
-            await this.cleanupAddress(addressKey);
-          }
+        const contextData = this.contextMap.get(addressKey);
+        // Check if context is still valid before using it - prevents the "Target closed" error
+        try {
+          const pages = await contextData.context.pages();
+          logger.info(`[ctx]: Using cached context for address: ${address} (${pages.length} pages)`);
+          return contextData.context;
+        } catch (error) {
+          // If context is invalid, clean it up and create a new one
+          logger.info(
+            `[ctx]: Context for address ${address} is invalid, creating new one`
+          );
+          await this.cleanupAddress(addressKey);
         }
       }
 
@@ -505,90 +499,6 @@ class ContextManager {
     } catch (error) {
       logger.error("[ctx]: Error during idle contexts cleanup:", error);
       throw error;
-    }
-  }
-
-  // Close context if it's been running for more than specified hours (default 2 hours)
-  async closeOldContext(address, maxAgeHours = 2) {
-    const addressKey = this.cleanAddressKey(address);
-
-    if (!this.contextMap.has(addressKey)) {
-      logger.info(`[ctx]: No context found for address: ${address}`);
-      return false;
-    }
-
-    const data = this.contextMap.get(addressKey);
-    const now = getCurrentIST();
-    // data.createdAt is already an IST Date from getCurrentIST()
-    const createdAt = new Date(data.createdAt);
-    const ageMs = now.getTime() - createdAt.getTime();
-    const ageHours = ageMs / (1000 * 60 * 60);
-
-    if (ageHours >= maxAgeHours) {
-      logger.info(`[ctx]: Context for ${data.originalAddress} is ${ageHours.toFixed(2)} hours old, closing it`);
-      try {
-        // Log browser memory before closing
-        try {
-          const browserMetricsBefore = await getBrowserProcessMetrics();
-          logger.info(`[ctx]: Browser memory before closing context for ${data.originalAddress}: total=${browserMetricsBefore.totalMemoryMB}MB processes=${browserMetricsBefore.processCount}`);
-        } catch (browserErr) {
-          logger.warn(`[ctx]: Failed to read browser memory before closing context: ${browserErr?.message || browserErr}`);
-        }
-
-        // If there's no context (serviceability-only entry), just remove it
-        if (!data.context) {
-          logger.info(`[ctx]: No browser context for ${data.originalAddress}, removing entry`);
-          this.contextMap.delete(addressKey);
-          return true;
-        }
-
-        // Close all pages first
-        let pages = [];
-        try {
-          pages = await data.context.pages();
-        } catch (e) {
-          logger.warn(`[ctx]: Could not read pages for ${data.originalAddress}: ${e?.message || e}`);
-        }
-
-        logger.info(`[ctx]: Closing ${pages.length} pages before context cleanup`);
-        await Promise.all(pages.map(page => page.close().catch(e =>
-          logger.warn(`[ctx]: Failed to close page: ${e?.message || e}`)
-        )));
-
-        // Close the context
-        try {
-          await data.context.close();
-        } catch (closeErr) {
-          logger.warn(`[ctx]: Failed to close context for ${data.originalAddress}: ${closeErr?.message || closeErr}`);
-        }
-
-        this.contextMap.delete(addressKey);
-
-        logger.info(`[ctx]: Successfully closed old context for ${data.originalAddress}`);
-
-        // Trigger garbage collection if available
-        if (global.gc) {
-          global.gc();
-          logger.info(`[ctx]: Triggered garbage collection`);
-        }
-        // Log browser memory after closing
-        try {
-          const browserMetricsAfter = await getBrowserProcessMetrics();
-          logger.info(`[ctx]: Browser memory after closing context for ${data.originalAddress}: total=${browserMetricsAfter.totalMemoryMB}MB processes=${browserMetricsAfter.processCount}`);
-        } catch (browserErr) {
-          logger.warn(`[ctx]: Failed to read browser memory after closing context: ${browserErr?.message || browserErr}`);
-        }
-
-        return true;
-      } catch (error) {
-        logger.error(`[ctx]: Error closing old context for ${data.originalAddress}:`, error);
-        // Force remove from map even if close failed
-        this.contextMap.delete(addressKey);
-        return false;
-      }
-    } else {
-      logger.info(`[ctx]: Context for ${data.originalAddress} is only ${ageHours.toFixed(2)} hours old, keeping it`);
-      return false;
     }
   }
 
