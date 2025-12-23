@@ -407,6 +407,7 @@ const buildTrexBody = ({ categoryId, pageSize = 50, pageToken = null, visitorId 
 
   const body = {
     pageSize,
+
     variantRollupKeys: ["variantId"],
     branch: "projects/sr-project-jiomart-jfront-prod/locations/global/catalogs/default_catalog/branches/0",
     pageCategories: [String(categoryId)],
@@ -424,15 +425,32 @@ const buildTrexBody = ({ categoryId, pageSize = 50, pageToken = null, visitorId 
 };
 
 // Low-level trex search POST using Playwright request (uses context cookies)
-const trexSearchRequest = async (cookieHeader, body) => {
+const trexSearchRequest = async (cookieHeader, body, categoryId = null) => {
   const url = 'https://www.jiomart.com/trex/search';
 
+  // Build referer URL based on categoryId if provided
+  const referer = categoryId
+    ? `https://www.jiomart.com/c/groceries/category/${categoryId}`
+    : 'https://www.jiomart.com/';
+
   const headers = {
-    accept: '*/*',
+    'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+    'accept-language': 'en-US,en;q=0.9',
+    'cache-control': 'max-age=0',
     'content-type': 'application/json',
-    origin: 'https://www.jiomart.com',
-    referer: 'https://www.jiomart.com/',
-    cookie: cookieHeader,
+    'dnt': '1',
+    'origin': 'https://www.jiomart.com',
+    'priority': 'u=1, i',
+    'referer': referer,
+    'sec-ch-ua': '"Chromium";v="131", "Not_A Brand";v="24"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"Linux"',
+    'sec-fetch-dest': 'empty',
+    'sec-fetch-mode': 'navigate',
+    'sec-fetch-site': 'same-origin',
+    'upgrade-insecure-requests': '1',
+    'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'cookie': cookieHeader,
   };
 
   // Log the actual curl command for debugging
@@ -508,7 +526,7 @@ const fetchTrexProducts = async (page, categoryId, categoryName, maxPages = 10, 
 
     let json = null;
     try {
-      json = await trexSearchRequest(cookieHeader, body);
+      json = await trexSearchRequest(cookieHeader, body, categoryId);
     } catch (err) {
       logger.error('JIO: trex/search request failed:', err.message);
       break;
