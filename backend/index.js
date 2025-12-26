@@ -80,18 +80,16 @@ const startServer = async () => {
     app.listen(port, () => {
       logger.info(`Server is running on port - ${port}`);
 
-      // NOTE: Bigbasket has stopped allowing playwright based tracking due to their bot detection mechanisms.
-      // I have tried the "Pactchright" and also "playwright-extra" with "stealth" plugins this worked but only in headful mode. also this broke other websites like swiggy and blinkit.
-      // One solution is to use different browsers, stealth for bigbasket and normal for others but this will increase resource usage. So for now I am disabling bigbasket tracking until I find a better solution.
+      // NOTE: BigBasket tracking has been re-enabled with updated headers and scraping logic to bypass bot detection.
 
-        // setTimeout(() => BigBasketStartTrackingHandler("500064"), 90 * 1000); // For BigBasket
       if (process.env.ENVIRONMENT === "production") {
         setTimeout(() => startAmazonTrackingWithoutBrowswer("500064"), 0); // For Amazon Fresh
         setTimeout(() => zeptoStartTrackingHandler("500064"), 60 * 1000); // For Zepto
         setTimeout(() => flipkartStartTrackingHandler("500064"), 90 * 1000); // For Flipkart
+        setTimeout(() => BigBasketStartTrackingHandler("500064"), 100 * 1000); // For BigBasket
         setTimeout(() => instamartStartTrackingHandler("500064"), 120 * 1000); // For Instamart
-        setTimeout(() => blinkitStartTrackingHandler("500064"), 150 * 1000); // For Blinkit
-        setTimeout(() => jiomartStartTrackingHandler("500064"), 180 * 1000); // For JioMart
+        setTimeout(() => blinkitStartTrackingHandler("500064"), 140 * 1000); // For Blinkit
+        setTimeout(() => jiomartStartTrackingHandler("500064"), 160 * 1000); // For JioMart
       } else {
         // setTimeout(() => jiomartStartTrackingHandler("500064"), 0); // For BigBasket
       }

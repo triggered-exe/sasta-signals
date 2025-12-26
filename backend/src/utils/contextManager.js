@@ -174,7 +174,7 @@ class ContextManager {
 
       const context = await browser.newContext({
         // Use a real Chromium user agent
-        userAgent: userAgent,
+        // userAgent: userAgent,  // This is causing the BgBasket 403 issue
         // Emulate a larger desktop screen size
         viewport: { width: 1920, height: 1080 },
         // Set realistic screen properties

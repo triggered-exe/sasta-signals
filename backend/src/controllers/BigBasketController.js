@@ -6,6 +6,19 @@ import { processProducts as globalProcessProducts } from "../utils/productProces
 import contextManager from "../utils/contextManager.js";
 import { AppError } from "../utils/errorHandling.js";
 
+// Helper function to set BigBasket-specific headers on a page
+const setupBigBasketPage = async (page) => {
+  await page.setExtraHTTPHeaders({
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    "accept-language": "en-US,en;q=0.9",
+    "upgrade-insecure-requests": "1",
+    "sec-ch-ua": '"Chromium";v="143", "Not A(Brand";v="24"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Linux"',
+  });
+};
+
 // Set location for pincode using web scraping (similar to Amazon controller)
 // IMPORTANT: when we enter the pincode the entered value is not visible neither the suggestions are visible
 //  But are accessible via javascript
@@ -23,6 +36,7 @@ const setLocation = async (pincode) => {
 
     // Set up BigBasket for this context
     page = await context.newPage();
+    await setupBigBasketPage(page);
 
     // Navigate to BigBasket
     await page.goto("https://www.bigbasket.com/", { waitUntil: "domcontentloaded" });
@@ -34,25 +48,28 @@ const setLocation = async (pincode) => {
     logger.info("BB: Setting location...");
 
     // Sometimes the Bigbasket block the ip, check if Access Denied is present on the webpage
-    const accessDeniedElement = await page.$('h1:has-text("Access Denied")');
-    if (accessDeniedElement) {
+    const accessDenied = await page.evaluate(() => {
+      const h1 = document.querySelector('h1');
+      return h1 && h1.textContent.includes('Access Denied');
+    });
+    if (accessDenied) {
       logger.info("BB: Access denied - IP appears to be blocked by BigBasket");
+      logger.info("BB: User-Agent used:", await page.evaluate(() => navigator.userAgent));
       throw AppError.badRequest("BB: Access denied - IP appears to be blocked by BigBasket");
     }
 
     // Try to find and click location selector
     try {
-      // Click the location selector using JavaScript since Playwright click times out
-      const clicked = await page.evaluate(() => {
-        const element = document.querySelector('button[class*="AddressDropdown"]');
-        if (element) {
-          element.click();
-          return true;
-        }
-        return false;
+      // Click location button
+      const buttonClicked = await page.evaluate(() => {
+        const btn = Array.from(document.querySelectorAll('button, div[role="button"]'))
+          .find(b => b.textContent?.toLowerCase().includes('delivery in 10 mins') &&
+            b.textContent?.toLowerCase().includes('select location'));
+        if (btn) btn.click();
+        return !!btn;
       });
 
-      if (clicked) {
+      if (buttonClicked) {
         logger.info("BB: Clicked location selector with JavaScript");
       } else {
         throw new Error("BB: Could not click location selector with JavaScript");
@@ -71,13 +88,13 @@ const setLocation = async (pincode) => {
         await page.waitForTimeout(3000);
 
         // Check if suggestions are visible with multiple selectors
-        const firstSuggestion = await page.waitForSelector('li[class*="AddressDropdown___StyledMenuItem"]', {
+        const firstSuggestion = await page.waitForSelector('li[class*="sc-jdkBTo"]', {
           timeout: 5000,
         });
 
         if (firstSuggestion) {
           await page.evaluate(() => {
-            const firstSuggestion = document.querySelector('li[class*="AddressDropdown___StyledMenuItem"]');
+            const firstSuggestion = document.querySelector('li[class*="sc-jdkBTo"]');
             if (firstSuggestion) {
               firstSuggestion.click();
               return true;
@@ -87,11 +104,14 @@ const setLocation = async (pincode) => {
           });
           logger.info("BB: Selected first location suggestion");
 
-          await page.waitForTimeout(5000);
+          await new Promise(resolve => setTimeout(resolve, 5000));
 
           // If the location is set successfully, then the span tag with text "select location should be removed"
           // Check if the "Select Location" button is still present after selecting the suggestion
-          const selectLocationButton = await page.$("//button[.//span[contains(text(), 'Select Location')]]");
+          const selectLocationButton = await page.evaluate(() => {
+            const result = document.evaluate("//button[.//span[contains(text(), 'Select Location')]]", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+            return !!result.singleNodeValue;
+          });
           if (selectLocationButton) {
             logger.error("BB: Location not set successfully or not serviceable");
             throw AppError.badRequest(`BB: Location not set successfully or not serviceable for pincode: ${pincode}`);
@@ -131,6 +151,7 @@ export const search = async (location, query) => {
 
     // Create a new page for search
     const page = await context.newPage();
+    await setupBigBasketPage(page);
 
     try {
       // Search and extract products
@@ -157,27 +178,32 @@ export const search = async (location, query) => {
 const extractProductsFromPage = async (page, category = null, searchQuery = null, maxPagesToFetch = 25) => {
   try {
     // If category is provided, navigate to category page first
-    let pageUrl = '';
+    let baseUrl = '';
     if (category?.url) {
       logger.info(`BB: Processing category: ${category.name}`);
-      pageUrl = `https://www.bigbasket.com/${category.url}/`;
+      baseUrl = `https://www.bigbasket.com/${category.url}/`;
     } else if (searchQuery) {
       logger.info(`BB: Processing search query: ${searchQuery}`);
-      pageUrl = `https://www.bigbasket.com/ps/?q=${encodeURIComponent(searchQuery)}`;
+      baseUrl = `https://www.bigbasket.com/ps/?q=${encodeURIComponent(searchQuery)}`;
     }
 
-    if (!pageUrl) {
+    if (!baseUrl) {
       throw new Error("BB: No category or search query provided for product extraction");
     }
 
-    await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
+    // Visit the first page once to establish session
+    const firstPageUrl = baseUrl.includes('?') ? `${baseUrl}&page=1` : `${baseUrl}?page=1`;
+    logger.info(`BB: Initial page load: ${firstPageUrl}`);
 
-    // Wait for the page to load completely
-    await page.waitForTimeout(3000);
+    await page.goto(firstPageUrl, { waitUntil: "domcontentloaded" });
+    await new Promise(resolve => setTimeout(resolve, 3000));
 
     // Check for Access Denied
-    const accessDeniedElement = await page.$('h1:has-text("Access Denied")');
-    if (accessDeniedElement) {
+    const accessDenied = await page.evaluate(() => {
+      const h1 = document.querySelector('h1');
+      return h1 && h1.textContent.includes('Access Denied');
+    });
+    if (accessDenied) {
       logger.info("BB: Access denied - IP appears to be blocked by BigBasket");
       throw AppError.badRequest("BB: Access denied - IP appears to be blocked by BigBasket");
     }
@@ -186,122 +212,117 @@ const extractProductsFromPage = async (page, category = null, searchQuery = null
     let currentPage = 1;
     let hasMoreProducts = true;
 
-    // Fetch products using API calls instead of scrolling
-    while (hasMoreProducts) {
+    // Fetch products by making fetch calls inside the browser context
+    while (hasMoreProducts && currentPage <= maxPagesToFetch) {
       try {
-        const slug = category?.slug || searchQuery;
-        const apiUrl = `https://www.bigbasket.com/listing-svc/v2/products?type=pc&slug=${slug}&page=${currentPage}`;
-        logger.info(`BB: Fetching page ${currentPage} from API`);
+        const pageUrl = baseUrl.includes('?')
+          ? `${baseUrl}&page=${currentPage}`
+          : `${baseUrl}?page=${currentPage}`;
 
-        // Perform the listing API call inside the browser context so the request
-        // uses the real browser cookies (including HttpOnly) and client behavior.
-        // This usually bypasses CDN/bot protections that block non-browser clients.
-        let respData = {};
-        try {
-          const browserResp = await page.evaluate(async (url) => {
-            try {
-              const res = await fetch(url, { credentials: 'include' });
-              const text = await res.text();
+        logger.info(`BB: Fetching page ${currentPage} via fetch`);
+
+        // Make fetch call inside browser context and parse the JSON data
+        const products = await page.evaluate(async (url) => {
+          try {
+            const response = await fetch(url, { credentials: 'include' });
+            if (!response.ok) {
+              return { error: `HTTP ${response.status}` };
+            }
+
+            const html = await response.text();
+
+            // Extract JSON data from __NEXT_DATA__ script tag
+            const nextDataMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/s);
+            if (!nextDataMatch) {
+              return { error: 'No __NEXT_DATA__ found' };
+            }
+
+            const nextData = JSON.parse(nextDataMatch[1]);
+            const ssrData = nextData?.props?.pageProps?.SSRData;
+
+            if (!ssrData?.tabs?.[0]?.product_info?.products) {
+              return { products: [] };
+            }
+
+            const rawProducts = ssrData.tabs[0].product_info.products;
+            const extractedProducts = [];
+
+            rawProducts.forEach((p) => {
               try {
-                return { status: res.status, json: JSON.parse(text) };
-              } catch (e) {
-                return { status: res.status, text };
+                const parseNum = (val) => {
+                  if (!val) return 0;
+                  const s = String(val).replace(/[^0-9.]/g, "");
+                  const n = parseFloat(s);
+                  return Number.isFinite(n) ? n : 0;
+                };
+
+                const priceStr = p?.pricing?.discount?.prim_price?.sp || p?.pricing?.discount?.prim_price?.base_price || p?.pricing?.subscription_price || null;
+                const mrpStr = p?.pricing?.discount?.mrp || null;
+
+                const price = parseNum(priceStr);
+                const mrp = parseNum(mrpStr) || price;
+                const discount = mrp > 0 && price > 0 ? parseFloat((((mrp - price) / mrp) * 100).toFixed(2)) : 0;
+
+                // Get image from images array (prefer medium size)
+                const image = (p?.images && p.images[0] && (p.images[0].m || p.images[0].l || p.images[0].s)) || "";
+
+                const url = p?.absolute_url ? `https://www.bigbasket.com${p.absolute_url}` : "";
+
+                const inStock = !!(
+                  p?.availability &&
+                  p.availability.avail_status === "001" &&
+                  p.availability.not_for_sale !== true
+                );
+
+                const weight = p?.w || p?.unit || p?.pack_desc || "";
+
+                const product = {
+                  id: p?.id?.toString() || p?.requested_sku_id?.toString() || "",
+                  name: (p?.desc || "").toString().trim(),
+                  brand: p?.brand?.name || "",
+                  weight: weight,
+                  price: price,
+                  mrp: mrp,
+                  discount: discount,
+                  image: image,
+                  url: url,
+                  inStock: inStock,
+                };
+
+                if (product.name && product.price > 0) {
+                  extractedProducts.push(product);
+                }
+              } catch (err) {
+                console.error('Error parsing product:', err);
               }
-            } catch (e) {
-              return { error: String(e) };
-            }
-          }, apiUrl);
+            });
 
-          if (browserResp && browserResp.error) {
-            logger.error('BB: Browser fetch error:', browserResp.error);
-            respData = {};
-          } else if (browserResp && browserResp.json) {
-            respData = browserResp.json;
-          } else {
-            // No JSON returned; keep respData empty so fallback logic can run later
-            respData = {};
+            return { products: extractedProducts };
+          } catch (error) {
+            return { error: String(error) };
           }
-        } catch (e) {
-          logger.error('BB: Failed to fetch listing inside browser context:', e);
-          respData = {};
-        }
+        }, pageUrl);
 
-        // Try standard product_info first
-        const productInfo = respData?.tabs?.[0]?.product_info || null;
-        // Raw products array (structure may vary) - leave parsing for the next step
-        const rawProducts = productInfo?.products || respData?.tab_info?.product_map?.all?.prods || [];
-
-        // Parse and transform raw products into normalized shape used by the system
-        if (Array.isArray(rawProducts) && rawProducts.length > 0) {
-          rawProducts.forEach((p) => {
-            try {
-              const priceStr =
-                p?.pricing?.discount?.prim_price?.sp || p?.pricing?.discount?.prim_price?.base_price || p?.pricing?.subscription_price || null;
-              const mrpStr = p?.pricing?.discount?.mrp || null;
-
-              const parseNum = (val) => {
-                if (val === null || val === undefined) return 0;
-                const s = String(val).replace(/[^0-9.]/g, "");
-                const n = parseFloat(s);
-                return Number.isFinite(n) ? n : 0;
-              };
-
-              const price = parseNum(priceStr);
-              const mrp = parseNum(mrpStr) || price;
-              const discount = mrp > 0 && price > 0 ? parseFloat((((mrp - price) / mrp) * 100).toFixed(2)) : 0;
-
-              const image = (p?.images && p.images[0] && (p.images[0].m || p.images[0].l || p.images[0].s)) || "";
-              const url = p?.absolute_url ? `https://www.bigbasket.com${p.absolute_url}` : "";
-
-              const inStock = !!(
-                p?.availability &&
-                p.availability.avail_status === "001" &&
-                p.availability.not_for_sale !== true
-              );
-
-              const weight = p?.w || p?.unit || p?.pack_desc || "";
-
-              const product = {
-                id: p?.id?.toString() || p?.requested_sku_id?.toString() || "",
-                name: (p?.desc || "").toString().trim(),
-                brand: p?.brand?.name || "",
-                weight: weight,
-                price: price,
-                mrp: mrp,
-                discount: discount,
-                image: image,
-                url: url,
-                inStock: inStock,
-              };
-
-              if (product.name && product.price > 0) {
-                allProducts.push(product);
-              }
-            } catch (err) {
-              logger.error("BB: Error transforming product:", err);
-            }
-          });
-        }
-
-        // Pagination: use productInfo.number_of_pages and productInfo.page when available
-        const pageFromResp = Number(productInfo?.page || currentPage);
-        const numberOfPages = Number(productInfo?.number_of_pages || 0);
-
-        if (!productInfo || rawProducts.length === 0) {
+        if (products.error) {
+          logger.error(`BB: Error fetching page ${currentPage}:`, products.error);
           hasMoreProducts = false;
-        } else if (numberOfPages > 0 && pageFromResp >= numberOfPages) {
-          hasMoreProducts = false;
-        } else {
-          // Advance to next page
-          currentPage = pageFromResp + 1;
-          if (currentPage > maxPagesToFetch) {
-            hasMoreProducts = false;
-          }
-          // Safety: avoid hammering the API
-          await page.waitForTimeout(500);
+          break;
         }
-      } catch (apiError) {
-        logger.error(`BB: Error fetching products from API for page ${currentPage}:`, apiError?.message || apiError);
+
+        logger.info(`BB: Extracted ${products.products.length} products from page ${currentPage}`);
+
+        if (products.products.length === 0) {
+          hasMoreProducts = false;
+          break;
+        }
+
+        allProducts.push(...products.products);
+        currentPage++;
+
+        // Safety: avoid hammering the server
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } catch (pageError) {
+        logger.error(`BB: Error fetching products from page ${currentPage}:`, pageError?.message || pageError);
         hasMoreProducts = false;
       }
     }
@@ -351,6 +372,9 @@ export const startTrackingHandler = async (location) => {
         continue;
       }
 
+      // Randomize the order of categories
+      categories.sort(() => Math.random() - 0.5);
+
       // Process categories in parallel batches
       const PARALLEL_SEARCHES = 1;
       let totalProcessedProducts = 0;
@@ -365,6 +389,7 @@ export const startTrackingHandler = async (location) => {
 
             try {
               page = await context.newPage();
+              await setupBigBasketPage(page);
 
               const products = await extractProductsFromPage(page, category, null, 25);
 
