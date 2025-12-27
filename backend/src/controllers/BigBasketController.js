@@ -6,19 +6,6 @@ import { processProducts as globalProcessProducts } from "../utils/productProces
 import contextManager from "../utils/contextManager.js";
 import { AppError } from "../utils/errorHandling.js";
 
-// Helper function to set BigBasket-specific headers on a page
-const setupBigBasketPage = async (page) => {
-  await page.setExtraHTTPHeaders({
-    "User-Agent":
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-    "accept-language": "en-US,en;q=0.9",
-    "upgrade-insecure-requests": "1",
-    "sec-ch-ua": '"Chromium";v="143", "Not A(Brand";v="24"',
-    "sec-ch-ua-mobile": "?0",
-    "sec-ch-ua-platform": '"Linux"',
-  });
-};
-
 // Set location for pincode using web scraping (similar to Amazon controller)
 // IMPORTANT: when we enter the pincode the entered value is not visible neither the suggestions are visible
 //  But are accessible via javascript
@@ -35,8 +22,7 @@ const setLocation = async (pincode) => {
     }
 
     // Set up BigBasket for this context
-    page = await context.newPage();
-    await setupBigBasketPage(page);
+    page = await contextManager.createPage(context, 'bigbasket');
 
     // Navigate to BigBasket
     await page.goto("https://www.bigbasket.com/", { waitUntil: "domcontentloaded" });
@@ -150,8 +136,7 @@ export const search = async (location, query) => {
     const context = await setLocation(location);
 
     // Create a new page for search
-    const page = await context.newPage();
-    await setupBigBasketPage(page);
+    const page = await contextManager.createPage(context, 'bigbasket');
 
     try {
       // Search and extract products
@@ -388,8 +373,7 @@ export const startTrackingHandler = async (location) => {
             let page = null;
 
             try {
-              page = await context.newPage();
-              await setupBigBasketPage(page);
+              page = await contextManager.createPage(context, 'bigbasket');
 
               const products = await extractProductsFromPage(page, category, null, 25);
 

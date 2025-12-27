@@ -81,7 +81,7 @@ const startServer = async () => {
       logger.info(`Server is running on port - ${port}`);
 
       // NOTE: BigBasket tracking has been re-enabled with updated headers and scraping logic to bypass bot detection.
-
+      // zeptoStartTrackingHandler("500064"); // For JioMart 
       if (process.env.ENVIRONMENT === "production") {
         setTimeout(() => startAmazonTrackingWithoutBrowswer("500064"), 0); // For Amazon Fresh
         setTimeout(() => zeptoStartTrackingHandler("500064"), 60 * 1000); // For Zepto

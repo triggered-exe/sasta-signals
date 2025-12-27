@@ -25,8 +25,7 @@ const setLocation = async (location) => {
     }
 
     // Set up JioMart for this context
-    page = await context.newPage();
-
+    page = await contextManager.createPage(context, 'jiomart');
     // Navigate to JioMart
     logger.info("JIO: Navigating to JioMart...");
     await page.goto("https://www.jiomart.com/", {
@@ -96,7 +95,7 @@ const fetchJiomartCategories = async (context) => {
   let page = null;
   try {
     // Open page and scrape using Playwright DOM APIs
-    page = await context.newPage();
+    page = await contextManager.createPage(context);
     await page.goto("https://www.jiomart.com/all-category", {
       waitUntil: "networkidle",
       timeout: 20000,
@@ -743,7 +742,7 @@ export const startTrackingHandler = async (location) => {
             let page = null;
 
             try {
-              page = await context.newPage();
+              page = await contextManager.createPage(context, 'jiomart');
 
               // Extract products using the new function
               const { products } = await extractProductsFromPage(page, category.url);
@@ -816,7 +815,7 @@ export const search = async (location, query) => {
     }
 
     // Create a new page for search
-    const page = await context.newPage();
+    const page = await contextManager.createPage(context, 'jiomart');
 
     try {
       // Navigate to search page

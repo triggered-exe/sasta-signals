@@ -8,9 +8,9 @@ const REAL_CHROMIUM_USER_AGENTS = [
   // 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
   // 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36', // Not working for bigbasket
   // 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36', // Not working for bibbasket
-  // 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
   // 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1', // Ipad mini user agent
-  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36'
+  // 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36'
 ];
 
 // Function to get a random Chromium user agent
@@ -498,6 +498,30 @@ class ContextManager {
       return cleanedCount;
     } catch (error) {
       logger.error("[ctx]: Error during idle contexts cleanup:", error);
+      throw error;
+    }
+  }
+
+  // Centralized method to create a new page with User-Agent set
+  async createPage(context, website) {
+    try {
+      let userAgent = getRandomUserAgent();
+      if (website === 'bigbasket') {
+        // Specific user agent for BigBasket to avoid 403
+        userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+      }
+      const page = await context.newPage();
+      await page.setExtraHTTPHeaders({
+        "User-Agent": userAgent,
+        "accept-language": "en-US,en;q=0.9",
+        "upgrade-insecure-requests": "1",
+        "sec-ch-ua": '"Chromium";v="143", "Not A(Brand";v="24"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Linux"',
+      });
+      return page;
+    } catch (error) {
+      logger.error("[ctx]: Error creating page:", error);
       throw error;
     }
   }

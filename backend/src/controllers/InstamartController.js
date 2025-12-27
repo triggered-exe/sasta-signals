@@ -51,7 +51,7 @@ const setLocation = async (location) => {
         }
 
         // Set up Instamart for this context
-        page = await context.newPage();
+        page = await contextManager.createPage(context, 'instamart');
 
         // Navigate to Instamart with realistic timing
         await page.goto("https://www.swiggy.com", { waitUntil: "domcontentloaded" });
@@ -172,7 +172,7 @@ const extractBrowserData = async (location, refresh = false) => {
         }
 
 
-        page = await context.newPage();
+        page = await contextManager.createPage(context, 'instamart');
 
         // Step 1: Navigate to Instamart main page
         logger.info("IM: Navigating to https://www.swiggy.com/instamart");
@@ -522,7 +522,7 @@ const fetchProductCategories = async (location = "500064") => {
         let page = null;
 
         try {
-            page = await context.newPage();
+            page = await contextManager.createPage(context, 'instamart');
             let retryCount = 0;
             const MAX_RETRIES = 3;
             let widgets = [];

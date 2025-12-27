@@ -21,7 +21,7 @@ const setLocation = async (location) => {
         }
 
         // Set up Blinkit for this context
-        page = await context.newPage();
+        page = await contextManager.createPage(context, 'blinkit');
 
         // Navigate to homepage
         await page.goto("https://blinkit.com", { waitUntil: "domcontentloaded" });
@@ -395,7 +395,7 @@ export const searchQuery = async (req, res, next) => {
             throw AppError.badRequest(`Location ${location} is not serviceable by Blinkit`);
         }
 
-        page = await context.newPage();
+        page = await contextManager.createPage(context, 'blinkit');
 
         const allProducts = await searchAndExtractProducts(page, query);
 
@@ -448,7 +448,7 @@ const fetchCategories = async (context) => {
     let page = null;
     try {
         logger.info("BLINKIT: Fetching categories");
-        page = await context.newPage();
+        page = await contextManager.createPage(context, 'blinkit');
 
         await page.goto("https://blinkit.com/categories", { waitUntil: "domcontentloaded", timeout: 15000 });
         await page.waitForSelector(".Category__Temp-sc-1k4awti-1", { timeout: 10000 });
@@ -614,7 +614,7 @@ export const startTrackingHandler = async (location = "bahadurpura police statio
                 );
                 // Processing a single tracking cycle takes around 40 minutes
                 // Create a single page for all API calls
-                const page = await context.newPage();
+                const page = await contextManager.createPage(context, 'blinkit');
                 try {
                     // Navigate to categories page once to set up cookies
                     await page.goto("https://blinkit.com/categories", { waitUntil: "networkidle", timeout: 10000 });

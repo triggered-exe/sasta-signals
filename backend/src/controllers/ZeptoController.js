@@ -20,7 +20,7 @@ const setLocation = async (location) => {
     }
 
     // Set up Zepto for this context
-    page = await context.newPage();
+    page = await contextManager.createPage(context, 'zepto');
 
     // Navigate to homepage
     await page.goto("https://www.zepto.com/", {
@@ -523,7 +523,7 @@ export const search = async (location, query) => {
     const context = await setLocation(location);
 
     // Create a new page for search
-    const page = await context.newPage();
+    const page = await contextManager.createPage(context, 'zepto');
 
     try {
       // Perform the search
@@ -594,7 +594,7 @@ export const startTrackingHelper = async (location = "500064") => {
         // Create pages for this chunk
         const pages = await Promise.all(
           subcategoryChunk.map(async () => {
-            const page = await context.newPage();
+            const page = await contextManager.createPage(context, 'zepto');
             return page;
           })
         );
