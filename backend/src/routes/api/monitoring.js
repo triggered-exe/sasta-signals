@@ -4,7 +4,7 @@ import os from "os";
 import process from "process";
 import contextManager from "../../utils/contextManager.js";
 import { formatISTString, getISTInfo, getCurrentIST } from "../../utils/dateUtils.js";
-import { getBrowserProcessMetrics } from "../../utils/browserMetrics.js";
+import { getBrowserProcessMetrics, getSystemCpuUsage } from "../../utils/browserMetrics.js";
 
 const router = express.Router();
 
@@ -19,6 +19,7 @@ const getComprehensiveMetrics = async () => {
   const cpus = os.cpus();
   const cpuCount = cpus.length;
   const loadAvg = os.loadavg();
+  const currentCpuUsage = await getSystemCpuUsage();
 
   const system = {
     hostname: os.hostname(),
@@ -33,7 +34,7 @@ const getComprehensiveMetrics = async () => {
     model: cpus[0]?.model || 'Unknown',
     coreCount: cpuCount,
     loadAveragePercent: {
-      '1min': Math.round((loadAvg[0] / cpuCount) * 100),
+      '1min': currentCpuUsage || Math.round((loadAvg[0] / cpuCount) * 100),
       '5min': Math.round((loadAvg[1] / cpuCount) * 100),
       '15min': Math.round((loadAvg[2] / cpuCount) * 100)
     }
