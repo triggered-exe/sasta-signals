@@ -539,7 +539,6 @@ export const startTrackingHandler = async (location = "bahadurpura police statio
                     "Pet",
                     "magazine",
                     "books",
-                    "eggs",
                     "stores",
                     "cards",
                     "cleaning",
