@@ -40,7 +40,7 @@ const setLocation = async (pincode) => {
     });
     if (accessDenied) {
       logger.info("BB: Access denied - IP appears to be blocked by BigBasket");
-      logger.info("BB: User-Agent used:", await page.evaluate(() => navigator.userAgent));
+      logger.info(`BB: User-Agent used: ${await page.evaluate(() => navigator.userAgent)}`);
       throw AppError.badRequest("BB: Access denied - IP appears to be blocked by BigBasket");
     }
 
@@ -110,7 +110,7 @@ const setLocation = async (pincode) => {
         throw new Error("BB: Pincode input field not found");
       }
     } catch (error) {
-      logger.error("BB: Error setting location:", error);
+      logger.error(`BB: Error setting location: ${error.message || error}`, { error });
       contextManager.markServiceability(pincode, "bigbasket", false);
       throw AppError.badRequest(`BB: Could not set location for pincode: ${pincode}`);
     }
@@ -124,7 +124,7 @@ const setLocation = async (pincode) => {
   } catch (error) {
     if (page) await page.close();
     contextManager.markServiceability(pincode, "bigbasket", false);
-    logger.error(`BB: Error setting pincode ${pincode}:`, error);
+    logger.error(`BB: Error setting pincode ${pincode}: ${error.message || error}`, { error });
     throw error;
   }
 };
@@ -154,7 +154,7 @@ export const search = async (location, query) => {
       await page.close();
     }
   } catch (error) {
-    logger.error('BB: Search error:', error.message);
+    logger.error(`BB: Search error: ${error.message || error}`, { error });
     throw error;
   }
 };
@@ -289,7 +289,7 @@ const extractProductsFromPage = async (page, category = null, searchQuery = null
         }, pageUrl);
 
         if (products.error) {
-          logger.error(`BB: Error fetching page ${currentPage}:`, products.error);
+          logger.error(`BB: Error fetching page ${currentPage}: ${products.error}`, { error: products.error });
           hasMoreProducts = false;
           break;
         }
@@ -307,7 +307,7 @@ const extractProductsFromPage = async (page, category = null, searchQuery = null
         // Safety: avoid hammering the server
         await new Promise(resolve => setTimeout(resolve, 500));
       } catch (pageError) {
-        logger.error(`BB: Error fetching products from page ${currentPage}:`, pageError?.message || pageError);
+        logger.error(`BB: Error fetching products from page ${currentPage}: ${pageError?.message || pageError}`, { error: pageError });
         hasMoreProducts = false;
       }
     }
@@ -317,7 +317,7 @@ const extractProductsFromPage = async (page, category = null, searchQuery = null
     return allProducts;
   } catch (error) {
     const contextInfo = category ? `category ${category.name}` : "page";
-    logger.error(`BB: Error fetching products for ${contextInfo}:`, error);
+    logger.error(`BB: Error fetching products for ${contextInfo}: ${error.message || error}`, { error });
     await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
     return [];
   }
@@ -340,7 +340,7 @@ export const startTrackingHandler = async (location) => {
       }
 
       const startTime = new Date();
-      logger.info("BB: Starting product search at:", startTime.toLocaleString());
+      logger.info(`BB: Starting product search at: ${startTime.toLocaleString()}`);
 
       // Setup the context for the location
       const context = await setLocation(location);
@@ -414,7 +414,7 @@ export const startTrackingHandler = async (location) => {
               if (error.message && error.message.includes("Access denied")) {
                 throw error;
               }
-              logger.error(`BB: Error processing category ${category.name}:`, error);
+              logger.error(`BB: Error processing category ${category.name}: ${error.message || error}`, { error });
             } finally {
               if (page) await page.close();
             }
@@ -437,7 +437,7 @@ export const startTrackingHandler = async (location) => {
     } catch (error) {
       // Wait for 5 minutes
       await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
-      logger.error("BB: Error in crawler:", error);
+      logger.error(`BB: Error in crawler: ${error.message || error}`, { error });
     }
   }
 };
@@ -450,7 +450,7 @@ export const startTracking = async (req, res, next) => {
     }
     // Start the search process in the background
     startTrackingHandler(location).catch((error) => {
-      logger.error("BB: Error in search handler:", error);
+      logger.error(`BB: Error in search handler: ${error.message || error}`, { error });
     });
 
     res.status(200).json({
@@ -493,7 +493,7 @@ export const fetchCategories = async () => {
 
     return processedCategories;
   } catch (error) {
-    logger.error("Error fetching categories:", error.response?.data || error.message);
+    logger.error(`Error fetching categories: ${error.response?.data || error.message || error}`, { error });
     throw AppError.internalError("Failed to fetch categories");
   }
 };

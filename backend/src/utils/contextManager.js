@@ -334,7 +334,7 @@ class ContextManager {
       logger.info(`[ctx]: Created new context for address: ${address} (total contexts: ${this.contextMap.size})`);
       return context;
     } catch (error) {
-      logger.error(`[ctx]: Error getting context for address ${address}:`, error);
+      logger.error(`[ctx]: Error getting context for address ${address}: ${error.message || error}`, { error });
       throw error;
     }
   }
@@ -424,7 +424,7 @@ class ContextManager {
         this.contextMap.delete(addressKey);
         logger.info(`[ctx]: Closed context for address: ${data.originalAddress || addressKey} (remaining contexts: ${this.contextMap.size})`);
       } catch (error) {
-        logger.error(`[ctx]: Error closing context for address ${data.originalAddress || addressKey}:`, error);
+        logger.error(`[ctx]: Error closing context for address ${data.originalAddress || addressKey}: ${error.message || error}`, { error });
         // Ensure the map entry is removed to avoid repeated failures
         try {
           this.contextMap.delete(addressKey);
@@ -497,7 +497,7 @@ class ContextManager {
 
       return cleanedCount;
     } catch (error) {
-      logger.error("[ctx]: Error during idle contexts cleanup:", error);
+      logger.error(`[ctx]: Error during idle contexts cleanup: ${error.message || error}`, { error });
       throw error;
     }
   }
@@ -515,13 +515,13 @@ class ContextManager {
         "User-Agent": userAgent,
         "accept-language": "en-US,en;q=0.9",
         "upgrade-insecure-requests": "1",
-        "sec-ch-ua": '"Chromium";v="143", "Not A(Brand";v="24"',
+        "sec-ch-ua": userAgent.includes('Macintosh') ? '"Not/A)Brand";v="8", "Chromium";v="140", "Google Chrome";v="140"' : '"Chromium";v="131", "Not_A Brand";v="24"',
         "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": '"Linux"',
+        "sec-ch-ua-platform": userAgent.includes('Macintosh') ? '"macOS"' : '"Windows"',
       });
       return page;
     } catch (error) {
-      logger.error("[ctx]: Error creating page:", error);
+      logger.error(`[ctx]: Error creating page: ${error.message || error}`, { error });
       throw error;
     }
   }
@@ -540,7 +540,7 @@ class ContextManager {
         logger.info("[ctx]: Browser closed successfully");
       }
     } catch (error) {
-      logger.error("[ctx]: Error during cleanup:", error);
+      logger.error(`[ctx]: Error during cleanup: ${error.message || error}`, { error });
       throw error;
     }
   }

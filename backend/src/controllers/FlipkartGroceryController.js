@@ -65,10 +65,10 @@ const setLocation = async (pincode) => {
       contextManager.markServiceability(pincode, "flipkart-grocery", false);
     } catch (cleanupError) {
       // Don't let cleanup errors override the original error
-      logger.error(`FK: Error during cleanup for ${pincode}:`, cleanupError);
+      logger.error(`FK: Error during cleanup for ${pincode}: ${cleanupError.message || cleanupError}`, { error: cleanupError });
     }
 
-    logger.error(`FK: Error initializing context for ${pincode}:`, error);
+    logger.error(`FK: Error initializing context for ${pincode}: ${error.message || error}`, { error });
     throw error;
   }
 };
@@ -176,7 +176,7 @@ const extractProductsFromPage = async (page, url, query) => {
       nextPageUrl: nextPageUrl ? "https://www.flipkart.com" + nextPageUrl : null,
     };
   } catch (error) {
-    logger.error(`FK: Error extracting products from page:`, error);
+    logger.error(`FK: Error extracting products from page: ${error.message || error}`, { error });
     return { products: [], nextPageUrl: null };
   }
 };
@@ -185,7 +185,7 @@ export const startTracking = async (_, res, next) => {
   try {
     // Start the search process in the background
     startTrackingHandler().catch((error) => {
-      logger.error("FK: Error in search handler:", error);
+      logger.error(`FK: Error in search handler: ${error.message || error}`, { error });
     });
 
     res.status(200).json({
@@ -216,7 +216,7 @@ export const startTrackingHandler = async (pincode = "500064") => {
       }
 
       const startTime = new Date();
-      logger.info("FK: Starting product search at:", startTime.toLocaleString());
+      logger.info(`FK: Starting product search at: ${startTime.toLocaleString()}`);
 
       // Get all categories from Flipkart
       const categories = await extractCategories(pincode);
@@ -300,7 +300,7 @@ export const startTrackingHandler = async (pincode = "500064") => {
               if (page) await page.close();
             }
           } catch (error) {
-            logger.error(`FK: Error processing category "${category.category} > ${category.subcategory}":`, error);
+            logger.error(`FK: Error processing category "${category.category} > ${category.subcategory}": ${error.message || error}`, { error });
             return 0;
           }
         });
@@ -328,7 +328,7 @@ export const startTrackingHandler = async (pincode = "500064") => {
     } catch (error) {
       // Wait for 2 minutes
       await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
-      logger.error("FK: Error in tracking cycle:", error);
+      logger.error(`FK: Error in tracking cycle: ${error.message || error}`, { error });
     }
   }
 };
@@ -382,7 +382,7 @@ const extractCategories = async (pincode = "500064") => {
     // Get the href from the category link
     const categoryHref = await categoryLinkToClick.getAttribute("href");
     const currentUrl = categoryHref.startsWith("http") ? categoryHref : "https://www.flipkart.com" + categoryHref;
-    logger.info("FK: Navigated to:", currentUrl);
+    logger.info(`FK: Navigated to: ${currentUrl}`);
 
     // Navigate to view-source to get raw HTML
     const viewSourceUrl = "view-source:" + currentUrl;
@@ -437,7 +437,7 @@ const extractCategories = async (pincode = "500064") => {
     return categories;
 
   } catch (error) {
-    logger.error("FK: Error extracting categories:", error);
+    logger.error(`FK: Error extracting categories: ${error.message || error}`, { error });
     throw error;
   } finally {
     if (page) {
@@ -508,7 +508,7 @@ export const search = async (location, query) => {
       await page.close();
     }
   } catch (error) {
-    logger.error('FLIPKART: Search error:', error.message);
+    logger.error(`FLIPKART: Search error: ${error.message || error}`, { error });
     throw error;
   }
 };
@@ -562,7 +562,7 @@ const processProducts = async (products) => {
 
     return result;
   } catch (error) {
-    logger.error("FK: Error processing crawler products:", error);
+    logger.error(`FK: Error processing crawler products: ${error.message || error}`, { error });
     throw error;
   }
 };

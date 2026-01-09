@@ -82,10 +82,10 @@ const setLocation = async (location) => {
       if (page) await page.close();
     } catch (cleanupError) {
       // Don't let cleanup errors override the original error
-      logger.error(`JIO: Error during cleanup for ${location}:`, cleanupError);
+      logger.error(`JIO: Error during cleanup for ${location}: ${cleanupError.message || cleanupError}`, { error: cleanupError });
     }
 
-    logger.error(`JIO: Error initializing context for ${location}:`, error);
+    logger.error(`JIO: Error initializing context for ${location}: ${error.message || error}`, { error });
     throw error;
   }
 };
@@ -129,7 +129,7 @@ const fetchJiomartCategories = async (context) => {
     }
     return categorized;
   } catch (error) {
-    logger.error("JIO: Error fetching categories:", error);
+    logger.error(`JIO: Error fetching categories: ${error.message || error}`, { error });
     throw error;
   } finally {
     if (page) {
@@ -366,7 +366,7 @@ const extractProductsFromPageLegacy = async (page, url, MAX_SCROLL_ATTEMPTS = 25
     logger.info(`JIO: Successfully extracted ${products.length} products from page ${url}`);
     return { products };
   } catch (error) {
-    logger.error("JIO: Error extracting products from page:", error);
+    logger.error(`JIO: Error extracting products from page: ${error.message || error}`, { error });
     return { products: [] };
   }
 };
@@ -527,7 +527,7 @@ const fetchTrexProducts = async (page, categoryId, categoryName, maxPages = 10, 
     try {
       json = await trexSearchRequest(cookieHeader, body, categoryId);
     } catch (err) {
-      logger.error('JIO: trex/search request failed:', err.message);
+      logger.error(`JIO: trex/search request failed: ${err.message || err}`, { error: err });
       break;
     }
 
@@ -627,13 +627,13 @@ const fetchTrexProducts = async (page, categoryId, categoryName, maxPages = 10, 
                 inStock: true,
               });
             } catch (innerErr) {
-              logger.error('JIO: Error mapping variant from trex product shape:', innerErr.message);
+              logger.error(`JIO: Error mapping variant from trex product shape: ${innerErr.message || innerErr}`, { error: innerErr });
             }
           }
           continue; // processed variants, skip to next candidate
         }
       } catch (err) {
-        logger.error('JIO: Error mapping product from trex response:', err.message);
+        logger.error(`JIO: Error mapping product from trex response: ${err.message || err}`, { error: err });
       }
     }
 
@@ -683,14 +683,14 @@ const extractProductsFromPage = async (page, url, MAX_LOAD_MORE_ATTEMPTS = 15) =
         logger.info(`JIO: Using trex/search for category ${categoryId} (url: ${url})`);
         return await fetchTrexProducts(page, categoryId, categoryName, 10, 50);
       } catch (err) {
-        logger.warn('JIO: trex/search failed, falling back to DOM method:', err.message);
+        logger.warn(`JIO: trex/search failed, falling back to DOM method: ${err.message}`);
       }
     }
 
     // Fallback: use legacy DOM based extraction
     return await extractProductsFromPageLegacy(page, url, MAX_LOAD_MORE_ATTEMPTS);
   } catch (error) {
-    logger.error('JIO: Error extracting products from page:', error);
+    logger.error(`JIO: Error extracting products from page: ${error.message || error}`, { error });
     return { products: [] };
   }
 };
@@ -712,7 +712,7 @@ export const startTrackingHandler = async (location) => {
       }
 
       const startTime = new Date();
-      logger.info("JIO: Starting product search at:", startTime.toLocaleString());
+      logger.info(`JIO: Starting product search at: ${startTime.toLocaleString()}`);
 
       // Setup the context for the location
       const context = await setLocation(location);
@@ -769,7 +769,7 @@ export const startTrackingHandler = async (location) => {
                 logger.debug(`JIO: No products found for ${category.name}`);
               }
             } catch (error) {
-              logger.error(`JIO: Error processing category ${category.name}:`, error);
+              logger.error(`JIO: Error processing category ${category.name}: ${error.message || error}`, { error });
             } finally {
               if (page) {
                 logger.debug(`JIO: Closing product extraction page for ${category.name}`);
@@ -798,7 +798,7 @@ export const startTrackingHandler = async (location) => {
     } catch (error) {
       // Wait for 1 minutes
       await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
-      logger.error("JIO: Error in crawler:", error);
+      logger.error(`JIO: Error in crawler: ${error.message || error}`, { error });
     }
   }
 };
@@ -836,7 +836,7 @@ export const search = async (location, query) => {
       await page.close();
     }
   } catch (error) {
-    logger.error('JIO: Search error:', error.message);
+    logger.error(`JIO: Search error: ${error.message || error}`, { error });
     throw error;
   }
 };
@@ -849,7 +849,7 @@ export const startTracking = async (req, res, next) => {
     }
     // Start the search process in the background
     startTrackingHandler(location).catch((error) => {
-      logger.error("JIO: Error in search handler:", error);
+      logger.error(`JIO: Error in search handler: ${error.message || error}`, { error });
     });
 
     res.status(200).json({

@@ -82,9 +82,9 @@ const setLocation = async (location) => {
       contextManager.markServiceability(location, "zepto", false);
     } catch (cleanupError) {
       // Don't let cleanup errors override the original error
-      logger.error(`ZEPTO: Error during cleanup for ${location}:`, cleanupError);
+      logger.error(`ZEPTO: Error during cleanup for ${location}: ${cleanupError.message || cleanupError}`, { error: cleanupError });
     }
-    logger.error(`ZEPTO: Error initializing context for ${location}:`, error);
+    logger.error(`ZEPTO: Error initializing context for ${location}: ${error.message || error}`, { error });
     throw error;
   } finally {
     if (page) await page.close();
@@ -187,7 +187,7 @@ const fetchCategories = async (location = 500064) => {
     }));
     return categories;
   } catch (error) {
-    logger.error("Zepto: Error fetching categories from sitemap:", error?.response?.data || error);
+    logger.error(`Zepto: Error fetching categories from sitemap: ${error?.response?.data || error.message || error}`, { error });
     throw AppError.internalError("Failed to fetch categories");
   }
 };
@@ -510,7 +510,7 @@ const extractProducts = async (page, options = {}) => {
     logger.info(`ZEPTO: Successfully extracted ${products.length} products and after filtering ${filteredProducts.length} products for ${url || query}`);
     return filteredProducts;
   } catch (error) {
-    logger.error(`ZEPTO: Error extracting products:`, error);
+    logger.error(`ZEPTO: Error extracting products: ${error.message || error}`, { error });
     await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
     return [];
   }
@@ -545,7 +545,7 @@ export const search = async (location, query) => {
       await page.close();
     }
   } catch (error) {
-    logger.error('ZEPTO: Search error:', error.message);
+    logger.error(`ZEPTO: Search error: ${error.message || error}`, { error });
     throw error;
   }
 };
@@ -569,7 +569,7 @@ export const startTrackingHelper = async (location = "500064") => {
       }
 
       cycleStartTime = new Date();
-      logger.info("Zepto: Starting new tracking cycle at:", cycleStartTime.toISOString());
+      logger.info(`Zepto: Starting new tracking cycle at: ${cycleStartTime.toISOString()}`);
 
       // Get all categories and flatten subcategories into a single array
       const categories = await fetchCategories();
@@ -634,8 +634,8 @@ export const startTrackingHelper = async (location = "500064") => {
                 return typeof result === "number" ? result : result.processedCount;
               } catch (error) {
                 logger.error(
-                  `Zepto: Error processing ${subcategory.categoryName} > ${subcategory.subcategoryName}:`,
-                  error
+                  `Zepto: Error processing ${subcategory.categoryName} > ${subcategory.subcategoryName}: ${error.message || error}`,
+                  { error }
                 );
                 await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
                 return 0;
@@ -655,13 +655,13 @@ export const startTrackingHelper = async (location = "500064") => {
 
       logger.info(`Zepto: Completed subcategory-based tracking. Processed ${totalProcessedProducts} products`);
     } catch (error) {
-      logger.error("Zepto: Failed to track prices:", error);
+      logger.error(`Zepto: Failed to track prices: ${error.message || error}`, { error });
     } finally {
       if (cycleStartTime) {
         const totalDurationMinutes = ((Date.now() - cycleStartTime.getTime()) / 60000).toFixed(2);
         logger.info(`Zepto: Total time taken: ${totalDurationMinutes} minutes`);
       }
-      logger.info("Zepto: Tracking cycle completed at:", new Date().toISOString());
+      logger.info(`Zepto: Tracking cycle completed at: ${new Date().toISOString()}`);
       // Add a delay before starting the next cycle
       await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000)); // 1 minute
     }

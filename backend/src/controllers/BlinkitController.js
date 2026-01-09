@@ -66,10 +66,10 @@ const setLocation = async (location) => {
             contextManager.markServiceability(location, "blinkit", false);
         } catch (cleanupError) {
             // Don't let cleanup errors override the original error
-            logger.error(`BLINKIT: Error during cleanup for ${location}:`, cleanupError);
+            logger.error(`BLINKIT: Error during cleanup for ${location}: ${cleanupError.message || cleanupError}`, { error: cleanupError });
         }
 
-        logger.error(`BLINKIT: Error initializing context for ${location}:`, error);
+        logger.error(`BLINKIT: Error initializing context for ${location}: ${error.message || error}`, { error });
         throw error;
     }
 };
@@ -254,7 +254,7 @@ const extractProductsFromPageAPI = async (page, categoryUrl) => {
         return parsedProducts;
 
     } catch (error) {
-        logger.error("BLINKIT: Error extracting products using API:", error);
+        logger.error(`BLINKIT: Error extracting products using API: ${error.message || error}`, { error });
         return [];
     }
 };
@@ -330,7 +330,7 @@ const parseSingleProduct = (productData) => {
 
         return parsedProduct;
     } catch (error) {
-        logger.error("BLINKIT: Error parsing single product:", error);
+        logger.error(`BLINKIT: Error parsing single product: ${error.message || error}`, { error });
         return null;
     }
 };
@@ -367,7 +367,7 @@ const parseBlinkitProducts = (rawProducts) => {
                 }
             }
         } catch (error) {
-            logger.error("BLINKIT: Error parsing product:", error);
+            logger.error(`BLINKIT: Error parsing product: ${error.message || error}`, { error });
             continue;
         }
     }
@@ -410,7 +410,7 @@ export const searchQuery = async (req, res, next) => {
             processedPages: Math.ceil(allProducts.length / allProducts.length),
         });
     } catch (error) {
-        logger.error("BLINKIT: Blinkit error:", error);
+        logger.error(`BLINKIT: Blinkit error: ${error.message || error}`, { error });
         next(error);
     } finally {
         if (page) await page.close();
@@ -427,7 +427,7 @@ const searchAndExtractProducts = async (_, query) => {
         // Navigate to search page
         return [];
     } catch (error) {
-        logger.error(`BLINKIT: Error searching for "${query}":`, error);
+        logger.error(`BLINKIT: Error searching for "${query}": ${error.message || error}`, { error });
         return [];
     }
 };
@@ -478,7 +478,7 @@ const fetchCategories = async (context) => {
         logger.info(`BLINKIT: Found ${categories.length} parent categories`);
         return categories;
     } catch (error) {
-        logger.error("BLINKIT: Error fetching categories:", error);
+        logger.error(`BLINKIT: Error fetching categories: ${error.message || error}`, { error });
         return [];
     } finally {
         if (page) await page.close();
@@ -518,7 +518,7 @@ export const startTrackingHandler = async (location = "bahadurpura police statio
                 }
 
                 const startTime = new Date();
-                logger.info("BLINKIT: Starting product search at:", startTime.toLocaleString());
+                logger.info(`BLINKIT: Starting product search at: ${startTime.toLocaleString()}`);
 
                 // Fetch all categories and subcategories
                 const categoriesStartTime = new Date();
@@ -655,10 +655,7 @@ export const startTrackingHandler = async (location = "bahadurpura police statio
                                     emailNotification: false,
                                 }
                             ).catch((error) => {
-                                logger.error(
-                                    `BLINKIT: Error saving products for ${subcategory.name}:`,
-                                    error.message
-                                );
+                                logger.error(`BLINKIT: Error processing ${category.name}: ${error.message || error}`, { error });
                                 return 0;
                             });
 
@@ -668,13 +665,13 @@ export const startTrackingHandler = async (location = "bahadurpura police statio
                             const subcategoryTime = ((new Date().getTime() - subcategoryStartTime.getTime()) / 1000).toFixed(2);
                             logger.info(`BLINKIT: Processed ${processedCount} products for "${subcategory.parentCategory} > ${subcategory.name}" in ${subcategoryTime} seconds`);
                         } catch (error) {
-                            logger.error(`BLINKIT: Error processing ${subcategory.name}:`, error.message);
+                            logger.error(`BLINKIT: Error processing ${subcategory.name}: ${error.message || error}`, { error });
                             continue; // Continue with next subcategory
                         }
                     }
                 } finally {
                     // Close the single page
-                    await page.close().catch((e) => logger.error("BLINKIT: Error closing page:", e.message));
+                    await page.close().catch((e) => logger.error(`BLINKIT: Error closing page: ${e.message || e}`, { error: e }));
                 }
 
                 // Log completion and wait before next cycle
@@ -683,7 +680,7 @@ export const startTrackingHandler = async (location = "bahadurpura police statio
                 logger.info(`BLINKIT: Total time taken For Tracking completion is:  ${totalDuration.toFixed(2)} minutes`);
                 await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000)); // Wait for 1 minute before next iteration
             } catch (error) {
-                logger.error("BLINKIT: Error in tracking handler:", error);
+                logger.error(`BLINKIT: Error in tracking handler: ${error.message || error}`, { error });
                 await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000)); // Wait for 1 minute before retrying
             }
         }

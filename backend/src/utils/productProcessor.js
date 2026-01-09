@@ -117,7 +117,7 @@ export const processProducts = async (products, categoryName, options = {}) => {
                     emailNotification && sendEmailWithDroppedProducts(droppedProducts, source),
                 ]);
             } catch (error) {
-                logger.error(`${logPrefix} Error sending notification:`, error);
+                logger.error(`${logPrefix} Error sending notification: ${error.message || error}`, { error });
             }
         }
 
@@ -129,7 +129,7 @@ export const processProducts = async (products, categoryName, options = {}) => {
 
         return bulkOps.length;
     } catch (error) {
-        logger.error(`Error processing products for ${source}:`, error);
+        logger.error(`Error processing products for ${source}: ${error.message || error}`, { error });
         throw error;
     }
 };

@@ -13,22 +13,26 @@ const placesData = {};
 const CATEGORY_CHUNK_SIZE = 1; // Number of categories to process in parallel
 const SUBCATEGORY_CHUNK_SIZE = 1; // Number of subcategories to process in parallel
 // Real Chromium browser headers that match our stealth configuration
-const getRealisticHeaders = (cookies) => ({
-    accept: "application/json, text/plain, */*",
-    "accept-language": "en-US,en;q=0.9",
-    "accept-encoding": "gzip, deflate, br",
-    "content-type": "application/json",
-    "cache-control": "no-cache",
-    "dnt": "1",
-    "sec-fetch-dest": "empty",
-    "sec-fetch-mode": "cors",
-    "sec-fetch-site": "same-origin",
-    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "origin": "https://www.swiggy.com",
-    "referer": "https://www.swiggy.com/instamart",
-    "connection": "keep-alive",
-    "te": "trailers",
-    cookie: cookies
+const getRealisticHeaders = (cookies, matcher) => ({
+    'accept': '*/*',
+    'accept-language': 'en-US,en;q=0.6',
+    'cache-control': 'no-cache',
+    'content-type': 'application/json',
+    'dnt': '1',
+    'matcher': matcher || 'gbec88edegb8g98dbea99g7',
+    'origin': 'https://www.swiggy.com',
+    'pragma': 'no-cache',
+    'priority': 'u=1, i',
+    'sec-ch-ua': '"Not/A)Brand";v="8", "Chromium";v="140", "Google Chrome";v="140"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"macOS"',
+    'sec-fetch-dest': 'empty',
+    'sec-fetch-mode': 'cors',
+    'sec-fetch-site': 'same-origin',
+    'sec-gpc': '1',
+    'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
+    'x-build-version': '2.311.0',
+    'cookie': cookies
 });
 
 // Remove trackingInterval variable as we'll use continuous tracking
@@ -105,8 +109,6 @@ const setLocation = async (location) => {
 
                     // Wait for the page to be fully loaded with random delay
                     await page.waitForTimeout(2000 + Math.random() * 2000);
-
-                    // Check if the page is loaded properly
                 } else {
                     // If no suggestion then the address is not serviceable
                     throw AppError.badRequest(`IM: Delivery not available for pincode: ${location}`);
@@ -115,7 +117,7 @@ const setLocation = async (location) => {
                 throw new Error("IM: Pincode input field not found");
             }
         } catch (error) {
-            logger.error("IM: Error setting location:", error);
+            logger.error(`IM: Error setting location: ${error.message || error}`, { error });
             contextManager.markServiceability(location, "instamart", false);
             throw AppError.badRequest(`IM: Could not set location for pincode: ${location}`);
         }
@@ -130,9 +132,27 @@ const setLocation = async (location) => {
     } catch (error) {
         if (page) await page.close();
         contextManager.markServiceability(location, "instamart", false);
-        logger.error(`IM: Error setting pincode ${location}:`, error);
+        logger.error(`IM: Error setting pincode ${location}: ${error.message || error}`, { error });
         throw error;
     }
+};
+
+// Helper to ensure page is loaded by checking for a specific element
+const ensurePageLoaded = async (page, selector = "//div[text()='Fresh Fruits']", maxRetries = 5) => {
+    let retryCount = 0;
+    while (retryCount < maxRetries) {
+        try {
+            const element = await page.waitForSelector(selector, { timeout: 5000 });
+            if (element) return element;
+        } catch (error) {
+            logger.info(`IM: Page not loaded properly (attempt ${retryCount + 1}/${maxRetries}), refreshing...`);
+            await page.reload({ waitUntil: "domcontentloaded" });
+            // Add a small delay after reload
+            await page.waitForTimeout(3000);
+            retryCount++;
+        }
+    }
+    throw new Error(`IM: Could not find element with selector ${selector} after ${maxRetries} retries`);
 };
 
 // Extract browser data (cookies, storeId, lat/lng) from the browser context
@@ -145,6 +165,7 @@ const extractBrowserData = async (location, refresh = false) => {
             return {
                 cookies: placesData[location].cookies,
                 storeId: placesData[location].storeId,
+                matcher: placesData[location].matcher,
                 lat: placesData[location].lat || 0,
                 lng: placesData[location].lng || 0
             };
@@ -181,14 +202,8 @@ const extractBrowserData = async (location, refresh = false) => {
         // Add random delay to simulate human behavior
         await page.waitForTimeout(3000 + Math.random() * 2000);
 
-        // Step 2: Find a div with text "Fresh Fruits" and click it
-        const freshFruitsDiv = await page.waitForSelector("//div[text()='Fresh Fruits']", {
-            timeout: 5000
-        });
-
-        if (!freshFruitsDiv) {
-            throw new Error("IM: Could not find div with text 'Fresh Fruits'");
-        }
+        // Step 2: Ensure page is loaded by finding "Fresh Fruits" div
+        const freshFruitsDiv = await ensurePageLoaded(page);
 
         // Step 3: Click the 'Fresh Fruits' div to navigate to category listing page
         await freshFruitsDiv.click();
@@ -207,8 +222,11 @@ const extractBrowserData = async (location, refresh = false) => {
 
         let storeId = null;
 
-        // Step 5: Extract cookies using document.cookie
-        const cookieString = await page.evaluate(() => document.cookie);
+        // Step 5: Extract all cookies and the dynamic 'matcher' value
+        const cookies = await page.context().cookies();
+        const cookieString = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+        const matcher = await page.evaluate(() => window.App?.initialMatcher || "");
+        logger.info(`IM: Extracted matcher: ${matcher}`);
 
         // Try URL-based extraction
         const urlMatch = currentUrl.match(/storeId=(\d+)/);
@@ -226,7 +244,7 @@ const extractBrowserData = async (location, refresh = false) => {
                     logger.info(`IM: Extracted storeId from view-source: ${storeId}`);
                 }
             } catch (e) {
-                logger.warn('IM: Failed to load view-source for storeId fallback', e);
+                logger.warn(`IM: Failed to load view-source for storeId fallback: ${e.message || e}`);
             }
         }
 
@@ -247,6 +265,7 @@ const extractBrowserData = async (location, refresh = false) => {
         const browserData = {
             cookies: cookieString,
             storeId: storeId,
+            matcher: matcher,
             lat: lat || 0,
             lng: lng || 0
         };
@@ -264,7 +283,7 @@ const extractBrowserData = async (location, refresh = false) => {
         logger.info(`IM: Successfully cached browser data for location ${location}`);
         return browserData;
     } catch (error) {
-        logger.error("IM: Error extracting browser data:", error);
+        logger.error(`IM: Error extracting browser data: ${error.message || error}`, { error });
         throw AppError.internalError("Failed to extract browser data");
     } finally {
         if (page) {
@@ -289,7 +308,7 @@ export const startTrackingHandler = async () => {
     logger.info("IM: starting tracking");
     // Start the continuous tracking loop without awaiting it
     trackProductPrices().catch((error) => {
-        logger.error("IM: Failed in tracking loop:", error);
+        logger.error(`IM: Failed in tracking loop: ${error.message || error}`, { error });
     });
     return "Instamart price tracking started";
 };
@@ -297,14 +316,14 @@ export const startTrackingHandler = async () => {
 // Process categories with parallel subcategory processing
 const fetchProductsForCategoriesChunk = async (categoryChunk, location) => {
     try {
-        let { storeId, cookies } = await extractBrowserData(location, false);
+        let { storeId, cookies, matcher } = await extractBrowserData(location, false);
         // Use realistic headers that match our stealth browser
-        const headers = getRealisticHeaders(cookies);
+        const headers = getRealisticHeaders(cookies, matcher);
 
         // Process each category sequentially
         for (const category of categoryChunk) {
             try {
-                logger.info("IM: processing category", category.name);
+                logger.info(`IM: processing category ${category.name}`);
                 if (!category.subCategories?.length) {
                     logger.info(`IM: Skipping category ${category.name} - no subcategories found`);
                     continue;
@@ -318,61 +337,74 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, location) => {
                     await Promise.all(subCategoryChunk.map(async (subCategory) => {
                         try {
                             let offset = 0;
-                            let pageNo = 0;
-                            let limit = 20;
+                            let itemsOffset = 0;
                             let allProducts = [];
-                            let { storeId, cookies } = await extractBrowserData(location, false);
-                            // Update headers with fresh cookies
-                            const updatedHeaders = getRealisticHeaders(cookies);
+                            let { storeId, cookies, matcher } = await extractBrowserData(location, false);
+                            // Update headers with fresh cookies and matcher
+                            const updatedHeaders = getRealisticHeaders(cookies, matcher);
+                            let retryCount = 0;
+                            let non2xx3xxResponseCount = 0;
+                            const MAX_RETRIES = 3;
+                            const MAX_RETRIES_FOR_ERR_NON_2XX_3XX_RESPONSE = 10;
 
-                            while (true) {
-                                let retryCount = 0;
-                                const MAX_RETRIES = 3;
+                            while (retryCount < MAX_RETRIES && non2xx3xxResponseCount < MAX_RETRIES_FOR_ERR_NON_2XX_3XX_RESPONSE) {
+                                // Fetch subcategory data using v2 endpoint
+                                logger.info(`IM: fetching page ${offset} for subcategory ${subCategory.name}`);
 
-                                // Fetch subcategory data
-                                const response = await axios.post(
-                                    `https://www.swiggy.com/api/instamart/category-listing/filter`,
-                                    { facets: {}, sortAttribute: "" },
-                                    {
-                                        params: {
-                                            filterId: subCategory.nodeId,
-                                            storeId,
-                                            offset,
-                                            primaryStoreId: storeId,
-                                            secondaryStoreId: "",
-                                            type: category.taxonomyType,
-                                            pageNo: pageNo,
-                                            filterName: subCategory.name,
+                                let response;
+                                try {
+                                    response = await axios.post(
+                                        `https://www.swiggy.com/api/instamart/category-listing/filter/v2`,
+                                        {
                                             categoryName: category.name,
+                                            filterName: subCategory.name,
+                                            filterId: subCategory.nodeId,
+                                            taxonomyType: category.taxonomyType,
+                                            items_offset: String(itemsOffset),
+                                            facets: [],
+                                            sortAttribute: ""
                                         },
-                                        headers: updatedHeaders,
-                                    }
-                                );
+                                        {
+                                            params: {
+                                                storeId,
+                                                primaryStoreId: storeId,
+                                                secondaryStoreId: "",
+                                                pageNo: offset,
+                                                offset: offset,
+                                                page_name: "category_listing_filter"
+                                            },
+                                            headers: {
+                                                ...updatedHeaders,
+                                                'referer': `https://www.swiggy.com/instamart/category-listing?categoryName=${encodeURIComponent(category.name)}&filterId=${subCategory.nodeId}&filterName=${encodeURIComponent(subCategory.name)}&offset=0&storeId=${storeId}&taxonomyType=${encodeURIComponent(category.taxonomyType)}&showAgeConsent=false`
+                                            },
+                                        }
+                                    );
+                                } catch (error) {
+                                    const statusCode = error.response?.status;
+                                    logger.warn(`IM: API error ${statusCode || 'Network'} for ${subCategory.name}: ${error.message}`);
+                                }
 
                                 const {
-                                    totalItems = 0,
-                                    widgets = [],
-                                    hasMore = false,
-                                    offset: offsetResponse = 0,
-                                    pageNo: pageNoResponse = 0,
+                                    cards = [],
+                                    pageOffset = {}
                                 } = response.data?.data || {};
+
+                                const nextOffset = pageOffset?.nextOffset;
+                                const nextEndPoint = pageOffset?.nextEndPoint; // Url that can be used to fetch next page
+
+                                const hasMore = !!nextOffset;
 
                                 // Check if the response is empty and rate limit is hit
                                 if (!response.data?.data) {
-                                    // If the response status is 202 , then it means the cookies are expired and we have to refresh them
-                                    if (response.status === 202) {
-                                        const { cookies: refreshedCookies } = await extractBrowserData(location, true);
-                                        // Update headers with refreshed cookies
-                                        const refreshedHeaders = getRealisticHeaders(refreshedCookies);
-                                        Object.assign(updatedHeaders, refreshedHeaders);
+                                    // 'ERR_NON_2XX_3XX_RESPONSE' is a custom error code that is returned when the response is not a 2xx or 3xx response if we can retry without refreshing cookies
+                                    if (response?.data?.statusCode == 'ERR_NON_2XX_3XX_RESPONSE') {
+                                        non2xx3xxResponseCount++;
+                                        // Wait 2 seconds before retrying
+                                        await new Promise(resolve => setTimeout(resolve, 2000));
+                                        continue;
                                     }
+
                                     retryCount++;
-                                    if (retryCount > MAX_RETRIES) {
-                                        logger.info(
-                                            `IM: Max retries (${MAX_RETRIES}) reached for subcategory ${subCategory.name}`
-                                        );
-                                        break;
-                                    }
                                     // Wait for progressively longer times between retries (1m, 2m, 3m)
                                     const waitTime = retryCount * 60 * 1000;
 
@@ -381,65 +413,72 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, location) => {
                                         } seconds before retry...`
                                     );
                                     await new Promise((resolve) => setTimeout(resolve, waitTime));
+
+                                    // If the response status is 202 , then it means the cookies are expired and we have to refresh them
+                                    const { cookies: refreshedCookies, matcher: refreshedMatcher } = await extractBrowserData(location, true);
+                                    // Update headers with refreshed cookies and matcher
+                                    const refreshedHeaders = getRealisticHeaders(refreshedCookies, refreshedMatcher);
+                                    Object.assign(updatedHeaders, refreshedHeaders);
+
                                     continue; // Retry the same request
                                 }
 
-                                // Extract products from PRODUCT_LIST widgets
-                                const products = widgets
-                                    .filter((widget) => widget.type === "PRODUCT_LIST")
-                                    .flatMap((widget) => widget.data || [])
+                                // Extract products by safely checking for items array structure as suggested
+                                const products = cards
+                                    .flatMap((c) => c.card?.card?.gridElements?.infoWithStyle?.items || [])
                                     .filter((product) => product);
 
-                                // logger.info(`IM: Found ${products.length} products in subcategory ${subCategory.name}`);
-
                                 if (!products.length) {
-                                    logger.info("IM: no products found in subcategory", subCategory.name);
+                                    logger.info(`IM: no products found in subcategory ${subCategory.name}`);
                                     break;
                                 }
 
                                 allProducts = [...allProducts, ...products];
 
-                                // Break if no more products or reached total
-                                if (!hasMore || allProducts.length >= totalItems) break;
+                                // Stop further extraction if any product is out of stock (usually at the end)
+                                const hasOutOfStock = products.some(p => p.inStock === false);
+                                if (hasOutOfStock) {
+                                    logger.info(`IM: Found out of stock products in ${subCategory.name}, stopping further pages`);
+                                    break;
+                                }
 
-                                offset = offsetResponse;
-                                pageNo = pageNoResponse + 1;
+                                if (!hasMore) break;
+                                offset = nextOffset;
+
+                                // Update itemsOffset for the next request body
+                                if (nextEndPoint) {
+                                    const match = nextEndPoint.match(/itemsOffset=([^&]+)/);
+                                    if (match && match[1]) {
+                                        itemsOffset = match[1];
+                                    }
+                                }
+
+                                // Wait 1 seconds before processing next page
+                                await new Promise(resolve => setTimeout(resolve, 1000));
                             }
 
                             // After processing products in each subcategory
                             if (allProducts.length > 0) {
                                 logger.info(
-                                    "IM: Processing products for subcategory",
-                                    subCategory.name,
-                                    "length",
-                                    allProducts.length
+                                    `IM: Processing products for subcategory ${subCategory.name} length ${allProducts.length}`
                                 );
                                 const updatedCount = await processProducts(allProducts, category, subCategory, location);
                             }
                         } catch (error) {
-                            logger.error(`IM: Error processing subcategory ${subCategory.name}:`, error.message || error);
-                            await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
-                            // Refresh cookies when we hit errors
-                            try {
-                                logger.info(`IM: Refreshing cookies due to error in subcategory ${subCategory.name}`);
-                                await extractBrowserData(location, true);
-                            } catch (refreshError) {
-                                logger.error(`IM: Failed to refresh cookies:`, refreshError.message || refreshError);
-                            }
-
+                            logger.error(`IM: Error processing subcategory ${subCategory.name}: ${error.message || error}`, { error });
                             // Continue with next subcategory even if one fails
                             return; // Return instead of continue since we're in a map function
                         }
                     }));
                 }
             } catch (error) {
-                logger.error(`IM: Error processing category ${category.name}:`, error.message || error);
+                logger.error(`IM: Error processing category ${category.name}: ${error.message || error}`, { error });
                 // Continue with next category even if one fails
                 continue;
             }
         }
     } catch (error) {
-        logger.error("IM: Error processing category chunk:", error);
+        logger.error(`IM: Error processing category chunk: ${error.message || error}`, { error });
     }
 };
 
@@ -464,10 +503,10 @@ export const trackProductPrices = async (location = "500064") => {
             }
 
             const cycleStartTime = new Date();
-            logger.info("IM: Starting new tracking cycle at:", cycleStartTime.toISOString());
+            logger.info(`IM: Starting new tracking cycle at: ${cycleStartTime.toISOString()}`);
 
             // Setup the context for the location
-            const context = await setLocation(location);
+            await setLocation(location);
 
             // Check if the location is serviceable
             if (!contextManager.getWebsiteServiceabilityStatus(location, "instamart")) {
@@ -482,7 +521,7 @@ export const trackProductPrices = async (location = "500064") => {
                 continue;
             }
 
-            logger.info("IM: Categories fetched:", categories.length);
+            logger.info(`IM: Categories fetched: ${categories.length}`);
 
             // Process categories in parallel (in groups of 3 to avoid rate limiting)
             const categoryChunks = chunk(categories, CATEGORY_CHUNK_SIZE);
@@ -491,14 +530,14 @@ export const trackProductPrices = async (location = "500064") => {
                 await fetchProductsForCategoriesChunk(categoryChunk, location);
             }
 
-            logger.info("IM: Tracking cycle completed at:", new Date().toISOString());
+            logger.info(`IM: Tracking cycle completed at: ${new Date().toISOString()}`);
             const totalDurationMinutes = ((Date.now() - cycleStartTime.getTime()) / 60000).toFixed(2);
             logger.info(`IM: Total time taken: ${totalDurationMinutes} minutes`);
 
             // Add a delay before starting the next cycle
             await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
         } catch (error) {
-            logger.error("IM: Error in tracking cycle:", error);
+            logger.error(`IM: Error in tracking cycle: ${error.message || error}`, { error });
             // Wait before retrying after error
             await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
         }
@@ -562,7 +601,7 @@ const fetchProductCategories = async (location = "500064") => {
                     retryCount++;
                     await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before retry
                 } catch (error) {
-                    logger.error(`IM: Attempt ${retryCount + 1}/${MAX_RETRIES} failed:`, error);
+                    logger.error(`IM: Attempt ${retryCount + 1}/${MAX_RETRIES} failed: ${error.message || error}`, { error });
                     retryCount++;
                     if (retryCount === MAX_RETRIES) {
                         throw new Error("Failed to fetch categories after max retries");
@@ -629,7 +668,7 @@ const fetchProductCategories = async (location = "500064") => {
             }
         }
     } catch (error) {
-        logger.error("IM: Error fetching categories with browser cookies:", error);
+        logger.error(`IM: Error fetching categories with browser cookies: ${error.message || error}`, { error });
         throw AppError.internalError("Failed to fetch categories");
     }
 };
@@ -670,7 +709,7 @@ const fetchProductCategoriesLegacy = async (location = "500064") => {
         }
 
         const { lat, lng } = storeResponse.data.data[0].geometry.location;
-        logger.info("IM: got lat and lng", lat, lng);
+        logger.info(`IM: got lat and lng ${lat} ${lng}`);
 
         // Step3: Get the store id using location
         // Create a complete userLocation object similar to one from working cookie
@@ -686,7 +725,7 @@ const fetchProductCategoriesLegacy = async (location = "500064") => {
         // Create cookie without URL encoding - direct JSON format
         // This matches the format seen in working curl commands
         const locationCookie = `userLocation=${JSON.stringify(userLocation)}`;
-        logger.info("IM: using cookie:", locationCookie);
+        logger.info(`IM: using cookie: ${locationCookie}`);
 
         // Full cookie with additional required fields from working curl command
         const fullCookie = `deviceId=s%3A1ce58713-498a-4aec-bab1-493c2d86d249.LKtG1bUIkqwIQmPUzUlLyzBMoFZjQIow0rLiaXWXiVE; ${locationCookie}`;
@@ -710,7 +749,7 @@ const fetchProductCategoriesLegacy = async (location = "500064") => {
 
             if (storeIdMatch && storeIdMatch[1]) {
                 const storeId = storeIdMatch[1];
-                logger.info("IM: got store id from webpage:", storeId);
+                logger.info(`IM: got store id from webpage: ${storeId}`);
 
                 // Step4: Fetch categories using dynamic storeId from webpage
                 const categoriesResponse = await axios.get(`https://www.swiggy.com/api/instamart/layout`, {
@@ -795,10 +834,10 @@ const fetchProductCategoriesLegacy = async (location = "500064") => {
                 logger.info("IM: No storeId in response");
             }
         } catch (error) {
-            logger.info("IM: Error with dynamic cookie:", error.message);
+            logger.info(`IM: Error with dynamic cookie: ${error.message}`);
         }
     } catch (error) {
-        logger.error("IM: Error fetching categories:", error?.response?.data || error);
+        logger.error(`IM: Error fetching categories: ${error?.response?.data || error.message || error}`, { error });
         throw new AppError("Failed to fetch categories", 500);
     }
 };
@@ -810,30 +849,42 @@ const processProducts = async (products, category, subcategory, location = "5000
         const transformedProducts = products.flatMap(
             (product) =>
                 product.variations?.map((variation) => {
-                    const currentPrice = variation.price?.offer_price || 0;
-                    const mrp = variation.price?.mrp || 0;
-                    const discount = mrp > 0 ? Math.floor((variation.price?.discount_value / mrp) * 100) : 0;
+                    const offerPrice = variation.price?.offerPrice?.units || variation.price?.offer_price || 0;
+                    const mrp = variation.price?.mrp?.units || variation.price?.mrp || 0;
+
+                    const discountValue = variation.price?.discountValue?.units || variation.price?.discount_value || 0;
+                    const discount = mrp > 0 ? Math.floor((discountValue / mrp) * 100) : 0;
+
+                    const skuId = variation.skuId || variation.id;
+                    const displayName = product.displayName || product.display_name;
+                    const imageId = variation.imageIds?.[0] || variation.images?.[0];
+                    const inStock = variation.inventory?.inStock !== undefined ? variation.inventory?.inStock : variation.inventory?.in_stock;
+
+                    const quantityDescription = variation.quantityDescription || variation.quantity || "";
+                    const weight = quantityDescription || (variation.weightInGrams ? `${variation.weightInGrams} g` : "");
+                    const quantity = variation.quantity || "";
+                    const unit = variation.unit_of_measure || "";
 
                     return {
-                        productId: variation.id, // Using variation.id as the unique identifier
-                        variationId: variation.id,
-                        productName: product.display_name,
+                        productId: skuId,
+                        variationId: skuId,
+                        productName: displayName,
                         categoryName: category.name,
                         subcategoryName: subcategory.name,
-                        inStock: variation.inventory?.in_stock,
-                        imageUrl: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,h_272,w_252/${variation.images?.[0] || "default_image"
+                        inStock: inStock,
+                        imageUrl: `https://instamart-media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,h_272,w_252/${imageId || "default_image"
                             }`,
-                        price: currentPrice,
-                        mrp: mrp,
+                        price: Number(offerPrice),
+                        mrp: Number(mrp),
                         discount: discount,
-                        quantity: variation.quantity,
-                        unit: variation.unit_of_measure,
-                        weight: variation.sku_quantity_with_combo || variation.weight_in_grams || 0,
-                        url: `https://www.swiggy.com/instamart/item/${product.product_id}?storeId=${placesData[location].storeId}`,
+                        quantity: quantityDescription, // Use the full description here
+                        unit: unit,
+                        weight: weight, // And here as well for visibility
+                        url: `https://www.swiggy.com/instamart/item/${product.productId || product.product_id}?storeId=${placesData[location].storeId}`,
                         // Additional Instamart-specific fields
                         categoryId: category.nodeId,
                         subcategoryId: subcategory.nodeId,
-                        mainProductId: product.product_id,
+                        mainProductId: product.productId || product.product_id,
                     };
                 }) || []
         );
@@ -851,7 +902,7 @@ const processProducts = async (products, category, subcategory, location = "5000
         logger.info(`IM: Processed ${processedCount} products in ${subcategory.name}`);
         return processedCount;
     } catch (error) {
-        logger.error("IM: Error processing products:", error);
+        logger.error(`IM: Error processing products: ${error.message || error}`, { error });
         return 0;
     }
 };

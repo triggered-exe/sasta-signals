@@ -72,7 +72,7 @@ const setLocation = async (pincode) => {
     } catch (error) {
         if (page) await page.close();
         contextManager.markServiceability(pincode, "amazonFresh", false);
-        logger.error(`AF: Error setting pincode ${pincode}:`, error);
+        logger.error(`AF: Error setting pincode ${pincode}: ${error.message || error}`, { error });
         throw error;
     }
 };
@@ -176,7 +176,7 @@ export const search = async (location, query) => {
             await page.close();
         }
     } catch (error) {
-        logger.error('AF: Search error:', error.message);
+        logger.error(`AF: Search error: ${error.message || error}`, { error });
         throw error;
     }
 };
@@ -219,7 +219,7 @@ const searchAndExtractProducts = async (page, query, maxPages = 10) => {
         logger.info(`AF: Found ${uniqueProducts.length} unique products out of ${allProducts.length} for ${query}`);
         return uniqueProducts;
     } catch (error) {
-        logger.error(`AF: Error searching for "${query}":`, error);
+        logger.error(`AF: Error searching for "${query}": ${error.message || error}`, { error });
         return [];
     }
 };
@@ -254,7 +254,7 @@ export const startTrackingHandler = async (pincode = "500064") => {
 
         try {
             const startTime = new Date();
-            logger.info("AF: Starting product search at:", startTime.toLocaleString());
+            logger.info(`AF: Starting product search at: ${startTime.toLocaleString()}`);
 
             // Get all queries from productQueries
             const queries = [];
@@ -293,7 +293,7 @@ export const startTrackingHandler = async (pincode = "500064") => {
                                 const processedCount = typeof result === "number" ? result : result.processedCount;
                                 return processedCount;
                             } catch (error) {
-                                logger.error(`AF: Error processing ${query}:`, error);
+                                logger.error(`AF: Error processing ${query}: ${error.message || error}`, { error });
                                 return 0;
                             }
                         })
@@ -319,7 +319,7 @@ export const startTrackingHandler = async (pincode = "500064") => {
             // Wait for 5 minutes before next iteration
             await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
         } catch (error) {
-            logger.error("AF: Error in tracking handler:", error);
+            logger.error(`AF: Error in tracking handler: ${error.message || error}`, { error });
             // Wait for 5 minutes before retrying
             await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
         }
@@ -374,7 +374,7 @@ const extractAmazonCookies = async (pincode) => {
         logger.info(`AF-API: Successfully extracted and stored cookies for pincode: ${pincode}`);
         return amazonFreshData;
     } catch (error) {
-        logger.error(`AF-API: Error extracting cookies for pincode ${pincode}:`, error);
+        logger.error(`AF-API: Error extracting cookies for pincode ${pincode}: ${error.message || error}`, { error });
         throw error;
     }
 };
@@ -431,7 +431,7 @@ const extractProductsAndPaginationFromHTML = (html) => {
                 products.push(product);
             }
         } catch (err) {
-            logger.error("AF-API: Error extracting product:", err);
+            logger.error(`AF-API: Error extracting product: ${err.message || err}`, { error: err });
         }
     });
 
@@ -474,7 +474,7 @@ const searchWithCookies = async (amazonFreshData, query, maxPages = 3) => {
 
                 });
             } catch (axiosError) {
-                logger.error(`AF-API: Axios error for page ${currentPage}:`, axiosError.message);
+                logger.error(`AF-API: Axios error for page ${currentPage}: ${axiosError.message || axiosError}`, { error: axiosError });
                 break;
             }
 
@@ -511,7 +511,7 @@ const searchWithCookies = async (amazonFreshData, query, maxPages = 3) => {
 
         return uniqueProducts;
     } catch (error) {
-        logger.error(`AF-API: Error searching for "${query}":`, error.message);
+        logger.error(`AF-API: Error searching for "${query}": ${error.message || error}`, { error });
         throw error;
     }
 };
@@ -551,14 +551,14 @@ export const searchQueryWithCookies = async (req, res, next) => {
             processedPages: Math.ceil(products.length / products.length),
         });
     } catch (error) {
-        logger.error("AF-API: Amazon Fresh cookie-based search error:", error);
+        logger.error(`AF-API: Amazon Fresh cookie-based search error: ${error.message || error}`, { error });
 
         // Fallback to browser-based search if API fails
         logger.info("AF-API: Falling back to browser-based search...");
         try {
             return await searchQuery(req, res, next);
         } catch (fallbackError) {
-            logger.error("AF-API: Fallback also failed:", fallbackError);
+            logger.error(`AF-API: Fallback also failed: ${fallbackError.message || fallbackError}`, { error: fallbackError });
             next(error);
         }
     }
@@ -649,7 +649,7 @@ export const extractCategories = async (req, res, next) => {
         });
 
     } catch (error) {
-        logger.error("AF: Error extracting categories:", error);
+        logger.error(`AF: Error extracting categories: ${error.message || error}`, { error });
         next(error);
     } finally {
         if (page) await page.close();
@@ -668,7 +668,7 @@ export const startAmazonTrackingWithoutBrowswer = async (pincode = "500064") => 
 
     // Start the continuous tracking loop
     trackPricesWithoutBrowser(pincode).catch(error => {
-        logger.error('AF-API: Failed in cookie-based tracking loop:', error);
+        logger.error(`AF-API: Failed in cookie-based tracking loop: ${error.message || error}`, { error });
     });
 
     return "Amazon Fresh cookie-based price tracking started";
@@ -688,7 +688,7 @@ const trackPricesWithoutBrowser = async (pincode = "500064") => {
 
         try {
             const startTime = new Date();
-            logger.info("AF-API: Starting cookie-based product search at:", startTime.toLocaleString());
+            logger.info(`AF-API: Starting cookie-based product search at: ${startTime.toLocaleString()}`);
 
             // First ensure location is set up using existing setLocation function
             await setLocation(pincode);
@@ -728,14 +728,14 @@ const trackPricesWithoutBrowser = async (pincode = "500064") => {
                                 emailNotification: false,
                             });
                         } catch (error) {
-                            logger.error(`AF-API: Error processing ${query}:`, error);
+                            logger.error(`AF-API: Error processing ${query}: ${error.message || error}`, { error });
                         }
 
                         // Add delay between queries to avoid rate limiting
                         await new Promise((resolve) => setTimeout(resolve, 2000));
                     }
                 } catch (error) {
-                    logger.error("AF-API: Error processing query chunk:", error);
+                    logger.error(`AF-API: Error processing query chunk: ${error.message || error}`, { error });
                 }
 
                 // Add delay between chunks
@@ -752,7 +752,7 @@ const trackPricesWithoutBrowser = async (pincode = "500064") => {
             // Wait for 1 minutes before next iteration
             await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
         } catch (error) {
-            logger.error("AF-API: Error in cookie-based tracking handler:", error);
+            logger.error(`AF-API: Error in cookie-based tracking handler: ${error.message || error}`, { error });
             // Wait for 1 minutes before retrying
             await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
         }
