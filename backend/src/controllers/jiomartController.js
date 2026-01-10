@@ -779,7 +779,7 @@ export const startTrackingHandler = async (location) => {
               await new Promise((resolve) => setTimeout(resolve, 2000));
             }
           } catch (error) {
-            logger.error(`JIO: Error processing category ${category.name}:`, error);
+            logger.error(`JIO: Error processing category ${category.name}: ${error.message || error}`, { error });
           }
         });
 

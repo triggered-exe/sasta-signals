@@ -180,7 +180,7 @@ router.get("/system", async (req, res) => {
 
     res.json(response);
   } catch (error) {
-    logger.error("Error getting comprehensive system metrics:", error);
+    logger.error(`Error getting comprehensive system metrics: ${error.message || error}`, { error });
     res.status(500).json({
       error: "Failed to get system metrics",
       message: error.message,
@@ -221,7 +221,7 @@ router.post("/contexts/cleanup", async (req, res) => {
       timezone: getISTInfo().timezone
     });
   } catch (error) {
-    logger.error("Error during FORCE cleanup:", error);
+    logger.error(`Error during FORCE cleanup: ${error.message || error}`, { error });
     res.status(500).json({
       error: "Failed to FORCE cleanup contexts",
       message: error.message,

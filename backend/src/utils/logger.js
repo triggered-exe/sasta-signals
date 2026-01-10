@@ -43,13 +43,32 @@ winston.addColors(colors);
 const consoleFormat = winston.format.combine(
     winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
     winston.format.colorize({ all: true }),
+    winston.format.errors({ stack: true }),
+    winston.format.splat(),
     winston.format.printf((info) => {
-        const { timestamp, level, message, ...meta } = info;
-        let metaStr = '';
-        if (Object.keys(meta).length > 0) {
-            metaStr = '\n' + JSON.stringify(meta, null, 2);
+        const { timestamp, level, message, stack, ...meta } = info;
+        let log = `${timestamp} [${level}]: ${message}`;
+        if (stack) {
+            log += `\n${stack}`;
         }
-        return `${timestamp} [${level}]: ${message}${metaStr}`;
+        if (Object.keys(meta).length > 0) {
+            // Remove internal winston sybmols if any
+            const metaClean = { ...meta };
+            const metaStr = JSON.stringify(metaClean, (key, value) => {
+                if (value instanceof Error) {
+                    return {
+                        message: value.message,
+                        stack: value.stack,
+                        ...value
+                    };
+                }
+                return value;
+            }, 2);
+            if (metaStr !== '{}') {
+                log += `\n${metaStr}`;
+            }
+        }
+        return log;
     })
 );
 

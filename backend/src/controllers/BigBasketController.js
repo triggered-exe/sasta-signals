@@ -419,7 +419,7 @@ export const startTrackingHandler = async (location) => {
               if (page) await page.close();
             }
           } catch (error) {
-            logger.error(`BB: Error processing category ${category.name}:`, error);
+            logger.error(`BB: Error processing category ${category.name}: ${error.message || error}`, { error });
           }
         });
 

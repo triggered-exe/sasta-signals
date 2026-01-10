@@ -84,18 +84,18 @@ const startServer = async () => {
       // zeptoStartTrackingHandler("500064"); // For JioMart 
       if (process.env.ENVIRONMENT === "production") {
         setTimeout(() => startAmazonTrackingWithoutBrowswer("500064"), 0); // For Amazon Fresh
-        setTimeout(() => zeptoStartTrackingHandler("500064"), 60 * 1000); // For Zepto
-        setTimeout(() => flipkartStartTrackingHandler("500064"), 90 * 1000); // For Flipkart
-        setTimeout(() => BigBasketStartTrackingHandler("500064"), 100 * 1000); // For BigBasket
-        setTimeout(() => instamartStartTrackingHandler("500064"), 120 * 1000); // For Instamart
-        setTimeout(() => blinkitStartTrackingHandler("500064"), 140 * 1000); // For Blinkit
-        setTimeout(() => jiomartStartTrackingHandler("500064"), 160 * 1000); // For JioMart
+        setTimeout(() => instamartStartTrackingHandler("500064"), 30 * 1000); // For Instamart
+        setTimeout(() => flipkartStartTrackingHandler("500064"), 60 * 1000); // For Flipkart
+        setTimeout(() => BigBasketStartTrackingHandler("500064"), 90 * 1000); // For BigBasket
+        setTimeout(() => zeptoStartTrackingHandler("500064"), 120 * 1000); // For Zepto
+        setTimeout(() => blinkitStartTrackingHandler("500064"), 150 * 1000); // For Blinkit
+        setTimeout(() => jiomartStartTrackingHandler("500064"), 180 * 1000); // For JioMart
       } else {
         // setTimeout(() => jiomartStartTrackingHandler("500064"), 0); // For BigBasket
       }
     });
   } catch (error) {
-    logger.error("Failed to start server:", error);
+    logger.error(`Failed to start server: ${error.message || error}`, { error });
     process.exit(1);
   }
 };

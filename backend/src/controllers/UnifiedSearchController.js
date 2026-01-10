@@ -89,7 +89,7 @@ export const unifiedSearch = async (req, res, next) => {
           error: null
         };
       } catch (error) {
-        logger.error(`UNIFIED: Error searching ${provider.name}:`, error.message);
+        logger.error(`UNIFIED: Error searching ${provider.name}: ${error.message || error}`, { error });
         return {
           provider: providerKey,
           success: false,
@@ -147,7 +147,7 @@ export const unifiedSearch = async (req, res, next) => {
     });
 
   } catch (error) {
-    logger.error("UNIFIED: Search error:", error);
+    logger.error(`UNIFIED: Search error: ${error.message || error}`, { error });
     next(error instanceof AppError ? error : AppError.internalError("Failed to perform unified search"));
   }
 };

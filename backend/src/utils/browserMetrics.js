@@ -24,7 +24,7 @@ export async function getSystemCpuUsage() {
       return Math.round((loadAvg[0] / cpuCount) * 100);
     }
   } catch (error) {
-    logger.debug("[browserMetrics]: Error getting system CPU usage:", error);
+    logger.debug(`[browserMetrics]: Error getting system CPU usage: ${error.message || error}`, { error });
   }
   return 0;
 }
@@ -87,7 +87,7 @@ export async function getBrowserProcessMetrics() {
         // We check for common browser names used by Playwright
         // On Windows 11, Playwright Chromium often appears as "headless_shell.exe" or "chrome.exe"
         const browserNames = ["chrome.exe", "headless_shell.exe", "msedge.exe", "chromium.exe"];
-        
+
         // Get CPU usage for processes first using wmic (it's reliable for formatted data)
         let processCpuMap = new Map();
         try {
@@ -106,7 +106,7 @@ export async function getBrowserProcessMetrics() {
             }
           }
         } catch (cpuError) {
-          logger.debug("[browserMetrics]: Could not get CPU metrics via wmic:", cpuError.message);
+          logger.debug(`[browserMetrics]: Could not get CPU metrics via wmic: ${cpuError.message}`);
         }
 
         // Run tasklist once and filter in JS
@@ -121,7 +121,7 @@ export async function getBrowserProcessMetrics() {
           const parts = line.split('","').map(p => p.replace(/"/g, ""));
           if (parts.length >= 5) {
             const imageName = parts[0].toLowerCase();
-            
+
             if (browserNames.includes(imageName)) {
               const pid = parseInt(parts[1]);
               const memStr = parts[4].replace(/[^\d]/g, ""); // Remove "K" or "," from memory string
@@ -142,7 +142,7 @@ export async function getBrowserProcessMetrics() {
           }
         }
       } catch (error) {
-        logger.debug("[browserMetrics]: Error querying browser processes on Windows:", error);
+        logger.debug(`[browserMetrics]: Error querying browser processes on Windows: ${error.message || error}`, { error });
       }
     }
 
@@ -155,7 +155,7 @@ export async function getBrowserProcessMetrics() {
       timestamp: new Date().toISOString()
     };
   } catch (error) {
-    logger.error("[browserMetrics]: Error getting browser process metrics:", error);
+    logger.error(`[browserMetrics]: Error getting browser process metrics: ${error.message || error}`, { error });
     return {
       platform: os.platform(),
       processCount: 0,

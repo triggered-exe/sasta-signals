@@ -55,7 +55,7 @@ class ContextManager {
   }
 
   async initBrowser() {
-    logger.info("[ctx]: Environment", process.env.ENVIRONMENT);
+    logger.info(`[ctx]: Environment: ${process.env.ENVIRONMENT}`);
     if (!this.browser) {
       const isDevMode = process.env.ENVIRONMENT === "development";
 

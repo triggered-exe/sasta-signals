@@ -380,14 +380,14 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, location) => {
                                         }
                                     );
                                 } catch (error) {
-                                    const statusCode = error.response?.status;
+                                    const statusCode = error?.response?.status;
                                     logger.warn(`IM: API error ${statusCode || 'Network'} for ${subCategory.name}: ${error.message}`);
                                 }
 
                                 const {
                                     cards = [],
                                     pageOffset = {}
-                                } = response.data?.data || {};
+                                } = response?.data?.data || {};
 
                                 const nextOffset = pageOffset?.nextOffset;
                                 const nextEndPoint = pageOffset?.nextEndPoint; // Url that can be used to fetch next page
@@ -395,9 +395,9 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, location) => {
                                 const hasMore = !!nextOffset;
 
                                 // Check if the response is empty and rate limit is hit
-                                if (!response.data?.data) {
+                                if (!response?.data?.data) {
                                     // 'ERR_NON_2XX_3XX_RESPONSE' is a custom error code that is returned when the response is not a 2xx or 3xx response if we can retry without refreshing cookies
-                                    if (response?.data?.statusCode == 'ERR_NON_2XX_3XX_RESPONSE') {
+                                    if (response?.data?.statusCode == 'ERR_NON_2XX_3XX_RESPONSE' || !response) {
                                         non2xx3xxResponseCount++;
                                         // Wait 2 seconds before retrying
                                         await new Promise(resolve => setTimeout(resolve, 2000));

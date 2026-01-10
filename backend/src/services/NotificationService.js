@@ -77,7 +77,8 @@ export const sendTelegramMessage = async (droppedProducts, source, minDiscountTh
 
         logger.info(`${source}: Sent notifications for ${uniqueFilteredProducts.length} products`);
     } catch (error) {
-        logger.error(`${source}: Error sending Telegram message:`, error?.response?.data || error);
+        const errorData = error?.response?.data || error;
+        logger.error(`${source}: Error sending Telegram message: ${typeof errorData === 'object' ? JSON.stringify(errorData) : errorData}`, { error });
         throw error;
     }
 };
@@ -160,7 +161,7 @@ export const sendEmailWithDroppedProducts = async (droppedProducts, source) => {
 
         logger.info(`${source}: Email notifications sent successfully for ${uniqueDroppedProducts.length} unique products`);
     } catch (error) {
-        logger.error(`${source}: Error sending email:`, error);
+        logger.error(`${source}: Error sending email: ${error.message || error}`, { error });
         throw error;
     }
 };
@@ -181,6 +182,6 @@ export const sendPriceDropNotifications = async (droppedProducts, source) => {
             sendTelegramMessage(droppedProducts, source)
         ]);
     } catch (error) {
-        logger.error(`${source}: Error in sendPriceDropNotifications:`, error);
+        logger.error(`${source}: Error in sendPriceDropNotifications: ${error.message || error}`, { error });
     }
 }; 
