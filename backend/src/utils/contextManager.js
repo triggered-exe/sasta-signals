@@ -165,12 +165,12 @@ class ContextManager {
       const userAgent = getRandomUserAgent();
       logger.info(`[ctx]: Selected User Agent for ${address}: ${userAgent}`);
 
-      let platformHeader = '"Windows"';
-      if (userAgent.includes('Macintosh')) {
-        platformHeader = '"macOS"';
-      } else if (userAgent.includes('Linux')) {
-        platformHeader = '"Linux"';
-      }
+      // let platformHeader = '"Windows"';
+      // if (userAgent.includes('Macintosh')) {
+      //   platformHeader = '"macOS"';
+      // } else if (userAgent.includes('Linux')) {
+      //   platformHeader = '"Linux"';
+      // }
 
       const context = await browser.newContext({
         // Use a real Chromium user agent
@@ -206,7 +206,7 @@ class ContextManager {
           'Sec-Fetch-User': '?1',
           'Sec-Ch-Ua': '"Chromium";v="131", "Not_A Brand";v="24"',
           'Sec-Ch-Ua-Mobile': '?0',
-          'Sec-Ch-Ua-Platform': platformHeader,
+          // 'Sec-Ch-Ua-Platform': platformHeader,
           'Cache-Control': 'max-age=0'
         },
         // Enable JavaScript
@@ -223,7 +223,10 @@ class ContextManager {
       // Add stealth scripts to the context to hide automation
       await context.addInitScript((ua) => {
         // Explicitly override user agent
-        Object.defineProperty(navigator, 'userAgent', { get: () => ua });
+        Object.defineProperty(navigator, 'userAgent', {
+          get: () => ua,
+          configurable: true
+        });
 
         // Remove webdriver property
         Object.defineProperty(navigator, 'webdriver', {
@@ -502,15 +505,46 @@ class ContextManager {
     }
   }
 
+
+  getUserAgent(website) {
+    let userAgent = getRandomUserAgent();
+    if (website === 'bigbasket') {
+      // Specific user agent for BigBasket to avoid 403
+      const workingAgentForBB = [
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+      ]
+      userAgent = workingAgentForBB[Math.floor(Math.random() * workingAgentForBB.length)];
+    } else if (website === 'instamart') {
+      const workingAgentForIM = [
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+      ]
+      userAgent = workingAgentForIM[Math.floor(Math.random() * workingAgentForIM.length)];
+    }
+
+    return userAgent;
+  }
+
   // Centralized method to create a new page with User-Agent set
   async createPage(context, website) {
     try {
-      let userAgent = getRandomUserAgent();
-      if (website === 'bigbasket') {
-        // Specific user agent for BigBasket to avoid 403
-        userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-      }
+      let userAgent = this.getUserAgent(website);
+
       const page = await context.newPage();
+
+      // Override navigator.userAgent for this specific page
+      await page.addInitScript((ua) => {
+        try {
+          Object.defineProperty(navigator, 'userAgent', {
+            get: () => ua,
+            configurable: true
+          });
+        } catch (e) {
+          console.error("Error overriding page userAgent:", e);
+        }
+      }, userAgent);
+
       await page.setExtraHTTPHeaders({
         "User-Agent": userAgent,
         "accept-language": "en-US,en;q=0.9",
