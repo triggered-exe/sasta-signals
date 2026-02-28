@@ -24,7 +24,7 @@ const setLocation = async (pincode) => {
 
     // Navigate to Flipkart
     logger.info("FK: Navigating to Flipkart...");
-    await page.goto("https://www.flipkart.com/grocery-supermart-store?marketplace=GROCERY", {
+    await page.goto("https://www.flipkart.com", {
       waitUntil: "domcontentloaded",
       timeout: 30000, // 30 second timeout
     });
@@ -34,35 +34,88 @@ const setLocation = async (pincode) => {
     // Set location
     logger.info(`FK: Setting location for ${pincode}...`);
 
+    // First close the login modal if visible. close button class name is b3wTlE
+    const loginModalVisible = await page.$(".b3wTlE").catch(() => null);
+    if (loginModalVisible) {
+      await loginModalVisible.click().catch(() => { });
+      await page.waitForTimeout(500);
+      logger.info("FK: Closed login modal");
+    }
+
+    // Click on the div with text "Select delivery location"
+    await page.click('xpath=//div[text()="Select delivery location"]');
+
+    await page.waitForTimeout(1000);
+
     // Focus into the input field
-    await page.focus('input[placeholder*="Enter Pincode Here"]');
+    await page.focus('input[placeholder*="Search by area, street name, pin code"]');
 
     await page.keyboard.type(pincode);
-    await page.keyboard.press("Enter");
-    // If a button(div) with text "CONTINUE" appears, click it
-    const continueButton = await page.waitForSelector('xpath=//div[text()="CONTINUE"]', { timeout: 5000 });
-    await continueButton.click();
-    await page.waitForTimeout(3000); // Increased timeout
+    await page.waitForTimeout(1500); // Wait for suggestions to load
 
-    // Verify location
-    const locationInput = await page.$('input[placeholder*="Enter Pincode Here"]');
-    if (locationInput) {
+    // We need to click on the suggestion that appears after typing the pincode
+    try {
+      // Find the clickable suggestion containing the pincode
+      const suggestionXPath = `//div[@style="cursor: pointer;" and .//*[text()="${pincode}"]]`;
+      const suggestionElement = await page.waitForSelector(`xpath=${suggestionXPath}`, { timeout: 5000 });
+      if (suggestionElement) {
+        await suggestionElement.click();
+        logger.info(`FK: Clicked on location suggestion for ${pincode}`);
+      }
+    } catch (err) {
+      logger.warn(`FK: Proceeding without clicking suggestion for ${pincode} (timeout or not found)`);
+    }
+
+    await page.waitForTimeout(3000); // Wait for the map page to load
+
+    // After clicking suggestion, a new page/modal with a map and "Confirm" button appears
+    // If the location is serviceable, there is a Submit ("Confirm") button
+    try {
+      const confirmButtonSelector = 'input[type="submit"][value="Confirm"]';
+      const confirmButton = await page.waitForSelector(confirmButtonSelector, { timeout: 5000 });
+
+      if (confirmButton) {
+        await confirmButton.click();
+        logger.info(`FK: Successfully set up for location: ${pincode}`);
+      }
+    } catch (err) {
+      // If the Confirm button is not found, assume it is not serviceable
+      logger.info(`FK: Confirm button not found. Location ${pincode} might not be serviceable.`);
       // Mark as not serviceable and clean up
       contextManager.markServiceability(pincode, "flipkart-grocery", false);
       throw AppError.badRequest(`Location ${pincode} is not serviceable by Flipkart Grocery`);
     }
 
+    await page.waitForTimeout(2000); // Wait for location to be set
+
+    // Flipkart have two platform grocery and  minutes. minutes is a new 10 min delivery platform. if the minutes is available then the flipkart-grocery is not availabe. so we need to check whether or not its available
+    const isMinutesAvailable = await page.$("a[href*='/grocery-xtra-saver-at-store?marketplace=HYPERLOCAL']").catch(() => null);
+
+    if (isMinutesAvailable) {
+      logger.info(`FK: Minutes is available for ${pincode}, so classic Grocery is not. Marking as unserviceable.`);
+      contextManager.markServiceability(pincode, "flipkart-grocery", false);
+      throw AppError.badRequest(`Location ${pincode} is not serviceable by Flipkart Grocery (Minutes is active)`);
+    }
+
     // Location is serviceable - mark it as such
     contextManager.markServiceability(pincode, "flipkart-grocery", true);
-    logger.info(`FK: Successfully set up for location: ${pincode}`);
+
     await page.close();
     return context;
   } catch (error) {
-    // Mark location as not serviceable for any initialization errors too
+    // Close page and update serviceability only for confirmed business-state failures.
     try {
       if (page) await page.close();
-      // Mark as not serviceable and clean up
-      contextManager.markServiceability(pincode, "flipkart-grocery", false);
+      const isServiceabilityError =
+        error instanceof AppError &&
+        error.statusCode === 400 &&
+        typeof error.message === "string" &&
+        error.message.toLowerCase().includes("not serviceable");
+
+      // Mark as not serviceable only for known business-state errors, not transient infra failures.
+      if (isServiceabilityError) {
+        contextManager.markServiceability(pincode, "flipkart-grocery", false);
+      }
     } catch (cleanupError) {
       // Don't let cleanup errors override the original error
       logger.error(`FK: Error during cleanup for ${pincode}: ${cleanupError.message || cleanupError}`, { error: cleanupError });
@@ -201,135 +254,139 @@ let isTrackingCrawlerRunning = false;
 
 export const startTrackingHandler = async (pincode = "500064") => {
   if (isTrackingCrawlerRunning) {
-    throw new AppError("Search is already in progress", 400);
+    logger.info(`FK: Tracking already in progress for ${pincode}, skipping duplicate start request`);
+    return;
   }
   isTrackingCrawlerRunning = true;
-
-  while (true) {
-    try {
-      // Skip if it's night time (12 AM to 6 AM IST)
-      if (isNightTimeIST()) {
-        logger.info("FK : Skipping price tracking during night hours");
-        // Wait for 5 minutes before checking night time status again
-        await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
-        continue;
-      }
-
-      const startTime = new Date();
-      logger.info(`FK: Starting product search at: ${startTime.toLocaleString()}`);
-
-      // Get all categories from Flipkart
-      const categories = await extractCategories(pincode);
-      logger.info(`FK: Found ${categories.length} categories to process`);
-
-      const PARALLEL_CATEGORIES = 1; // Flipkart is fast so 1 seems sufficient
-      let totalProcessedProducts = 0;
-
-      // Set up context with location once for all categories
-      const context = await setLocation(pincode);
-
-      // Check if the location is serviceable
-      if (!contextManager.getWebsiteServiceabilityStatus(pincode, "flipkart-grocery")) {
-        logger.info(`FK: Location ${pincode} is not serviceable, stopping tracking`);
-        break;
-      }
-
-      // Process categories in parallel batches
-      for (let i = 0; i < categories.length; i += PARALLEL_CATEGORIES) {
-        const currentBatch = categories.slice(i, i + PARALLEL_CATEGORIES);
-        logger.info(`FK: Processing categories ${i + 1} to ${i + currentBatch.length} of ${categories.length}`);
-
-        const batchStartTime = new Date();
-        const batchPromises = currentBatch.map(async (category) => {
-          const categoryStartTime = new Date();
-          try {
-            let page = null;
-
-            try {
-              page = await context.newPage();
-
-              let categoryProducts = [];
-              let currentUrl = category.url;
-              let hasNextPage = true;
-              let pageNum = 1;
-
-              while (hasNextPage) {
-                logger.info(`FK: Processing page ${pageNum} of ${category.category} > ${category.subcategory}...`);
-
-                // Extract products using the function
-                const { products: pageProducts, nextPageUrl } = await extractProductsFromPage(page, currentUrl, `${category.category} ${category.subcategory}`);
-
-                categoryProducts = [...categoryProducts, ...pageProducts];
-
-                if (nextPageUrl) {
-                  currentUrl = nextPageUrl;
-                  pageNum++;
-                  await page.waitForTimeout(1000);
-                } else {
-                  hasNextPage = false;
-                }
-              }
-
-              // Remove duplicates from category results
-              const uniqueCategoryProducts = categoryProducts.filter(
-                (product, index, self) =>
-                  index ===
-                  self.findIndex(
-                    (p) =>
-                      p.productId === product.productId ||
-                      (p.productName === product.productName && p.price === product.price && p.mrp === product.mrp)
-                  )
-              );
-
-              logger.info(`FK: Found ${uniqueCategoryProducts.length} unique products for "${category.category} > ${category.subcategory}"`);
-
-              // Add category information to products
-              const productsWithCategory = uniqueCategoryProducts.map(product => ({
-                ...product,
-                categoryName: category.category,
-                subcategoryName: category.subcategory,
-              }));
-
-              // Process and save products for this category
-              const processedProducts = await processProducts(productsWithCategory);
-              const categoryTime = ((new Date().getTime() - categoryStartTime.getTime()) / 1000).toFixed(2);
-              logger.info(`FK: Processed and saved ${processedProducts} products for "${category.category} > ${category.subcategory}" in ${categoryTime} seconds`);
-              totalProcessedProducts += processedProducts;
-              return processedProducts;
-            } finally {
-              if (page) await page.close();
-            }
-          } catch (error) {
-            logger.error(`FK: Error processing category "${category.category} > ${category.subcategory}": ${error.message || error}`, { error });
-            return 0;
-          }
-        });
-
-        // Wait for current batch to complete
-        await Promise.all(batchPromises);
-
-        const batchTime = ((new Date().getTime() - batchStartTime.getTime()) / 60000).toFixed(2);
-        logger.info(`FK: Categories Processed: ${i + currentBatch.length} of ${categories.length} and Time taken: ${batchTime} minutes`);
-
-        if (i + PARALLEL_CATEGORIES < categories.length) {
-          logger.info("FK: Waiting between batches...");
-          await new Promise((resolve) => setTimeout(resolve, 3000));
+  try {
+    while (true) {
+      try {
+        // Skip if it's night time (12 AM to 6 AM IST)
+        if (isNightTimeIST()) {
+          logger.info("FK : Skipping price tracking during night hours");
+          // Wait for 5 minutes before checking night time status again
+          await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
+          continue;
         }
-      }
 
-      const endTime = new Date();
-      const totalDuration = (endTime - startTime) / 1000 / 60; // in minutes
-      logger.info(`FK: Total processed products: ${totalProcessedProducts}`);
-      logger.info(
-        `FK: Total time taken: ${totalDuration.toFixed(2)} minutes`
-      );
-      // Wait for 1 minutes
-      await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
-    } catch (error) {
-      // Wait for 2 minutes
-      await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
-      logger.error(`FK: Error in tracking cycle: ${error.message || error}`, { error });
+        const startTime = new Date();
+        logger.info(`FK: Starting product search at: ${startTime.toLocaleString()}`);
+
+        // Get all categories from Flipkart
+        const categories = await extractCategories(pincode);
+        logger.info(`FK: Found ${categories.length} categories to process`);
+
+        const PARALLEL_CATEGORIES = 1; // Flipkart is fast so 1 seems sufficient
+        let totalProcessedProducts = 0;
+
+        // Set up context with location once for all categories
+        const context = await setLocation(pincode);
+
+        // Check if the location is serviceable
+        if (!contextManager.getWebsiteServiceabilityStatus(pincode, "flipkart-grocery")) {
+          logger.info(`FK: Location ${pincode} is not serviceable, stopping tracking`);
+          break;
+        }
+
+        // Process categories in parallel batches
+        for (let i = 0; i < categories.length; i += PARALLEL_CATEGORIES) {
+          const currentBatch = categories.slice(i, i + PARALLEL_CATEGORIES);
+          logger.info(`FK: Processing categories ${i + 1} to ${i + currentBatch.length} of ${categories.length}`);
+
+          const batchStartTime = new Date();
+          const batchPromises = currentBatch.map(async (category) => {
+            const categoryStartTime = new Date();
+            try {
+              let page = null;
+
+              try {
+                page = await context.newPage();
+
+                let categoryProducts = [];
+                let currentUrl = category.url;
+                let hasNextPage = true;
+                let pageNum = 1;
+
+                while (hasNextPage) {
+                  logger.info(`FK: Processing page ${pageNum} of ${category.category} > ${category.subcategory}...`);
+
+                  // Extract products using the function
+                  const { products: pageProducts, nextPageUrl } = await extractProductsFromPage(page, currentUrl, `${category.category} ${category.subcategory}`);
+
+                  categoryProducts = [...categoryProducts, ...pageProducts];
+
+                  if (nextPageUrl) {
+                    currentUrl = nextPageUrl;
+                    pageNum++;
+                    await page.waitForTimeout(1000);
+                  } else {
+                    hasNextPage = false;
+                  }
+                }
+
+                // Remove duplicates from category results
+                const uniqueCategoryProducts = categoryProducts.filter(
+                  (product, index, self) =>
+                    index ===
+                    self.findIndex(
+                      (p) =>
+                        p.productId === product.productId ||
+                        (p.productName === product.productName && p.price === product.price && p.mrp === product.mrp)
+                    )
+                );
+
+                logger.info(`FK: Found ${uniqueCategoryProducts.length} unique products for "${category.category} > ${category.subcategory}"`);
+
+                // Add category information to products
+                const productsWithCategory = uniqueCategoryProducts.map(product => ({
+                  ...product,
+                  categoryName: category.category,
+                  subcategoryName: category.subcategory,
+                }));
+
+                // Process and save products for this category
+                const processedProducts = await processProducts(productsWithCategory);
+                const categoryTime = ((new Date().getTime() - categoryStartTime.getTime()) / 1000).toFixed(2);
+                logger.info(`FK: Processed and saved ${processedProducts} products for "${category.category} > ${category.subcategory}" in ${categoryTime} seconds`);
+                totalProcessedProducts += processedProducts;
+                return processedProducts;
+              } finally {
+                if (page) await page.close();
+              }
+            } catch (error) {
+              logger.error(`FK: Error processing category "${category.category} > ${category.subcategory}": ${error.message || error}`, { error });
+              return 0;
+            }
+          });
+
+          // Wait for current batch to complete
+          await Promise.all(batchPromises);
+
+          const batchTime = ((new Date().getTime() - batchStartTime.getTime()) / 60000).toFixed(2);
+          logger.info(`FK: Categories Processed: ${i + currentBatch.length} of ${categories.length} and Time taken: ${batchTime} minutes`);
+
+          if (i + PARALLEL_CATEGORIES < categories.length) {
+            logger.info("FK: Waiting between batches...");
+            await new Promise((resolve) => setTimeout(resolve, 3000));
+          }
+        }
+
+        const endTime = new Date();
+        const totalDuration = (endTime - startTime) / 1000 / 60; // in minutes
+        logger.info(`FK: Total processed products: ${totalProcessedProducts}`);
+        logger.info(
+          `FK: Total time taken: ${totalDuration.toFixed(2)} minutes`
+        );
+        // Wait for 1 minutes
+        await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
+      } catch (error) {
+        // Wait for 2 minutes
+        await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
+        logger.error(`FK: Error in tracking cycle: ${error.message || error}`, { error });
+      }
     }
+  } finally {
+    isTrackingCrawlerRunning = false;
   }
 };
 

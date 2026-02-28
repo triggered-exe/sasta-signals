@@ -190,8 +190,8 @@ class ContextManager {
         //   latitude: 17.3850 + (Math.random() - 0.5) * 0.1, // Hyderabad area with some randomness
         //   longitude: 78.4867 + (Math.random() - 0.5) * 0.1
         // },
-        // Set permissions
-        // permissions: ['geolocation'],
+        // Set permissions - explicitly empty to disable location access prompts
+        permissions: [],
         // Set extra HTTP headers to look more like a real Chromium browser
         extraHTTPHeaders: {
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
