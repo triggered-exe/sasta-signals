@@ -2,7 +2,6 @@ import logger from "../utils/logger.js";
 import { AppError } from "../utils/errorHandling.js";
 import { FlipkartGroceryProduct } from "../models/FlipkartGroceryProduct.js";
 import { isNightTimeIST } from "../utils/priceTracking.js";
-import { productQueries } from "../utils/productQueries.js";
 import { processProducts as globalProcessProducts } from "../utils/productProcessor.js";
 import contextManager from "../utils/contextManager.js";
 
@@ -53,17 +52,31 @@ const setLocation = async (pincode) => {
     await page.keyboard.type(pincode);
     await page.waitForTimeout(1500); // Wait for suggestions to load
 
-    // We need to click on the suggestion that appears after typing the pincode
+    // Click the best matching suggestion row after typing.
+    // Works for both exact pincodes (e.g. 500064) and free-text places.
     try {
-      // Find the clickable suggestion containing the pincode
-      const suggestionXPath = `//div[@style="cursor: pointer;" and .//*[text()="${pincode}"]]`;
-      const suggestionElement = await page.waitForSelector(`xpath=${suggestionXPath}`, { timeout: 5000 });
-      if (suggestionElement) {
-        await suggestionElement.click();
-        logger.info(`FK: Clicked on location suggestion for ${pincode}`);
+      const searchTerm = pincode.trim();
+      const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const suggestionRow = page
+        .locator('div[style*="cursor: pointer;"]')
+        .filter({
+          has: page.locator("div.css-146c3p1"),
+          hasText: new RegExp(escapeRegex(searchTerm), "i"),
+        })
+        .first();
+
+      if (await suggestionRow.isVisible().catch(() => false)) {
+        await suggestionRow.click();
+        logger.info(`FK: Clicked matching location suggestion for "${searchTerm}"`);
+      } else {
+        // Fallback: click the first suggestion title row if exact text match wasn't found.
+        const firstSuggestionTitle = page.locator('div[style*="cursor: pointer;"] div.css-146c3p1').first();
+        await firstSuggestionTitle.waitFor({ state: "visible", timeout: 5000 });
+        await firstSuggestionTitle.click();
+        logger.info(`FK: Clicked first location suggestion for "${searchTerm}"`);
       }
     } catch (err) {
-      logger.warn(`FK: Proceeding without clicking suggestion for ${pincode} (timeout or not found)`);
+      logger.warn(`FK: Proceeding without clicking suggestion for "${pincode}" (timeout or not found)`);
     }
 
     await page.waitForTimeout(3000); // Wait for the map page to load
@@ -103,19 +116,11 @@ const setLocation = async (pincode) => {
     await page.close();
     return context;
   } catch (error) {
-    // Close page and update serviceability only for confirmed business-state failures.
+    // Mark location as not serviceable for any initialization errors too
     try {
       if (page) await page.close();
-      const isServiceabilityError =
-        error instanceof AppError &&
-        error.statusCode === 400 &&
-        typeof error.message === "string" &&
-        error.message.toLowerCase().includes("not serviceable");
-
-      // Mark as not serviceable only for known business-state errors, not transient infra failures.
-      if (isServiceabilityError) {
-        contextManager.markServiceability(pincode, "flipkart-grocery", false);
-      }
+      // Mark as not serviceable and clean up
+      contextManager.markServiceability(pincode, "flipkart-grocery", false);
     } catch (cleanupError) {
       // Don't let cleanup errors override the original error
       logger.error(`FK: Error during cleanup for ${pincode}: ${cleanupError.message || cleanupError}`, { error: cleanupError });
@@ -250,15 +255,15 @@ export const startTracking = async (_, res, next) => {
   }
 };
 
-let isTrackingCrawlerRunning = false;
+let isTrackingActive = false;
 
 export const startTrackingHandler = async (pincode = "500064") => {
-  if (isTrackingCrawlerRunning) {
-    logger.info(`FK: Tracking already in progress for ${pincode}, skipping duplicate start request`);
+  if (isTrackingActive) {
+    console.log("FK: Search is already in progress");
     return;
   }
-  isTrackingCrawlerRunning = true;
-  try {
+  isTrackingActive = true;
+
     while (true) {
       try {
         // Skip if it's night time (12 AM to 6 AM IST)
@@ -380,13 +385,10 @@ export const startTrackingHandler = async (pincode = "500064") => {
         // Wait for 1 minutes
         await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
       } catch (error) {
-        // Wait for 2 minutes
-        await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
-        logger.error(`FK: Error in tracking cycle: ${error.message || error}`, { error });
-      }
-    }
-  } finally {
-    isTrackingCrawlerRunning = false;
+      // Wait for 2 minutes
+      await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
+          logger.error(`FK: Error in tracking cycle: ${error.message || error}`, { error });
+        }
   }
 };
 
