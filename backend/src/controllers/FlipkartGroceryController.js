@@ -57,23 +57,22 @@ const setLocation = async (pincode) => {
     try {
       const searchTerm = pincode.trim();
       const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const suggestionRow = page
-        .locator('div[style*="cursor: pointer;"]')
-        .filter({
-          has: page.locator("div.css-146c3p1"),
-          hasText: new RegExp(escapeRegex(searchTerm), "i"),
-        })
-        .first();
+      // Target only suggestion rows (they contain location icon svg width=16 + text),
+      // avoiding modal/input close buttons that are also cursor:pointer.
+      const suggestionRows = page.locator('div[style*="cursor: pointer;"]').filter({
+        has: page.locator('svg[width="16"]'),
+        has: page.locator('div[dir="auto"]'),
+      });
 
-      if (await suggestionRow.isVisible().catch(() => false)) {
-        await suggestionRow.click();
+      await suggestionRows.first().waitFor({ state: "visible", timeout: 7000 });
+
+      const matchedSuggestion = suggestionRows.filter({
+        hasText: new RegExp(escapeRegex(searchTerm), "i"),
+      }).first();
+
+      if (await matchedSuggestion.isVisible().catch(() => false)) {
+        await matchedSuggestion.click({ force: true });
         logger.info(`FK: Clicked matching location suggestion for "${searchTerm}"`);
-      } else {
-        // Fallback: click the first suggestion title row if exact text match wasn't found.
-        const firstSuggestionTitle = page.locator('div[style*="cursor: pointer;"] div.css-146c3p1').first();
-        await firstSuggestionTitle.waitFor({ state: "visible", timeout: 5000 });
-        await firstSuggestionTitle.click();
-        logger.info(`FK: Clicked first location suggestion for "${searchTerm}"`);
       }
     } catch (err) {
       logger.warn(`FK: Proceeding without clicking suggestion for "${pincode}" (timeout or not found)`);
