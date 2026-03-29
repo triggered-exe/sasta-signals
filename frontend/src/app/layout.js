@@ -1,5 +1,5 @@
 import "./globals.css";
-import { getThemeServer } from "@/utils/theme-server";
+import { ThemeProvider } from "next-themes";
 
 export const metadata = {
   title: "Sasta Signals",
@@ -29,13 +29,17 @@ export const metadata = {
 };
 
 export default function RootLayout({ children }) {
-  // Get theme on server side from cookies
-  const theme = getThemeServer();
-
   return (
-    <html lang="en" className={theme} suppressHydrationWarning>
-      <body className="bg-background text-foreground min-h-screen antialiased">
-        {children}
+    <html lang="en" suppressHydrationWarning>
+      <body className="min-h-screen antialiased bg-background text-foreground">
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="light"
+          enableSystem={false}
+          disableTransitionOnChange
+        >
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );

@@ -1,61 +1,64 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
 import Footer from "./Footer";
-import { toggleTheme } from "@/utils/theme";
+import { cn } from "@/lib/utils";
 
 export default function AppLayout({ children, selectedWebsite, setSelectedWebsite }) {
-    const [isMenuExpanded, setIsMenuExpanded] = useState(false);
-    const [isMobile, setIsMobile] = useState(false);
+    const [isMenuExpanded, setIsMenuExpanded] = useState(true);
+    const [isMobileOpen, setMobileOpen] = useState(false);
 
-    // Initialize isMobile state after component mounts
-    useEffect(() => {
-        setIsMobile(window.innerWidth < 768);
-    }, []);
-
-    // Handle window resize
     useEffect(() => {
         const handleResize = () => {
-            const mobile = window.innerWidth < 768;
-            setIsMobile(mobile);
-
-            // Auto-collapse on small screens
-            if (mobile && isMenuExpanded) {
+            if (window.innerWidth < 768) {
                 setIsMenuExpanded(false);
+                setMobileOpen(false);
             }
         };
+        window.addEventListener("resize", handleResize);
+        return () => window.removeEventListener("resize", handleResize);
+    }, []);
 
-        window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
-    }, [isMenuExpanded]);
+    const toggleMenuExpansion = useCallback(() => {
+        setIsMenuExpanded((prev) => !prev);
+    }, []);
 
-    // Toggle menu expansion
-    const toggleMenuExpansion = () => {
-        setIsMenuExpanded(!isMenuExpanded);
-    };
+    const toggleSidebar = useCallback(() => {
+        setMobileOpen((prev) => !prev);
+    }, []);
 
     return (
         <div className="flex flex-col min-h-screen bg-background">
-            <Header />
+            {/* Mobile-only header */}
+            <Header
+                toggleSidebar={toggleSidebar}
+            />
 
-            <div className="flex flex-1 relative">
+            <div className="flex flex-1">
                 <Sidebar
                     isMenuExpanded={isMenuExpanded}
                     toggleMenuExpansion={toggleMenuExpansion}
-                    toggleDarkMode={toggleTheme}
                     selectedWebsite={selectedWebsite}
                     setSelectedWebsite={setSelectedWebsite}
+                    isMobileOpen={isMobileOpen}
+                    setMobileOpen={setMobileOpen}
                 />
 
-                <main className="flex-1 ml-[70px] bg-background">
-                    <div className="min-h-[calc(100vh-64px)] p-6">
+                <main
+                    className={cn(
+                        "flex-1 transition-[margin] duration-200 ease-in-out",
+                        "md:ml-[56px]",
+                        isMenuExpanded && "md:ml-[220px]"
+                    )}
+                >
+                    <div className="container mx-auto p-4 md:p-6 max-w-[1600px]">
                         {children}
                     </div>
                 </main>
             </div>
 
-            <Footer />
+            <Footer isMenuExpanded={isMenuExpanded} />
         </div>
     );
 }

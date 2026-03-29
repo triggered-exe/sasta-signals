@@ -1,55 +1,78 @@
-import React from 'react';
+import React from "react";
+import { Badge } from "@/components/ui/badge";
+import { Star, Truck } from "lucide-react";
 
 const MeeshoProducts = ({ products }) => {
   return (
-    <div className="flex flex-wrap gap-4">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
       {products.map((product, index) => {
         const mainImageUrl = product.image || "https://via.placeholder.com/272x252?text=No+Image";
         const productUrl = `https://www.meesho.com/s/p/${product.product_id}`;
 
         return (
-          <div
-            key={`${product.product_id}-${index}`}
-            className="border border-border p-3 rounded-lg hover:shadow-lg transition-shadow duration-200 w-48 relative bg-card"
-          >
-            <a href={productUrl} target="_blank" rel="noopener noreferrer">
-              <div className="relative">
+          <div key={`${product.product_id}-${index}`} className="group">
+            <a
+              href={productUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block rounded-xl border bg-card overflow-hidden transition-all duration-200 hover:shadow-md hover:border-primary/20 hover:-translate-y-0.5"
+            >
+              {/* Image */}
+              <div className="relative aspect-square bg-muted/30">
                 <img
                   src={mainImageUrl}
                   alt={product.name}
-                  className="w-full h-32 object-cover mb-2 rounded"
+                  className="w-full h-full object-cover"
+                  loading="lazy"
                 />
-                <div className="absolute top-0 left-0 bg-green-500 text-white text-xs p-1 rounded-tr-lg">
-                  {product.normalDiscount}%
-                </div>
-                <div className="absolute top-0 right-0 bg-purple-500 text-white text-xs p-1 rounded-tl-lg">
-                  {product.specialDiscount}%
-                </div>
-                <div className="absolute top-6 left-0 bg-white text-black text-xs p-1 rounded-br-lg">
-                  ₹{product.min_product_price}
-                </div>
-                <div className="absolute top-6 right-0 bg-white text-black text-xs p-1 rounded-bl-lg">
-                  {product.specialPrice && `₹${product.specialPrice}`}
-                </div>
+
+                {/* Normal discount — top left */}
+                {product.normalDiscount > 0 && (
+                  <div className="absolute top-2 left-2">
+                    <Badge className="bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-semibold px-1.5 shadow-sm">
+                      {product.normalDiscount}% off
+                    </Badge>
+                  </div>
+                )}
+
+                {/* Special discount — top right */}
+                {product.specialDiscount > 0 && (
+                  <div className="absolute top-2 right-2">
+                    <Badge className="bg-purple-500 hover:bg-purple-600 text-white text-[10px] font-semibold px-1.5 shadow-sm">
+                      {product.specialDiscount}% special
+                    </Badge>
+                  </div>
+                )}
               </div>
-              <h3 className="font-semibold mb-1 text-sm truncate text-foreground">
-                {product.name || "Unnamed Product"}
-              </h3>
-              <div className="flex justify-between text-sm mb-1 font-semibold text-muted-foreground">
-                <span>Price: ₹{product.min_product_price}</span>
-                {product.specialPrice && <span>Special Price: ₹{product.specialPrice}</span>}
-              </div>
-              {/* <div className="flex justify-between text-sm mb-1">
-                <span className="text-muted-foreground">Original Price: ₹{product.original_price}</span>
-              </div> */}
-              {/* <p className="text-xs text-muted-foreground mb-2">{product.description}</p> */}
-              <div className="flex items-center mb-2">
-                <span className="text-yellow-500 mr-1">★</span>
-                <span>{product.catalog_reviews_summary?.average_rating}</span>
-                <span className="text-muted-foreground text-sm ml-1">({product?.catalog_reviews_summary?.rating_count} ratings)</span>
-              </div>
-              <div className="text-sm text-muted-foreground">
-                Shipping: ₹{product.shipping?.charges || 'Free'}
+
+              {/* Info */}
+              <div className="p-3 space-y-2">
+                <p className="text-sm font-medium leading-snug line-clamp-2 text-foreground group-hover:text-primary transition-colors">
+                  {product.name || "Unnamed Product"}
+                </p>
+
+                {/* Price */}
+                <div className="flex items-baseline gap-2">
+                  <span className="text-sm font-semibold text-foreground">₹{product.min_product_price}</span>
+                  {product.specialPrice && (
+                    <span className="text-xs font-medium text-purple-500">₹{product.specialPrice}</span>
+                  )}
+                </div>
+
+                {/* Rating & shipping */}
+                <div className="flex items-center justify-between">
+                  {product.catalog_reviews_summary?.average_rating && (
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+                      <span>{product.catalog_reviews_summary.average_rating}</span>
+                      <span>({product.catalog_reviews_summary?.rating_count})</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                    <Truck className="h-3 w-3" />
+                    <span>{product.shipping?.charges ? `₹${product.shipping.charges}` : "Free"}</span>
+                  </div>
+                </div>
               </div>
             </a>
           </div>

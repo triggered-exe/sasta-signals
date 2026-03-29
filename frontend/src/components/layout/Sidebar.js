@@ -1,145 +1,235 @@
-import { useRef, useEffect } from "react";
-import { FaChevronRight, FaShoppingBasket, FaArrowRight, FaArrowLeft, FaMoon, FaSun } from 'react-icons/fa';
-import { SiSwiggy, SiAmazon, SiFlipkart, SiBigbasket } from 'react-icons/si';
-import { GiShoppingBag } from 'react-icons/gi';
-import { websites } from '../../config/websites';
-import { Button } from '@/components/ui/button';
+import { useEffect, useState } from "react";
+import {
+    ShoppingCart, Zap, ShoppingBag, Truck,
+    ChevronLeft, ChevronRight, Store,
+    TrendingDown, Moon, Sun
+} from "lucide-react";
+import { useTheme } from "next-themes";
+import { websites } from "../../config/websites";
+import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 
-// Map website names to icons
 const websiteIcons = {
-    "Instamart": <SiSwiggy className="text-xl" />,
-    "Zepto": <FaShoppingBasket className="text-xl" />,
-    "Blinkit": <FaShoppingBasket className="text-xl" />,
-    "BigBasket": <SiBigbasket className="text-xl" />,
-    "Amazon Fresh": <SiAmazon className="text-xl" />,
-    "Flipkart Grocery": <SiFlipkart className="text-xl" />,
-    "Flipkart Minutes": <SiFlipkart className="text-xl" />,
-    "Meesho": <GiShoppingBag className="text-xl" />,
-    "JioMart": <img src="https://images.seeklogo.com/logo-png/46/1/jiomart-logo-png_seeklogo-469685.png" className="w-6 h-6 rounded-full" />
+    Instamart: Truck,
+    Zepto: Zap,
+    Blinkit: ShoppingCart,
+    BigBasket: ShoppingBag,
+    "Amazon Fresh": ShoppingCart,
+    "Flipkart Grocery": Store,
+    "Flipkart Minutes": Zap,
+    Meesho: ShoppingBag,
+    JioMart: Store,
 };
+
+function SidebarNav({ isExpanded, selectedWebsite, onSelect }) {
+    return (
+        <TooltipProvider delayDuration={0}>
+            <ScrollArea className="flex-1">
+                <div className="flex flex-col gap-1 p-2">
+                    {websites.map((website) => {
+                        const Icon = websiteIcons[website.name] || ShoppingBag;
+                        const isActive = selectedWebsite === website.name;
+
+                        const button = (
+                            <Button
+                                key={website.name}
+                                variant="ghost"
+                                className={cn(
+                                    "w-full justify-start gap-3 h-10 rounded-lg transition-colors",
+                                    isExpanded ? "px-3" : "px-0 justify-center",
+                                    isActive
+                                        ? "bg-primary/10 text-primary hover:bg-primary/15 font-medium"
+                                        : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                                )}
+                                onClick={() => onSelect(website.name)}
+                            >
+                                <Icon className={cn("h-4 w-4 shrink-0", isActive && "text-primary")} />
+                                {isExpanded && (
+                                    <span className="truncate text-sm">{website.name}</span>
+                                )}
+                            </Button>
+                        );
+
+                        if (!isExpanded) {
+                            return (
+                                <Tooltip key={website.name}>
+                                    <TooltipTrigger asChild>{button}</TooltipTrigger>
+                                    <TooltipContent side="right" sideOffset={8}>
+                                        {website.name}
+                                    </TooltipContent>
+                                </Tooltip>
+                            );
+                        }
+
+                        return button;
+                    })}
+                </div>
+            </ScrollArea>
+        </TooltipProvider>
+    );
+}
 
 export default function Sidebar({
     isMenuExpanded,
     toggleMenuExpansion,
-    toggleDarkMode,
     selectedWebsite,
-    setSelectedWebsite
+    setSelectedWebsite,
+    isMobileOpen,
+    setMobileOpen,
 }) {
-    const sidebarRef = useRef(null);
+    const { resolvedTheme, setTheme } = useTheme();
+    const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
-        // Handle clicks outside the sidebar
-        const handleClickOutside = (event) => {
-            if (sidebarRef.current && !sidebarRef.current.contains(event.target) && isMenuExpanded) {
-                toggleMenuExpansion();
-            }
-        };
+        setMounted(true);
+    }, []);
 
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-        };
-    }, [isMenuExpanded, toggleMenuExpansion]);
-
-    // Remove auto-expand on hover for more professional behavior
-    // Users will manually control the sidebar state
-
-    // Handle website selection
-    const handleWebsiteClick = (websiteName) => {
-        setSelectedWebsite(websiteName);
+    const handleSelect = (name) => {
+        setSelectedWebsite(name);
+        if (isMobileOpen) setMobileOpen(false);
     };
 
-    return (
-        <div
-            ref={sidebarRef}
-            className={`fixed top-16 h-[calc(100vh-64px)] transition-all duration-300 ease-in-out animate-fade-in
-                ${isMenuExpanded ? 'w-[280px]' : 'w-[70px]'} 
-                bg-card text-card-foreground
-                z-50 border-r border-border shadow-lg`}
-        >
-            {/* Header with toggle button */}
-            <div className="border-b border-border py-4 px-4 flex items-center justify-between">
-                {isMenuExpanded && (
-                    <h2 className="font-semibold text-lg text-card-foreground transition-opacity duration-300">
-                        Websites
-                    </h2>
-                )}
-                <Button
-                    onClick={toggleMenuExpansion}
-                    variant="ghost"
-                    size="icon"
-                    className={`rounded-lg transition-all duration-200 hover:bg-accent hover:text-accent-foreground ${isMenuExpanded ? '' : 'mx-auto'}`}
-                    aria-label={isMenuExpanded ? "Collapse menu" : "Expand menu"}
-                >
-                    {isMenuExpanded ? <FaArrowLeft size={16} /> : <FaArrowRight size={16} />}
-                </Button>
-            </div>
-
-            <div className={`overflow-y-auto h-[calc(100%-140px)] ${isMenuExpanded ? 'px-4' : 'px-2'} py-4`}>
-                <div className="space-y-2">
-                    {websites.map((website) => (
+    // Mobile sheet sidebar
+    const mobileSidebar = (
+        <Sheet open={isMobileOpen} onOpenChange={setMobileOpen}>
+            <SheetContent side="left" className="w-[260px] p-0">
+                <div className="flex h-full flex-col">
+                    {/* Logo */}
+                    <div className="flex h-14 items-center gap-2.5 px-4">
+                        <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
+                            <TrendingDown className="h-3.5 w-3.5" />
+                        </div>
+                        <h2 className="text-sm font-semibold">Sasta Signals</h2>
+                    </div>
+                    <Separator />
+                    <SidebarNav isExpanded selectedWebsite={selectedWebsite} onSelect={handleSelect} />
+                    <Separator />
+                    <div className="p-2">
                         <Button
-                            key={website.name}
                             variant="ghost"
-                            className={`w-full h-12 text-left rounded-lg transition-all duration-200 flex items-center group
-                                ${isMenuExpanded ? 'px-4' : 'justify-center px-2'} 
-                                ${selectedWebsite === website.name
-                                    ? 'bg-primary/20 text-primary border border-primary/30 shadow-sm'
-                                    : 'hover:bg-accent hover:text-accent-foreground'
-                                }`}
-                            onClick={() => handleWebsiteClick(website.name)}
-                            title={!isMenuExpanded ? website.name : ''}
+                            onClick={() => setTheme(mounted && resolvedTheme === "dark" ? "light" : "dark")}
+                            className="w-full justify-start gap-3 h-9 px-3 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent relative"
+                            aria-label={mounted && resolvedTheme === "dark" ? "Light mode" : "Dark mode"}
                         >
-                            <div className={`${isMenuExpanded ? 'mr-3' : ''} ${selectedWebsite === website.name
-                                ? 'text-primary'
-                                : 'text-card-foreground group-hover:text-accent-foreground'}`}>
-                                {websiteIcons[website.name] || <FaShoppingBasket className="text-xl" />}
-                            </div>
-
-                            {isMenuExpanded && (
-                                <div className="flex-1 min-w-0">
-                                    <h3 className={`text-sm font-medium truncate ${selectedWebsite === website.name
-                                        ? 'text-primary'
-                                        : 'text-card-foreground'}`}>
-                                        {website.name}
-                                    </h3>
-                                </div>
-                            )}
-
-                            {isMenuExpanded && (
-                                <FaChevronRight className={`transition-transform duration-200 ${selectedWebsite === website.name
-                                    ? "text-primary"
-                                    : "text-card-foreground group-hover:text-accent-foreground"
-                                    }`} />
-                            )}
+                            <Sun className="h-4 w-4 shrink-0 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+                            <Moon className="absolute left-3 h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+                            <span className="truncate text-sm">
+                                {mounted && resolvedTheme === "dark" ? "Light mode" : "Dark mode"}
+                            </span>
                         </Button>
-                    ))}
+                    </div>
                 </div>
+            </SheetContent>
+        </Sheet>
+    );
+
+    // Desktop sidebar — full height, no topbar
+    const desktopSidebar = (
+        <aside
+            className={cn(
+                "hidden md:flex flex-col fixed top-0 h-screen border-r bg-sidebar transition-all duration-200 ease-in-out z-40",
+                isMenuExpanded ? "w-[220px]" : "w-[56px]"
+            )}
+        >
+            {/* Logo */}
+            <div className={cn(
+                "flex items-center shrink-0 h-14 border-b",
+                isMenuExpanded ? "px-4 gap-2.5" : "justify-center"
+            )}>
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shrink-0">
+                    <TrendingDown className="h-4 w-4" />
+                </div>
+                {isMenuExpanded && (
+                    <div className="min-w-0">
+                        <h1 className="text-sm font-semibold leading-none tracking-tight truncate">Sasta Signals</h1>
+                        <p className="text-[10px] text-muted-foreground mt-0.5 truncate">Price tracker</p>
+                    </div>
+                )}
             </div>
 
-            {/* Dark mode toggle at bottom of sidebar */}
-            <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-border bg-card">
-                <Button
-                    onClick={toggleDarkMode}
-                    variant="ghost"
-                    className="w-full h-12 rounded-lg flex items-center justify-center group hover:bg-accent hover:text-accent-foreground"
-                    aria-label="Toggle dark mode"
-                    title="Toggle dark mode"
-                >
-                    <span className="dark:hidden">
-                        <FaMoon className="text-card-foreground group-hover:text-accent-foreground" />
-                    </span>
-                    <span className="hidden dark:inline">
-                        <FaSun className="text-card-foreground group-hover:text-accent-foreground" />
-                    </span>
-                    {isMenuExpanded && (
-                        <span className="ml-3 text-sm font-medium text-card-foreground group-hover:text-accent-foreground">
-                            <span className="dark:hidden">Dark Mode</span>
-                            <span className="hidden dark:inline">Light Mode</span>
+            {/* Nav */}
+            <SidebarNav isExpanded={isMenuExpanded} selectedWebsite={selectedWebsite} onSelect={handleSelect} />
+
+            <Separator />
+
+            {/* Bottom actions: theme toggle + collapse */}
+            <div className="p-2 space-y-1">
+                {isMenuExpanded ? (
+                    <Button
+                        variant="ghost"
+                        onClick={() => setTheme(mounted && resolvedTheme === "dark" ? "light" : "dark")}
+                        className="w-full justify-start gap-3 h-9 rounded-lg px-3 text-muted-foreground hover:text-foreground hover:bg-accent relative"
+                        aria-label={mounted && resolvedTheme === "dark" ? "Light mode" : "Dark mode"}
+                    >
+                        <Sun className="h-4 w-4 shrink-0 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+                        <Moon className="absolute left-3 h-4 w-4 shrink-0 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+                        <span className="truncate text-sm">
+                            {mounted && resolvedTheme === "dark" ? "Light mode" : "Dark mode"}
                         </span>
+                    </Button>
+                ) : (
+                    <TooltipProvider delayDuration={0}>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => setTheme(mounted && resolvedTheme === "dark" ? "light" : "dark")}
+                                    className="h-8 w-8 mx-auto rounded-lg text-muted-foreground hover:text-foreground relative"
+                                    aria-label={mounted && resolvedTheme === "dark" ? "Light mode" : "Dark mode"}
+                                >
+                                    <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+                                    <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="right" sideOffset={8}>
+                                {mounted && resolvedTheme === "dark" ? "Light mode" : "Dark mode"}
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                )}
+
+                {/* Collapse toggle */}
+                <TooltipProvider delayDuration={0}>
+                    {isMenuExpanded ? (
+                        <Button
+                            variant="ghost"
+                            onClick={toggleMenuExpansion}
+                            className="w-full justify-start gap-3 h-9 rounded-lg px-3 text-muted-foreground hover:text-foreground hover:bg-accent"
+                            aria-label="Collapse sidebar"
+                        >
+                            <ChevronLeft className="h-4 w-4 shrink-0" />
+                            <span className="truncate text-sm">Collapse</span>
+                        </Button>
+                    ) : (
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={toggleMenuExpansion}
+                                    className="h-8 w-8 mx-auto rounded-lg text-muted-foreground hover:text-foreground"
+                                    aria-label="Expand sidebar"
+                                >
+                                    <ChevronRight className="h-4 w-4" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="right" sideOffset={8}>Expand</TooltipContent>
+                        </Tooltip>
                     )}
-                </Button>
+                </TooltipProvider>
             </div>
-        </div>
+        </aside>
+    );
+
+    return (
+        <>
+            {mobileSidebar}
+            {desktopSidebar}
+        </>
     );
 } 
