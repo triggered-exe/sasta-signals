@@ -26,6 +26,9 @@ import { startTrackingHandler as blinkitStartTrackingHandler } from "./src/contr
 import searchRouter from "./src/routes/api/search.js";
 import monitoringRouter from "./src/routes/api/monitoring.js";
 import dashboardRouter from "./src/routes/api/dashboard.js";
+import flipkartMinutesRouter from "./src/routes/api/flipkartMinutes/flipkartMinutes.js";
+import { startTrackingHandler as flipkartMinutesStartTrackingHandler } from "./src/controllers/FlipkartMinutesController.js";
+
 
 // Load environment variables from .env file
 dotenv.config();
@@ -51,7 +54,9 @@ app.use("/api/meesho", meeshoRouter);
 app.use("/api/bigbasket", bigbasketRoutes);
 app.use("/api/zepto", zeptoRouter);
 app.use("/api/flipkart-grocery", flipkartGroceryRouter);
+app.use("/api/flipkart-minutes", flipkartMinutesRouter);
 app.use("/api/amazon-fresh", amazonFreshRouter);
+
 app.use("/api/blinkit", blinkitRouter);
 app.use("/api/jiomart", jiomartRouter);
 
@@ -81,7 +86,7 @@ const startServer = async () => {
       logger.info(`Server is running on port - ${port}`);
 
       // NOTE: BigBasket tracking has been re-enabled with updated headers and scraping logic to bypass bot detection.
-      flipkartStartTrackingHandler("bahadurpura police station"); // For Flipkart 
+      flipkartMinutesStartTrackingHandler("misri gym 500064"); // For Flipkart minutes 
       if (process.env.ENVIRONMENT === "production") {
         setTimeout(() => startAmazonTrackingWithoutBrowswer("500064"), 0); // For Amazon Fresh
         setTimeout(() => instamartStartTrackingHandler("500064"), 30 * 1000); // For Instamart

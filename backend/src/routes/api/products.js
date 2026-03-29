@@ -6,6 +6,7 @@ import { FlipkartGroceryProduct } from "../../models/FlipkartGroceryProduct.js";
 import { AmazonFreshProduct } from "../../models/AmazonFreshProduct.js";
 import { BlinkitProduct } from "../../models/BlinkitProduct.js";
 import { JiomartProduct } from "../../models/JiomartProduct.js";
+import { FlipkartMinutesProduct } from "../../models/FlipkartMinutesProduct.js";
 import { buildSortCriteria, buildMatchCriteria } from "../../utils/priceTracking.js";
 import { PAGE_SIZE } from "../../utils/constants.js";
 import { AppError } from "../../utils/errorHandling.js";
@@ -20,7 +21,8 @@ const sourceModels = {
     'flipkart-grocery': FlipkartGroceryProduct,
     'amazon-fresh': AmazonFreshProduct,
     'blinkit': BlinkitProduct,
-    'jiomart': JiomartProduct
+    'jiomart': JiomartProduct,
+    'flipkart-minutes': FlipkartMinutesProduct
 };
 
 // Get list of available sources

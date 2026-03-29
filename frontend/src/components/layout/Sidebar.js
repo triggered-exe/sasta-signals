@@ -13,6 +13,7 @@ const websiteIcons = {
     "BigBasket": <SiBigbasket className="text-xl" />,
     "Amazon Fresh": <SiAmazon className="text-xl" />,
     "Flipkart Grocery": <SiFlipkart className="text-xl" />,
+    "Flipkart Minutes": <SiFlipkart className="text-xl" />,
     "Meesho": <GiShoppingBag className="text-xl" />,
     "JioMart": <img src="https://images.seeklogo.com/logo-png/46/1/jiomart-logo-png_seeklogo-469685.png" className="w-6 h-6 rounded-full" />
 };

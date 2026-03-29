@@ -49,6 +49,13 @@ export const websites = [
     apiEndpoint: "/api/products/zepto"
   },
   {
+    name: "Flipkart Minutes",
+    url: "https://www.flipkart.com/minutes",
+    description: "Track prices of Flipkart Minutes products",
+    image: "https://flipkart.com/logo.png",
+    apiEndpoint: "/api/products/flipkart-minutes"
+  },
+  {
     name: "Meesho",
     url: "https://meesho.com",
     description: "Meesho is a wholesale marketplace.",
