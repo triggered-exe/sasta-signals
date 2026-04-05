@@ -171,27 +171,35 @@ export const extractCategories = async (address) => {
 
         page = await contextManager.createPage(context, "flipkart-minutes");
 
-        // Step 1: Navigate to home page and scroll to load the grid
-        const homeUrl = "https://www.flipkart.com/flipkart-minutes-store?marketplace=HYPERLOCAL";
-        logger.info("FK-MINUTES: Navigating to Minutes store home page...");
-        await page.goto(homeUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+        // Step 1: Navigate to a known hyperlocal product page and open the Categories sidebar
+        const HYPERLOCAL_PRODUCT_URL = "https://www.flipkart.com/7up-soft-drink-pet-bottle/p/itma5d9c8df05d05?pid=ARDEUATW3MZWKR2H&lid=LSTARDEUATW3MZWKR2HKDI2SC&marketplace=HYPERLOCAL";
+        logger.info("FK-MINUTES: Navigating to product page to open categories sidebar...");
+        await page.goto(HYPERLOCAL_PRODUCT_URL, { waitUntil: "domcontentloaded", timeout: 30000 });
         await page.waitForTimeout(3000);
 
-        // Scroll to load the category grid (~6-8 scrolls)
-        for (let i = 0; i < 8; i++) {
-            await page.evaluate(() => window.scrollBy(0, 1000));
-            await page.waitForTimeout(500);
+        // Click the Categories button in the nav bar (identified by img[alt="Categories"])
+        logger.info("FK-MINUTES: Opening categories sidebar...");
+        const clickResult = await page.evaluate(() => {
+            const imgs = Array.from(document.querySelectorAll('img[alt="Categories"]'));
+            if (imgs.length === 0) return { ok: false, reason: "no Categories img found" };
+            const btn = imgs[0].closest("div");
+            if (!btn) return { ok: false, reason: "no parent div found" };
+            btn.click();
+            return { ok: true };
+        });
+        if (!clickResult.ok) {
+            logger.warn(`FK-MINUTES: Categories button click issue: ${clickResult.reason}`);
         }
-        await page.waitForTimeout(2000);
+        await page.waitForTimeout(3000);
 
-        // Step 2: Collect grid links using the exact class selector
-        const gridLinks = await page.evaluate((sel) => {
-            const anchors = Array.from(document.querySelectorAll(sel));
-            return anchors.map(a => a.href).filter(Boolean);
-        }, GRID_CATEGORY_SELECTOR);
-
-        // Filter to only listing pages (must have /pr? in URL), skip store pages
-        const listingLinks = gridLinks.filter(url => url.includes('/pr?') && url.includes('marketplace=HYPERLOCAL'));
+        // Step 2: Collect category links from the sidebar (#msite-bottomsheet)
+        const listingLinks = await page.evaluate(() => {
+            const sidebar = document.getElementById("msite-bottomsheet");
+            if (!sidebar) return [];
+            return Array.from(sidebar.querySelectorAll("a"))
+                .map(a => a.href)
+                .filter(href => href && href.includes("www.flipkart.com") && href.includes("/pr?") && href.includes("marketplace=HYPERLOCAL"));
+        });
 
         // Deduplicate by sid
         const seenKeys = new Set();
@@ -202,7 +210,7 @@ export const extractCategories = async (address) => {
             return true;
         });
 
-        logger.info(`FK-MINUTES: Found ${gridLinks.length} grid links → ${listingLinks.length} listing pages → ${uniqueGridLinks.length} unique by sid`);
+        logger.info(`FK-MINUTES: Found ${listingLinks.length} sidebar links → ${uniqueGridLinks.length} unique by sid`);
 
         // Track how many times each path name is used (to detect "Fruits" reuse)
         const pathNameCounts = {};

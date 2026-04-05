@@ -6,104 +6,85 @@ dotenv.config();
 const address = "misri gym 500064";
 
 const explore = async () => {
-    console.log("=== FK Minutes: fetch() vs page.goto() comparison ===\n");
+    console.log("=== FK Minutes: Sidebar Categories Approach ===\n");
 
     const context = await setLocation(address);
     const page = await contextManager.createPage(context, "flipkart-minutes");
 
-    // Visit home page and scroll to load the grid
-    const homeUrl = "https://www.flipkart.com/flipkart-minutes-store?marketplace=HYPERLOCAL";
-    await page.goto(homeUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+    // Navigate to any product page
+    const productUrl = "https://www.flipkart.com/7up-soft-drink-pet-bottle/p/itma5d9c8df05d05?pid=ARDEUATW3MZWKR2H&lid=LSTARDEUATW3MZWKR2HKDI2SC&marketplace=HYPERLOCAL";
+    console.log("Navigating to product page...");
+    await page.goto(productUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
     await page.waitForTimeout(3000);
 
-    for (let i = 0; i < 8; i++) {
-        await page.evaluate(() => window.scrollBy(0, 1000));
-        await page.waitForTimeout(500);
-    }
+    // Click the "Categories" button in the nav bar (identified by img[alt="Categories"])
+    console.log("Clicking Categories button...");
+    const clicked = await page.evaluate(() => {
+        const imgs = Array.from(document.querySelectorAll('img[alt="Categories"]'));
+        if (imgs.length === 0) return { ok: false, reason: 'no Categories img found' };
+        // Click the parent div
+        const btn = imgs[0].closest('div');
+        if (!btn) return { ok: false, reason: 'no parent div found' };
+        btn.click();
+        return { ok: true };
+    });
+    console.log("Categories button click result:", clicked);
+
+    // Wait for sidebar to open
     await page.waitForTimeout(2000);
 
-    const gridSelector = 'a._3n8fna1co._3n8fna10j._3n8fnaod._3n8fna1._3n8fnac7._1i2djtb9._1i2djtk9._1i2djtir._1i2djtja._1i2djtjb';
+    // Check if sidebar appeared
+    const sidebarExists = await page.evaluate(() => {
+        return !!document.getElementById('msite-bottomsheet');
+    });
+    console.log(`Sidebar #msite-bottomsheet exists: ${sidebarExists}`);
 
-    const gridLinks = await page.evaluate((sel) => {
-        return Array.from(document.querySelectorAll(sel)).map(a => a.href).filter(Boolean);
-    }, gridSelector);
+    if (!sidebarExists) {
+        // Try waiting longer
+        await page.waitForTimeout(3000);
+        const sidebarExistsRetry = await page.evaluate(() => !!document.getElementById('msite-bottomsheet'));
+        console.log(`Retry - Sidebar exists: ${sidebarExistsRetry}`);
+    }
 
-    // Filter to listing pages only
-    const listingLinks = gridLinks.filter(url => url.includes('/pr?') && url.includes('marketplace=HYPERLOCAL'));
-    console.log(`Found ${listingLinks.length} listing grid links\n`);
-
-    // Test 3 different URLs with fetch() from the page context
-    const testUrls = listingLinks.slice(0, 5);
-
-    for (let i = 0; i < testUrls.length; i++) {
-        const url = testUrls[i];
-        console.log(`\n--- Test ${i + 1}: ${url.substring(0, 100)}... ---`);
-
-        // Approach: use page.evaluate to run fetch() inside the browser (has cookies/session)
-        const fetchResult = await page.evaluate(async (fetchUrl) => {
-            try {
-                const res = await fetch(fetchUrl, {
-                    credentials: 'include',
-                    headers: { 'Accept': 'text/html' }
-                });
-                const html = await res.text();
-
-                // Parse the HTML to find sub-nav links
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(html, 'text/html');
-
-                const anchors = Array.from(doc.querySelectorAll('a'));
-                const subNavLinks = anchors
-                    .filter(a => {
-                        const href = a.getAttribute('href') || '';
-                        const text = a.innerText?.trim() || '';
-                        return (href.includes('/hyperlocal/') || href.includes('/all/') || href.includes('/eat/')) &&
-                            href.includes('/pr?') &&
-                            href.includes('marketplace=HYPERLOCAL') &&
-                            text.length > 2 &&
-                            text.length < 50 &&
-                            !text.includes('\u20B9') &&
-                            !text.includes('%') &&
-                            text !== 'More';
-                    })
-                    .map(a => ({
-                        name: a.innerText.trim(),
-                        href: a.getAttribute('href'),
-                    }))
-                    .filter((item, idx, self) =>
-                        self.findIndex(t => t.href === item.href) === idx
-                    );
-
-                // Also check the title
-                const titleMatch = html.match(/<title>([^<]+)<\/title>/);
-                const title = titleMatch ? titleMatch[1] : '';
-
-                return {
-                    ok: true,
-                    htmlLength: html.length,
-                    title,
-                    subNavLinks,
-                    sampleHtml: html.substring(0, 500),
-                };
-            } catch (err) {
-                return { ok: false, error: err.message };
-            }
-        }, url);
-
-        if (fetchResult.ok) {
-            console.log(`  HTML length: ${fetchResult.htmlLength}`);
-            console.log(`  Title: "${fetchResult.title}"`);
-            console.log(`  Sub-nav links: ${fetchResult.subNavLinks.length}`);
-            if (fetchResult.subNavLinks.length > 0) {
-                console.log(`  Sub-nav names: [${fetchResult.subNavLinks.map(s => s.name).join(', ')}]`);
-                console.log(`  Sample href: ${fetchResult.subNavLinks[0].href?.substring(0, 120)}`);
-            } else {
-                console.log(`  First 500 chars of HTML:`);
-                console.log(`  ${fetchResult.sampleHtml}`);
-            }
-        } else {
-            console.log(`  FETCH FAILED: ${fetchResult.error}`);
+    // Extract all category links from the sidebar
+    const sidebarData = await page.evaluate(() => {
+        const sidebar = document.getElementById('msite-bottomsheet');
+        if (!sidebar) {
+            // Dump what we can see at the top level
+            const allIds = Array.from(document.querySelectorAll('[id]')).map(el => el.id).slice(0, 30);
+            return { found: false, allIds };
         }
+
+        const anchors = Array.from(sidebar.querySelectorAll('a'));
+        const categoryLinks = anchors
+            .filter(a => {
+                const href = a.href || a.getAttribute('href') || '';
+                return href.includes('/pr?') && href.includes('marketplace=HYPERLOCAL');
+            })
+            .map(a => ({
+                href: a.href || a.getAttribute('href'),
+                text: a.innerText?.trim() || '',
+                imgAlt: a.querySelector('img')?.getAttribute('alt') || '',
+            }))
+            .filter((item, idx, self) => self.findIndex(t => t.href === item.href) === idx);
+
+        return {
+            found: true,
+            sidebarHtml: sidebar.innerHTML.substring(0, 1000),
+            categoryLinks,
+        };
+    });
+
+    if (!sidebarData.found) {
+        console.log("Sidebar NOT found. Available IDs:", sidebarData.allIds);
+    } else {
+        console.log(`\nFound ${sidebarData.categoryLinks.length} category links in sidebar`);
+        console.log("\nFirst 1000 chars of sidebar HTML:");
+        console.log(sidebarData.sidebarHtml);
+        console.log("\nCategory links:");
+        sidebarData.categoryLinks.forEach((link, i) => {
+            console.log(`  ${i + 1}. text="${link.text}" | alt="${link.imgAlt}" | ${link.href?.substring(0, 120)}`);
+        });
     }
 
     await page.close();

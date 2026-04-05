@@ -86,15 +86,17 @@ const startServer = async () => {
       logger.info(`Server is running on port - ${port}`);
 
       // NOTE: BigBasket tracking has been re-enabled with updated headers and scraping logic to bypass bot detection.
-      flipkartMinutesStartTrackingHandler("misri gym 500064"); // For Flipkart minutes 
+      // flipkartMinutesStartTrackingHandler("misri gym 500064"); // For Flipkart minutes 
       if (process.env.ENVIRONMENT === "production") {
         setTimeout(() => startAmazonTrackingWithoutBrowswer("500064"), 0); // For Amazon Fresh
         setTimeout(() => instamartStartTrackingHandler("500064"), 30 * 1000); // For Instamart
-        setTimeout(() => flipkartStartTrackingHandler("bahadurpura police station"), 60 * 1000); // For Flipkart
+        setTimeout(() => flipkartStartTrackingHandler("500064"), 60 * 1000); // For Flipkart
         setTimeout(() => BigBasketStartTrackingHandler("500064"), 90 * 1000); // For BigBasket
         setTimeout(() => zeptoStartTrackingHandler("500064"), 120 * 1000); // For Zepto
         setTimeout(() => blinkitStartTrackingHandler("500064"), 150 * 1000); // For Blinkit
         setTimeout(() => jiomartStartTrackingHandler("500064"), 180 * 1000); // For JioMart
+        setTimeout(() => flipkartMinutesStartTrackingHandler("misri gym bahadurpura"), 210 * 1000); // For Flipkart minutes 
+
       } else {
         // setTimeout(() => jiomartStartTrackingHandler("500064"), 0); // For BigBasket
       }
