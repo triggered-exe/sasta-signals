@@ -4,30 +4,22 @@ import dotenv from "dotenv";
 import logger from "./src/utils/logger.js";
 import { errorHandler } from "./src/utils/errorHandling.js";
 import { connectDB } from "./src/database.js"; // Import the database connection function
-import instamartRouter from "./src/routes/api/instamart/instamart.js"; // Import the instamart route
-import meeshoRouter from "./src/routes/api/meesho/meesho.js";
-import { trackProductPrices as instamartStartTrackingHandler } from "./src/controllers/InstamartController.js"; // Import the function
-import bigbasketRoutes from "./src/routes/api/bigbasket/bigbasket.js";
+import { trackProductPrices as instamartStartTrackingHandler } from "./src/controllers/InstamartController.js";
 import { startTrackingHandler as BigBasketStartTrackingHandler } from "./src/controllers/BigBasketController.js";
 import { startTrackingHelper as zeptoStartTrackingHandler } from "./src/controllers/ZeptoController.js";
 import { startTrackingHandler as flipkartStartTrackingHandler } from "./src/controllers/FlipkartGroceryController.js";
-import flipkartGroceryRouter from "./src/routes/api/flipkartGrocery/flipkartGrocery.js";
-import amazonFreshRouter from "./src/routes/api/amazonFresh/amazonFresh.js";
 import {
   startTrackingHandler as amazonFreshStartTrackingHandler,
   startAmazonTrackingWithoutBrowswer,
 } from "./src/controllers/AmazonFreshController.js";
 import { startTrackingHandler as jiomartStartTrackingHandler } from "./src/controllers/jiomartController.js";
-import zeptoRouter from "./src/routes/api/zepto/zepto.js";
-import productsRouter from "./src/routes/api/products.js"; // Import the new common products route
-import blinkitRouter from "./src/routes/api/blinkit/blinkit.js";
-import jiomartRouter from "./src/routes/api/jiomart/jiomart.js";
 import { startTrackingHandler as blinkitStartTrackingHandler } from "./src/controllers/BlinkitController.js";
+import { startTrackingHandler as flipkartMinutesStartTrackingHandler } from "./src/controllers/FlipkartMinutesController.js";
+import providersRouter from "./src/routes/api/providers.js";
+import productsRouter from "./src/routes/api/products.js";
 import searchRouter from "./src/routes/api/search.js";
 import monitoringRouter from "./src/routes/api/monitoring.js";
 import dashboardRouter from "./src/routes/api/dashboard.js";
-import flipkartMinutesRouter from "./src/routes/api/flipkartMinutes/flipkartMinutes.js";
-import { startTrackingHandler as flipkartMinutesStartTrackingHandler } from "./src/controllers/FlipkartMinutesController.js";
 
 
 // Load environment variables from .env file
@@ -48,17 +40,8 @@ app.get("/", (req, res) => {
   res.send("Hello World!"); // Define a simple route for the root path
 });
 
-// Individual platform routes
-app.use("/api/instamart", instamartRouter); // Use the instamart route
-app.use("/api/meesho", meeshoRouter);
-app.use("/api/bigbasket", bigbasketRoutes);
-app.use("/api/zepto", zeptoRouter);
-app.use("/api/flipkart-grocery", flipkartGroceryRouter);
-app.use("/api/flipkart-minutes", flipkartMinutesRouter);
-app.use("/api/amazon-fresh", amazonFreshRouter);
-
-app.use("/api/blinkit", blinkitRouter);
-app.use("/api/jiomart", jiomartRouter);
+// All provider routes (amazon-fresh, bigbasket, blinkit, flipkart-*, instamart, jiomart, meesho, zepto)
+app.use("/api", providersRouter);
 
 // Unified search across multiple providers
 app.use("/api/search", searchRouter);
