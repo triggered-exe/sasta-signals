@@ -1,5 +1,4 @@
 import logger from "../utils/logger.js";
-import axios from "axios";
 import { AppError } from "../utils/errorHandling.js";
 import { search as zeptoSearch } from "./ZeptoController.js";
 import { search as flipkartSearch } from "./FlipkartGroceryController.js";
