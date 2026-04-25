@@ -1,6 +1,239 @@
 # Sasta Signals — Multi-Platform Price Tracking & Alerts
 
-Sasta Signals is a comprehensive price tracking and deal alerts application that monitors product prices across major Indian grocery and e-commerce platforms, providing real-time notifications for price drops and deals.
+Sasta Signals continuously monitors product prices across major Indian quick-commerce and grocery platforms and sends real-time Telegram alerts when prices drop significantly.
+
+## 🌐 Deployment
+
+| Component     | Location                                   |
+| ------------- | ------------------------------------------ |
+| Backend       | DigitalOcean Droplet — `68.183.85.22:8000` |
+| Reverse Proxy | Nginx — `https://68.183.85.22/`            |
+| Database      | MongoDB Atlas                              |
+
+---
+
+## 🏗️ Architecture
+
+```mermaid
+flowchart TD
+    subgraph Scheduler["Tracking Scheduler (index.js)"]
+        NIGHT[Night guard\n12 AM – 6 AM IST skip]
+        LOOP[Infinite tracking loop\nper platform]
+        NIGHT --> LOOP
+    end
+
+    subgraph Controllers["Platform Controllers"]
+        AM[AmazonFreshController]
+        BB[BigBasketController]
+        BL[BlinkitController]
+        FG[FlipkartGroceryController]
+        FM[FlipkartMinutesController]
+        IN[InstamartController]
+        JM[JiomartController]
+        ME[MeeshoController]
+        ZP[ZeptoController]
+    end
+
+    subgraph Browser["Playwright Firefox"]
+        CTX[BrowserContext\nper location]
+        PAGE[Page pool\nreused across categories]
+        API[page.evaluate fetch\nbrowser-side API calls]
+        CTX --> PAGE --> API
+    end
+
+    subgraph DB["MongoDB Atlas"]
+        direction LR
+        AM_DB[(AmazonFreshProduct)]
+        BB_DB[(BigBasketProduct)]
+        BL_DB[(BlinkitProduct)]
+        FG_DB[(FlipkartGroceryProduct)]
+        FM_DB[(FlipkartMinutesProduct)]
+        IN_DB[(InstamartProduct)]
+        JM_DB[(JiomartProduct)]
+        ZP_DB[(ZeptoProduct)]
+    end
+
+    subgraph Notify["Notification Services"]
+        TG[Telegram Bot]
+        EM[Resend / MailerSend Email]
+    end
+
+    LOOP --> Controllers
+    Controllers --> Browser
+    Browser --> DB
+    DB --> PP[productProcessor\nprice-drop detection]
+    PP -->|≥10% drop| Notify
+
+    subgraph API_Layer["REST API (Express)"]
+        PROV["/api/:provider/:action\nproviders.js registry"]
+        SRCH["/api/search\nunified search"]
+        PROD["/api/products/:source\nstored products"]
+        MON["/api/monitoring"]
+        DASH["/api/dashboard"]
+    end
+
+    API_Layer --> Controllers
+```
+
+---
+
+## 🚀 Features
+
+- **9 platforms** — Amazon Fresh, BigBasket, Blinkit, Flipkart Grocery, Flipkart Minutes, Instamart, JioMart, Meesho, Zepto
+- **Browser-side API calls** — `page.evaluate(fetch())` for platforms that use CDN-routed or session-authenticated APIs (Blinkit, Flipkart Minutes)
+- **Cloudflare 403 handling** — automatic page reload + retry on rate-limited responses
+- **Smart context reuse** — one Playwright `BrowserContext` per location, single page reused across all categories per cycle
+- **Night guard** — tracking pauses 12 AM – 6 AM IST
+- **Telegram alerts** — fires when price drops ≥ 10% vs stored price
+- **Unified search** — single endpoint queries all platforms simultaneously
+- **Dynamic provider routing** — adding a new platform requires only a controller + one registry entry
+
+---
+
+## 🏛️ Project Structure
+
+```
+deals-checker/
+├── backend/
+│   ├── index.js                    # Server entry, tracking bootstrapper
+│   └── src/
+│       ├── controllers/            # One file per platform
+│       │   ├── AmazonFreshController.js
+│       │   ├── BigBasketController.js
+│       │   ├── BlinkitController.js
+│       │   ├── FlipkartGroceryController.js
+│       │   ├── FlipkartMinutesController.js
+│       │   ├── InstamartController.js
+│       │   ├── jiomartController.js
+│       │   ├── MeeshoController.js
+│       │   ├── UnifiedSearchController.js
+│       │   └── ZeptoController.js
+│       ├── models/                 # Mongoose schemas, one per platform
+│       ├── routes/api/
+│       │   ├── providers.js        # Dynamic /:provider/:action router
+│       │   ├── search.js           # Unified search
+│       │   ├── products.js         # Stored product queries
+│       │   ├── monitoring.js       # System health
+│       │   └── dashboard.js        # Visual monitoring UI
+│       ├── services/
+│       │   └── NotificationService.js
+│       └── utils/
+│           ├── contextManager.js   # Playwright context lifecycle
+│           ├── productProcessor.js # Price-drop detection & DB upsert
+│           ├── priceTracking.js    # Night guard, discount helpers
+│           ├── logger.js           # Winston logger
+│           └── errorHandling.js
+└── frontend/                       # Next.js 14 frontend
+```
+
+---
+
+## 📱 API Endpoints
+
+### Provider routes — `/api/:provider/:action`
+
+All platform routes share a single dynamic router. Supported combinations:
+
+| Provider           | `track` | `search` | Other                |
+| ------------------ | ------- | -------- | -------------------- |
+| `amazon-fresh`     | ✅ POST | —        | —                    |
+| `bigbasket`        | ✅ POST | —        | GET `categories`     |
+| `blinkit`          | ✅ POST | ✅ POST  | —                    |
+| `flipkart-grocery` | ✅ POST | —        | POST `start-crawler` |
+| `flipkart-minutes` | ✅ GET  | ✅ POST  | —                    |
+| `instamart`        | ✅ POST | ✅ POST  | —                    |
+| `jiomart`          | ✅ POST | —        | —                    |
+| `meesho`           | —       | ✅ GET   | —                    |
+| `zepto`            | ✅ POST | —        | —                    |
+
+### Other routes
+
+| Method | Path                       | Description                          |
+| ------ | -------------------------- | ------------------------------------ |
+| GET    | `/api/search?q=&location=` | Unified search across all platforms  |
+| GET    | `/api/products/:source`    | Fetch stored products for a platform |
+| GET    | `/api/products/deals/all`  | All active deals across platforms    |
+| GET    | `/api/products/sources`    | List available platform sources      |
+| GET    | `/api/monitoring`          | System health & context status       |
+| GET    | `/api/dashboard`           | Visual monitoring dashboard          |
+
+---
+
+## 🛠️ Tech Stack
+
+### Backend
+
+| Package             | Purpose                                      |
+| ------------------- | -------------------------------------------- |
+| Express.js          | REST API framework                           |
+| Playwright          | Browser automation (Firefox)                 |
+| Mongoose            | MongoDB ODM                                  |
+| Axios               | HTTP client (Meesho, BigBasket category API) |
+| Winston             | Structured logging                           |
+| Resend / MailerSend | Email notifications                          |
+| dotenv              | Environment config                           |
+
+### Frontend
+
+| Package      | Purpose               |
+| ------------ | --------------------- |
+| Next.js 14   | React framework       |
+| Tailwind CSS | Utility-first styling |
+| Material-UI  | Component library     |
+
+---
+
+## 📦 Setup
+
+### Prerequisites
+
+- Node.js v18+
+- pnpm
+- MongoDB instance
+- Playwright Firefox: `npx playwright install firefox`
+
+### Environment Variables
+
+Create `backend/.env`:
+
+```env
+MONGO_URI=mongodb+srv://...
+DB_NAME=product-tracker
+
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_CHANNEL_ID=@channelname
+
+RESEND_API_KEY=...
+
+ENVIRONMENT=development   # or production
+PORT=8000
+```
+
+### Run
+
+```bash
+# Backend
+cd backend && pnpm install && pnpm start
+
+# Frontend
+cd frontend && pnpm install && pnpm dev
+```
+
+---
+
+## ⚙️ How Price Tracking Works
+
+1. **Location setup** — Playwright navigates to the platform, enters the pincode/address, and confirms delivery availability. The `BrowserContext` is cached so this only runs once per location.
+2. **Category discovery** — Categories are fetched (via API or DOM scraping depending on platform) and shuffled to distribute load.
+3. **Product extraction** — For each category, products are fetched using `page.evaluate(fetch())` so the browser's DNS, cookies, and session are used directly. This bypasses Node.js DNS issues with CDN-routed API endpoints.
+4. **Price-drop detection** — `productProcessor` upserts each product into MongoDB. If the new price is ≥ 10% lower than the last stored price, a Telegram notification is fired.
+5. **Loop** — After all categories are processed, the cycle restarts. Night hours (12 AM – 6 AM IST) are skipped automatically.
+
+---
+
+## 📄 License
+
+ISC License — for personal and educational use. Ensure compliance with each platform's Terms of Service.
 
 ## 🌐 Current Deployment
 
