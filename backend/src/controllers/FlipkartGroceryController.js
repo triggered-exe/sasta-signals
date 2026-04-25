@@ -33,21 +33,59 @@ const setLocation = async (pincode) => {
     // Set location
     logger.info(`FK: Setting location for ${pincode}...`);
 
-    // First close the login modal if visible. close button class name is b3wTlE
-    const loginModalVisible = await page.$(".b3wTlE").catch(() => null);
-    if (loginModalVisible) {
-      await loginModalVisible.click().catch(() => { });
-      await page.waitForTimeout(500);
+    // Close login modal — Escape first, then look for any close button
+    await page.keyboard.press('Escape').catch(() => { });
+    await page.waitForTimeout(400);
+    // .b3wTlE is a generated class that changes per deploy, so also try generic modal/close selectors
+    const loginModalClose = await page.$(
+      '.b3wTlE, button[class*="CloseIcon"], button[class*="close-btn"], [data-testid*="close"]'
+    ).catch(() => null);
+    if (loginModalClose && await loginModalClose.isVisible().catch(() => false)) {
+      await loginModalClose.click().catch(() => { });
+      await page.waitForTimeout(400);
       logger.info("FK: Closed login modal");
     }
 
-    // Click on the div with text "Select delivery location"
-    await page.click('xpath=//div[text()="Select delivery location"]');
+    // Click "Select delivery location" — try text/xpath variants
+    const deliveryLocSelectors = [
+      'xpath=//div[text()="Select delivery location"]',
+      'xpath=//span[text()="Select delivery location"]',
+      'text=Select delivery location',
+    ];
+    let locationOpened = false;
+    for (const sel of deliveryLocSelectors) {
+      try {
+        await page.click(sel, { timeout: 5000 });
+        locationOpened = true;
+        break;
+      } catch (_) { }
+    }
+    if (!locationOpened) {
+      logger.warn("FK: Could not click 'Select delivery location', proceeding anyway...");
+    }
 
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(1500);
 
-    // Focus into the input field
-    await page.focus('input[placeholder*="Search by area, street name, pin code"]');
+    // Find and focus the pincode input — try multiple placeholder patterns
+    const inputSelectors = [
+      'input[placeholder*="Search by area, street name, pin code"]',
+      'input[placeholder*="Search by area"]',
+      'input[placeholder*="pin code"]',
+      'input[placeholder*="pincode"]',
+      'input[placeholder*="Enter pincode"]',
+    ];
+    let focusedInput = null;
+    for (const sel of inputSelectors) {
+      focusedInput = await page.waitForSelector(sel, { timeout: 5000, state: 'visible' }).catch(() => null);
+      if (focusedInput) {
+        await focusedInput.focus();
+        logger.info(`FK: Found location input with selector: ${sel}`);
+        break;
+      }
+    }
+    if (!focusedInput) {
+      throw new Error("FK: Could not find the location search input field");
+    }
 
     await page.keyboard.type(pincode);
     await page.waitForTimeout(1500); // Wait for suggestions to load
@@ -80,16 +118,17 @@ const setLocation = async (pincode) => {
 
     await page.waitForTimeout(3000); // Wait for the map page to load
 
-    // After clicking suggestion, a new page/modal with a map and "Confirm" button appears
-    // If the location is serviceable, there is a Submit ("Confirm") button
+    // After clicking suggestion, a "Confirm" button/div appears
+    // FK renders this as a styled div, not an input[type=submit]
     try {
-      const confirmButtonSelector = 'input[type="submit"][value="Confirm"]';
-      const confirmButton = await page.waitForSelector(confirmButtonSelector, { timeout: 5000 });
+      // Try input[type=submit] (old web) first, then styled-div variants (new web)
+      const confirmLocator = page.locator(
+        'input[type="submit"][value="Confirm"], button:has-text("Confirm"), div[style*="cursor: pointer;"]:has-text("Confirm")'
+      ).first();
 
-      if (confirmButton) {
-        await confirmButton.click();
-        logger.info(`FK: Successfully set up for location: ${pincode}`);
-      }
+      await confirmLocator.waitFor({ state: "visible", timeout: 7000 });
+      await confirmLocator.click({ force: true });
+      logger.info(`FK: Successfully set up for location: ${pincode}`);
     } catch (err) {
       // If the Confirm button is not found, assume it is not serviceable
       logger.info(`FK: Confirm button not found. Location ${pincode} might not be serviceable.`);
@@ -263,132 +302,151 @@ export const startTrackingHandler = async (pincode = "500064") => {
   }
   isTrackingActive = true;
 
-    while (true) {
-      try {
-        // Skip if it's night time (12 AM to 6 AM IST)
-        if (isNightTimeIST()) {
-          logger.info("FK : Skipping price tracking during night hours");
-          // Wait for 5 minutes before checking night time status again
-          await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
-          continue;
-        }
+  while (true) {
+    try {
+      // Skip if it's night time (12 AM to 6 AM IST)
+      if (isNightTimeIST()) {
+        logger.info("FK : Skipping price tracking during night hours");
+        // Wait for 5 minutes before checking night time status again
+        await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
+        continue;
+      }
 
-        const startTime = new Date();
-        logger.info(`FK: Starting product search at: ${startTime.toLocaleString()}`);
+      const startTime = new Date();
+      logger.info(`FK: Starting product search at: ${startTime.toLocaleString()}`);
 
-        // Get all categories from Flipkart
-        const categories = await extractCategories(pincode);
-        logger.info(`FK: Found ${categories.length} categories to process`);
+      // Get all categories from Flipkart
+      const categories = await extractCategories(pincode);
+      logger.info(`FK: Found ${categories.length} categories to process`);
 
-        const PARALLEL_CATEGORIES = 1; // Flipkart is fast so 1 seems sufficient
-        let totalProcessedProducts = 0;
+      const PARALLEL_CATEGORIES = 1; // Flipkart is fast so 1 seems sufficient
+      let totalProcessedProducts = 0;
 
-        // Set up context with location once for all categories
-        const context = await setLocation(pincode);
+      // Set up context with location once for all categories
+      const context = await setLocation(pincode);
 
-        // Check if the location is serviceable
-        if (!contextManager.getWebsiteServiceabilityStatus(pincode, "flipkart-grocery")) {
-          logger.info(`FK: Location ${pincode} is not serviceable, stopping tracking`);
-          break;
-        }
+      // Check if the location is serviceable
+      if (!contextManager.getWebsiteServiceabilityStatus(pincode, "flipkart-grocery")) {
+        logger.info(`FK: Location ${pincode} is not serviceable, stopping tracking`);
+        break;
+      }
 
-        // Process categories in parallel batches
-        for (let i = 0; i < categories.length; i += PARALLEL_CATEGORIES) {
-          const currentBatch = categories.slice(i, i + PARALLEL_CATEGORIES);
-          logger.info(`FK: Processing categories ${i + 1} to ${i + currentBatch.length} of ${categories.length}`);
+      // Process categories in parallel batches
+      for (let i = 0; i < categories.length; i += PARALLEL_CATEGORIES) {
+        const currentBatch = categories.slice(i, i + PARALLEL_CATEGORIES);
+        logger.info(`FK: Processing categories ${i + 1} to ${i + currentBatch.length} of ${categories.length}`);
 
-          const batchStartTime = new Date();
-          const batchPromises = currentBatch.map(async (category) => {
-            const categoryStartTime = new Date();
+        const batchStartTime = new Date();
+        const batchPromises = currentBatch.map(async (category) => {
+          const categoryStartTime = new Date();
+          try {
+            let page = null;
+
             try {
-              let page = null;
+              page = await context.newPage();
 
-              try {
-                page = await context.newPage();
+              let categoryProducts = [];
+              let currentUrl = category.url;
+              let hasNextPage = true;
+              let pageNum = 1;
 
-                let categoryProducts = [];
-                let currentUrl = category.url;
-                let hasNextPage = true;
-                let pageNum = 1;
+              while (hasNextPage) {
+                logger.info(`FK: Processing page ${pageNum} of ${category.category} > ${category.subcategory}...`);
 
-                while (hasNextPage) {
-                  logger.info(`FK: Processing page ${pageNum} of ${category.category} > ${category.subcategory}...`);
+                // Extract products using the function
+                const { products: pageProducts, nextPageUrl } = await extractProductsFromPage(page, currentUrl, `${category.category} ${category.subcategory}`);
 
-                  // Extract products using the function
-                  const { products: pageProducts, nextPageUrl } = await extractProductsFromPage(page, currentUrl, `${category.category} ${category.subcategory}`);
+                categoryProducts = [...categoryProducts, ...pageProducts];
 
-                  categoryProducts = [...categoryProducts, ...pageProducts];
-
-                  if (nextPageUrl) {
-                    currentUrl = nextPageUrl;
-                    pageNum++;
-                    await page.waitForTimeout(1000);
-                  } else {
-                    hasNextPage = false;
-                  }
+                if (nextPageUrl) {
+                  currentUrl = nextPageUrl;
+                  pageNum++;
+                  await page.waitForTimeout(1000);
+                } else {
+                  hasNextPage = false;
                 }
-
-                // Remove duplicates from category results
-                const uniqueCategoryProducts = categoryProducts.filter(
-                  (product, index, self) =>
-                    index ===
-                    self.findIndex(
-                      (p) =>
-                        p.productId === product.productId ||
-                        (p.productName === product.productName && p.price === product.price && p.mrp === product.mrp)
-                    )
-                );
-
-                logger.info(`FK: Found ${uniqueCategoryProducts.length} unique products for "${category.category} > ${category.subcategory}"`);
-
-                // Add category information to products
-                const productsWithCategory = uniqueCategoryProducts.map(product => ({
-                  ...product,
-                  categoryName: category.category,
-                  subcategoryName: category.subcategory,
-                }));
-
-                // Process and save products for this category
-                const processedProducts = await processProducts(productsWithCategory);
-                const categoryTime = ((new Date().getTime() - categoryStartTime.getTime()) / 1000).toFixed(2);
-                logger.info(`FK: Processed and saved ${processedProducts} products for "${category.category} > ${category.subcategory}" in ${categoryTime} seconds`);
-                totalProcessedProducts += processedProducts;
-                return processedProducts;
-              } finally {
-                if (page) await page.close();
               }
-            } catch (error) {
-              logger.error(`FK: Error processing category "${category.category} > ${category.subcategory}": ${error.message || error}`, { error });
-              return 0;
+
+              // Remove duplicates from category results
+              const uniqueCategoryProducts = categoryProducts.filter(
+                (product, index, self) =>
+                  index ===
+                  self.findIndex(
+                    (p) =>
+                      p.productId === product.productId ||
+                      (p.productName === product.productName && p.price === product.price && p.mrp === product.mrp)
+                  )
+              );
+
+              logger.info(`FK: Found ${uniqueCategoryProducts.length} unique products for "${category.category} > ${category.subcategory}"`);
+
+              // Add category information to products
+              const productsWithCategory = uniqueCategoryProducts.map(product => ({
+                ...product,
+                categoryName: category.category,
+                subcategoryName: category.subcategory,
+              }));
+
+              // Process and save products for this category
+              const processedProducts = await processProducts(productsWithCategory);
+              const categoryTime = ((new Date().getTime() - categoryStartTime.getTime()) / 1000).toFixed(2);
+              logger.info(`FK: Processed and saved ${processedProducts} products for "${category.category} > ${category.subcategory}" in ${categoryTime} seconds`);
+              totalProcessedProducts += processedProducts;
+              return processedProducts;
+            } finally {
+              if (page) await page.close();
             }
-          });
-
-          // Wait for current batch to complete
-          await Promise.all(batchPromises);
-
-          const batchTime = ((new Date().getTime() - batchStartTime.getTime()) / 60000).toFixed(2);
-          logger.info(`FK: Categories Processed: ${i + currentBatch.length} of ${categories.length} and Time taken: ${batchTime} minutes`);
-
-          if (i + PARALLEL_CATEGORIES < categories.length) {
-            logger.info("FK: Waiting between batches...");
-            await new Promise((resolve) => setTimeout(resolve, 3000));
+          } catch (error) {
+            logger.error(`FK: Error processing category "${category.category} > ${category.subcategory}": ${error.message || error}`, { error });
+            return 0;
           }
-        }
+        });
 
-        const endTime = new Date();
-        const totalDuration = (endTime - startTime) / 1000 / 60; // in minutes
-        logger.info(`FK: Total processed products: ${totalProcessedProducts}`);
-        logger.info(
-          `FK: Total time taken: ${totalDuration.toFixed(2)} minutes`
-        );
-        // Wait for 1 minutes
-        await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
-      } catch (error) {
+        // Wait for current batch to complete
+        await Promise.all(batchPromises);
+
+        const batchTime = ((new Date().getTime() - batchStartTime.getTime()) / 60000).toFixed(2);
+        logger.info(`FK: Categories Processed: ${i + currentBatch.length} of ${categories.length} and Time taken: ${batchTime} minutes`);
+
+        if (i + PARALLEL_CATEGORIES < categories.length) {
+          logger.info("FK: Waiting between batches...");
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+        }
+      }
+
+      const endTime = new Date();
+      const totalDuration = (endTime - startTime) / 1000 / 60; // in minutes
+      logger.info(`FK: Total processed products: ${totalProcessedProducts}`);
+      logger.info(
+        `FK: Total time taken: ${totalDuration.toFixed(2)} minutes`
+      );
+      // Wait for 1 minutes
+      await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
+    } catch (error) {
       // Wait for 2 minutes
       await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
-          logger.error(`FK: Error in tracking cycle: ${error.message || error}`, { error });
-        }
+      logger.error(`FK: Error in tracking cycle: ${error.message || error}`, { error });
+    }
   }
+};
+
+/**
+ * Parse /grocery/category/subcategory/pr URLs from raw HTML text (view-source body).
+ * Returns an array of unique category objects.
+ */
+const parseCategoriesFromHtml = (html) => {
+  const categorySet = new Set();
+  // Match any grocery /pr URL — with or without otracker param
+  const urlRegex = /https?:\/\/www\.flipkart\.com\/grocery\/([^\/\s"']+)\/([^\/\s"']+)\/pr[^"'\s]*/g;
+  let m;
+  while ((m = urlRegex.exec(html)) !== null) {
+    const rawUrl = m[0];
+    const category = m[1].replace(/-/g, ' ');
+    const subcategory = m[2].replace(/-/g, ' ');
+    const decodedUrl = rawUrl.replace(/&#x3D;/g, '=').replace(/&amp;/g, '&');
+    categorySet.add(JSON.stringify({ category, subcategory, url: decodedUrl, name: subcategory }));
+  }
+  return Array.from(categorySet).map(item => JSON.parse(item));
 };
 
 // Function to extract categories from Flipkart Grocery
@@ -405,94 +463,65 @@ const extractCategories = async (pincode = "500064") => {
 
     page = await context.newPage();
 
-    // Navigate to the main grocery page
+    // Navigate to the main grocery page and let JS render
     logger.info("FK: Navigating to main grocery page...");
     await page.goto("https://www.flipkart.com/grocery-supermart-store?marketplace=GROCERY", {
-      waitUntil: "domcontentloaded",
-      timeout: 30000,
+      waitUntil: "networkidle",
+      timeout: 45000,
     });
-
-    // Wait for categories to load and find category links
-    await page.waitForSelector("a[href*='/grocery/']", { timeout: 5000 });
-
-    // Find category links that have the proper structure (not pagination)
-    const categoryLinks = await page.$$("a[href*='/grocery/']");
-    let categoryLinkToClick = null;
-
-    for (const link of categoryLinks) {
-      const href = await link.getAttribute("href");
-      const text = await link.textContent();
-
-      // Look for category links that have the structure /grocery/category/subcategory/pr
-      if (href && href.includes('/grocery/') && href.includes('/pr?')) {
-        const urlMatch = href.match(/\/grocery\/([^\/]+)\/([^\/]+)\/pr/);
-        if (urlMatch) {
-          categoryLinkToClick = link;
-          break;
-        }
-      }
-    }
-
-    if (!categoryLinkToClick) {
-      throw new Error("No suitable category link found to click");
-    }
-
-    // Get the href from the category link
-    const categoryHref = await categoryLinkToClick.getAttribute("href");
-    const currentUrl = categoryHref.startsWith("http") ? categoryHref : "https://www.flipkart.com" + categoryHref;
-    logger.info(`FK: Navigated to: ${currentUrl}`);
-
-    // Navigate to view-source to get raw HTML
-    const viewSourceUrl = "view-source:" + currentUrl;
-    await page.goto(viewSourceUrl, { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(2000);
 
-    // Extract categories from the raw HTML source
-    const categories = await page.evaluate(() => {
-      const preElement = document.querySelector("pre");
-      const html = preElement ? preElement.textContent : document.body.textContent;
-
+    // --- Strategy 1: extract /grocery/.../pr links directly from the live DOM ---
+    const domCategories = await page.evaluate(() => {
+      const anchors = Array.from(document.querySelectorAll("a[href]"));
       const categorySet = new Set();
-
-      // Look for category URLs in the HTML that have proper category tracking
-      const urlRegex = /https:\/\/www\.flipkart\.com\/grocery\/[^\/]+\/[^\/]+\/pr\?[^"']*otracker=categorytree[^"']*/g;
-      const urls = html.match(urlRegex) || [];
-
-      urls.forEach(url => {
-        // Decode HTML entities in the URL
-        const decodedUrl = url.replace(/&#x3D;/g, '=').replace(/&/g, '&');
-
-        // Extract category info from URL
-        const urlMatch = decodedUrl.match(/\/grocery\/([^\/]+)\/([^\/]+)\/pr/);
-        if (urlMatch) {
-          const category = urlMatch[1].replace(/-/g, ' ');
-          const subcategory = urlMatch[2].replace(/-/g, ' ');
-
-          // Try to find the name in the HTML around this URL
-          const urlIndex = html.indexOf(url);
-          if (urlIndex > 0) {
-            // Look for text before the URL that might be the category name
-            const beforeText = html.substring(Math.max(0, urlIndex - 200), urlIndex);
-            const nameMatch = beforeText.match(/([^<>]*?)["']?\s*$/);
-            const name = nameMatch ? nameMatch[1].trim() : subcategory;
-
-            if (name && name.length > 2 && !/^\d+$/.test(name) && name.toLowerCase() !== 'next' && !name.includes('link') && !name.includes('href')) {
-              categorySet.add(JSON.stringify({
-                category,
-                subcategory,
-                url: decodedUrl,
-                name: name.length > 50 ? subcategory : name
-              }));
-            }
-          }
+      anchors.forEach(a => {
+        const href = a.getAttribute("href") || "";
+        const match = href.match(/\/grocery\/([^\/\s?#]+)\/([^\/\s?#]+)\/pr/);
+        if (match) {
+          const category = match[1].replace(/-/g, ' ');
+          const subcategory = match[2].replace(/-/g, ' ');
+          const fullUrl = href.startsWith("http") ? href : "https://www.flipkart.com" + href;
+          categorySet.add(JSON.stringify({ category, subcategory, url: fullUrl, name: subcategory }));
         }
       });
-
       return Array.from(categorySet).map(item => JSON.parse(item));
     });
 
-    logger.info(`FK: Extracted ${categories.length} categories from view-source`);
-    return categories;
+    if (domCategories.length > 0) {
+      logger.info(`FK: Extracted ${domCategories.length} categories from live DOM`);
+      return domCategories;
+    }
+
+    logger.info("FK: No /grocery/.../pr links in DOM, trying view-source fallback...");
+
+    // --- Strategy 2: view-source of any grocery category page ---
+    // Find ANY /grocery/ link to use as seed, broadening pattern considerably
+    const seedHref = await page.evaluate(() => {
+      const a = Array.from(document.querySelectorAll("a[href*='/grocery/']"))
+        .find(el => /\/grocery\/[^\/]+\/[^\/]+/.test(el.getAttribute("href") || ""));
+      return a ? a.getAttribute("href") : null;
+    });
+
+    // If no seed found on grocery home, try a known stable category URL
+    const seedUrl = seedHref
+      ? (seedHref.startsWith("http") ? seedHref : "https://www.flipkart.com" + seedHref)
+      : "https://www.flipkart.com/grocery/fruits-vegetables/fresh-vegetables/pr?sid=Jwl%2Cpwm%2C0if&marketplace=GROCERY&otracker=categorytree";
+
+    logger.info(`FK: Using seed URL for view-source: ${seedUrl}`);
+    await page.goto("view-source:" + seedUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+    await page.waitForTimeout(2000);
+
+    const html = await page.evaluate(() => document.body.innerText || document.body.textContent || "");
+    const viewSourceCategories = parseCategoriesFromHtml(html);
+
+    logger.info(`FK: Extracted ${viewSourceCategories.length} categories from view-source`);
+
+    if (viewSourceCategories.length === 0) {
+      logger.warn("FK: No categories found via any strategy; returning empty array");
+    }
+
+    return viewSourceCategories;
 
   } catch (error) {
     logger.error(`FK: Error extracting categories: ${error.message || error}`, { error });
