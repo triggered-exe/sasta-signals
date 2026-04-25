@@ -116,6 +116,204 @@ export const setLocation = async (address) => {
 // Grid category selector class (shared by all category grid items on the Minutes home page)
 const GRID_CATEGORY_SELECTOR = 'a._3n8fna1co._3n8fna10j._3n8fnaod._3n8fna1._3n8fnac7._1i2djtb9._1i2djtk9._1i2djtir._1i2djtja._1i2djtjb';
 
+// Cached Flipkart API data center base URL — auto-updated on 406 DC Change responses
+let cachedDcBaseUrl = "https://1.rome.api.flipkart.com";
+
+// Read the pincode from the browser's localStorage ("mypin" key set by Flipkart after location is confirmed).
+// Falls back to parsing a 6-digit number from the address string.
+const extractPincode = async (page, address) => {
+    try {
+        const fromStorage = await page.evaluate(() => {
+            const val = localStorage.getItem("mypin");
+            return val ? parseInt(val, 10) : null;
+        });
+        if (fromStorage && !isNaN(fromStorage)) return fromStorage;
+    } catch (e) { /* page may not be on a flipkart.com origin yet */ }
+    const m = String(address).match(/\b(\d{6})\b/);
+    return m ? parseInt(m[1]) : null;
+};
+
+// One call to the Flipkart Minutes JSON API (/api/4/page/fetch).
+// Runs fetch() inside page.evaluate so the browser handles DNS, cookies, and DC routing.
+// Handles 406 DC Change by retrying on the correct regional DC and caching the new base URL.
+const fkApiPageFetch = async (page, pageUri, pincode, paginationCtx = null, pageNum = 1) => {
+    const requestContext = {
+        type: "BROWSE_PAGE",
+        ssid: "fkmhyperlocal0000",
+        sqid: Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10),
+    };
+
+    const body = paginationCtx
+        ? {
+            pageUri,
+            pageContext: {
+                slotContextMap: {},
+                pageHashKey: paginationCtx.pageHash,
+                paginatedFetch: true,
+                fetchAllPages: false,
+                paginationContextMap: { federator: paginationCtx.federatorCtx },
+                pageNumber: pageNum,
+                trackingContext: { context: { eVar51: "direct_browse", eVar61: "direct_browse" } },
+                networkSpeed: 10000,
+            },
+            requestContext,
+            locationContext: { pincode, changed: false },
+        }
+        : {
+            pageUri,
+            pageContext: {
+                trackingContext: { context: { eVar51: "direct_browse", eVar61: "direct_browse" } },
+                networkSpeed: 10000,
+            },
+            requestContext,
+            locationContext: { pincode, changed: false },
+        };
+
+    const result = await page.evaluate(async ({ body, baseUrl }) => {
+        const postApi = async (url, b) => {
+            const res = await fetch(url + "?cacheFirst=false", {
+                method: "POST",
+                credentials: "include",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Accept": "*/*",
+                    "X-User-Agent": navigator.userAgent + " FKUA/msite/0.0.4/msite/Mobile",
+                    "flipkart_secure": "true",
+                    "Origin": "https://www.flipkart.com",
+                    "Referer": "https://www.flipkart.com/",
+                },
+                body: JSON.stringify(b),
+            });
+            const data = await res.json().catch(() => ({}));
+            return { status: res.status, data };
+        };
+
+        try {
+            let apiUrl = baseUrl + "/api/4/page/fetch";
+            let { status, data } = await postApi(apiUrl, body);
+
+            // On DC Change (406), retry on the correct regional DC
+            if (status === 406 && data.RESPONSE?.id && data.RESPONSE?.dc) {
+                const newBase = `https://${data.RESPONSE.id}.${String(data.RESPONSE.dc).toLowerCase()}.api.flipkart.com`;
+                ({ status, data } = await postApi(newBase + "/api/4/page/fetch", body));
+                return { ok: true, status, data, newBaseUrl: newBase };
+            }
+
+            return { ok: true, status, data, newBaseUrl: null };
+        } catch (e) {
+            return { ok: false, error: e.message };
+        }
+    }, { body, baseUrl: cachedDcBaseUrl });
+
+    if (result.newBaseUrl) {
+        cachedDcBaseUrl = result.newBaseUrl;
+        logger.info(`FK-MINUTES API: DC updated to ${cachedDcBaseUrl}`);
+    }
+
+    return result;
+};
+
+// Parse product objects from a /api/4/page/fetch JSON response.
+// Products live in PRODUCT_SUMMARY_EXTENDED widget slots.
+const parseProductsFromApiResponse = (data) => {
+    const slots = data?.RESPONSE?.slots || [];
+    const products = [];
+    const seen = new Set();
+
+    for (const slot of slots) {
+        if (slot.widget?.type !== "PRODUCT_SUMMARY_EXTENDED") continue;
+        for (const item of (slot.widget?.data?.products || [])) {
+            const value = item.productInfo?.value;
+            if (!value) continue;
+
+            const actionUrl = item.productInfo?.action?.url || value.baseUrl || "";
+            const pid = actionUrl.match(/pid=([^&]+)/)?.[1] || value.id;
+            if (!pid || seen.has(pid)) continue;
+            seen.add(pid);
+
+            const price = value.pricing?.finalPrice?.value ?? 0;
+            const mrp = value.pricing?.mrp?.value ?? price;
+            if (price === 0) continue;
+
+            const discount = mrp > price && mrp > 0
+                ? Math.round((1 - price / mrp) * 100) : 0;
+
+            // Product name from the SEO-friendly URL slug (e.g. /veeba-instant-noodles.../p/...)
+            const slugMatch = actionUrl.match(/^\/([^/]+)\/p\//);
+            const productName = slugMatch
+                ? slugMatch[1].replace(/-+/g, " ").replace(/\b\w/g, c => c.toUpperCase())
+                : "";
+            if (!productName) continue;
+
+            const rawImg = value.media?.images?.[0]?.url || "";
+            const imageUrl = rawImg
+                .replace("{@width}", "200")
+                .replace("{@height}", "200")
+                .replace("{@quality}", "90");
+
+            products.push({
+                productId: pid,
+                productName,
+                price,
+                mrp,
+                discount,
+                imageUrl,
+                url: `https://www.flipkart.com${actionUrl}`,
+                inStock: value.availability?.displayState === "IN_STOCK",
+            });
+        }
+    }
+
+    return products;
+};
+
+// Fetch all products for a category listing URL via the JSON API.
+// Uses a single shared page; no page.goto() required between calls.
+export const extractProductsViaAPI = async (page, categoryUrl, pincode) => {
+    try {
+        const urlObj = new URL(categoryUrl);
+        const pageUri = urlObj.pathname + urlObj.search;
+
+        const allProducts = [];
+        let paginationCtx = null;
+        let pageNum = 1;
+
+        while (pageNum <= 30) {
+            const result = await fkApiPageFetch(page, pageUri, pincode, paginationCtx, pageNum);
+
+            if (!result.ok || result.status !== 200) {
+                logger.warn(`FK-MINUTES API: page ${pageNum} failed (status ${result.status || "error"}, err=${result.error || ""}) for ${pageUri.substring(0, 80)}`);
+                break;
+            }
+
+            const pageProducts = parseProductsFromApiResponse(result.data);
+            allProducts.push(...pageProducts);
+
+            const pageData = result.data?.RESPONSE?.pageData;
+            if (!pageData?.hasMorePages || !pageData?.paginationContextMap?.federator) break;
+
+            paginationCtx = {
+                pageHash: pageData.pageHash,
+                federatorCtx: pageData.paginationContextMap.federator,
+            };
+            pageNum++;
+            // Brief pause between paginated fetches
+            await new Promise(r => setTimeout(r, 300));
+        }
+
+        // Deduplicate by productId
+        const seen = new Set();
+        return allProducts.filter(p => {
+            if (seen.has(p.productId)) return false;
+            seen.add(p.productId);
+            return true;
+        });
+    } catch (error) {
+        logger.error(`FK-MINUTES API: Error fetching ${categoryUrl}: ${error.message}`);
+        return [];
+    }
+};
+
 // Get a dedup key from a category URL using the sid param
 const getDedupeKey = (url) => {
     try {
@@ -479,10 +677,6 @@ export const startTrackingHandler = async (address = "misri gym 500064") => {
             const startTime = new Date();
             logger.info(`FK-MINUTES: Starting tracking cycle at: ${startTime.toLocaleString()}`);
 
-            // Extract all categories
-            const categories = await extractCategories(address);
-            logger.info(`FK-MINUTES: Found ${categories.length} categories to process`);
-
             // Set up context with location once for all categories
             const context = await setLocation(address);
 
@@ -492,47 +686,66 @@ export const startTrackingHandler = async (address = "misri gym 500064") => {
                 break;
             }
 
+            // Extract all categories
+            const categories = await extractCategories(address);
+            logger.info(`FK-MINUTES: Found ${categories.length} categories to process`);
+
             let totalProcessedProducts = 0;
 
-            // Process categories one at a time (like Flipkart Grocery)
+            // Create a minimal page used only for its browser context (cookie jar access for API calls)
+            let apiPage = null;
+            try {
+                apiPage = await contextManager.createPage(context, "flipkart-minutes");
+            } catch (err) {
+                logger.error(`FK-MINUTES: Failed to create API page: ${err.message}`);
+            }
+
+            // Read pincode from localStorage (set by Flipkart after location confirmation),
+            // falling back to parsing the address string
+            const pincode = await extractPincode(apiPage, address);
+            if (!pincode) {
+                logger.warn(`FK-MINUTES: Could not determine pincode for "${address}", API extraction may fail`);
+            } else {
+                logger.info(`FK-MINUTES: Using pincode ${pincode} for API calls`);
+            }
+
+            // Process categories one at a time
             for (let i = 0; i < categories.length; i++) {
                 const category = categories[i];
                 const categoryStartTime = new Date();
-                let page = null;
 
                 try {
-                    page = await contextManager.createPage(context, "flipkart-minutes");
-
                     let categoryProducts = [];
-                    let currentUrl = category.url;
-                    let hasNextPage = true;
-                    let pageNum = 1;
 
-                    while (hasNextPage) {
-                        logger.info(`FK-MINUTES: Processing page ${pageNum} of "${category.category} > ${category.subcategory}"...`);
-
-                        const { products: pageProducts, nextPageUrl } = await extractProductsFromPage(page, currentUrl, `${category.category} ${category.subcategory}`);
-
-                        categoryProducts = [...categoryProducts, ...pageProducts];
-
-                        if (nextPageUrl) {
-                            currentUrl = nextPageUrl;
-                            pageNum++;
-                            await page.waitForTimeout(1000);
-                        } else {
-                            hasNextPage = false;
+                    if (apiPage && pincode) {
+                        // Fast path: JSON API (no page navigation per category)
+                        categoryProducts = await extractProductsViaAPI(apiPage, category.url, pincode);
+                    } else {
+                        // Fallback: HTML scraping
+                        const scrapePage = await contextManager.createPage(context, "flipkart-minutes");
+                        try {
+                            let currentUrl = category.url;
+                            let hasNextPage = true;
+                            let pageNum = 1;
+                            while (hasNextPage) {
+                                const { products: pageProducts, nextPageUrl } = await extractProductsFromPage(scrapePage, currentUrl, `${category.category} ${category.subcategory}`);
+                                categoryProducts.push(...pageProducts);
+                                if (nextPageUrl) { currentUrl = nextPageUrl; pageNum++; await scrapePage.waitForTimeout(1000); }
+                                else hasNextPage = false;
+                            }
+                        } finally {
+                            await scrapePage.close();
                         }
                     }
 
-                    // Remove duplicates from category results
-                    const uniqueCategoryProducts = categoryProducts.filter(
-                        (product, index, self) =>
-                            index === self.findIndex(
-                                (p) =>
-                                    p.productId === product.productId ||
-                                    (p.productName === product.productName && p.price === product.price && p.mrp === product.mrp)
-                            )
-                    );
+                    // Deduplicate
+                    const seen = new Set();
+                    const uniqueCategoryProducts = categoryProducts.filter(p => {
+                        const key = p.productId || `${p.productName}|${p.price}`;
+                        if (seen.has(key)) return false;
+                        seen.add(key);
+                        return true;
+                    });
 
                     logger.info(`FK-MINUTES: Found ${uniqueCategoryProducts.length} unique products for "${category.category} > ${category.subcategory}"`);
 
@@ -553,14 +766,18 @@ export const startTrackingHandler = async (address = "misri gym 500064") => {
                     }
                 } catch (error) {
                     logger.error(`FK-MINUTES: Error processing category "${category.category} > ${category.subcategory}": ${error.message || error}`, { error });
-                } finally {
-                    if (page) await page.close();
                 }
 
                 // Small delay between categories
                 if (i < categories.length - 1) {
-                    await new Promise((resolve) => setTimeout(resolve, 2000));
+                    await new Promise((resolve) => setTimeout(resolve, 500));
                 }
+            }
+
+            // Close the shared API page
+            if (apiPage) {
+                await apiPage.close();
+                apiPage = null;
             }
 
             const endTime = new Date();
