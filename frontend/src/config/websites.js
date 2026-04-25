@@ -4,56 +4,56 @@ export const websites = [
     url: "https://instamart.com",
     description: "Track prices of Instamart products",
     image: "https://instamart.com/logo.png",
-    apiEndpoint: "/api/products/instamart"
+    apiEndpoint: "/api/instamart/products"
   },
   {
     name: "Blinkit",
     url: "https://blinkit.com",
     description: "Track prices of Blinkit products",
     image: "https://blinkit.com/logo.png",
-    apiEndpoint: "/api/products/blinkit"
+    apiEndpoint: "/api/blinkit/products"
   },
   {
     name: "BigBasket",
     url: "https://bigbasket.com",
     description: "Track prices of BigBasket products",
     image: "https://bigbasket.com/logo.png",
-    apiEndpoint: "/api/products/bigbasket"
+    apiEndpoint: "/api/bigbasket/products"
   },
   {
     name: "Amazon Fresh",
     url: "https://amazon.com/fresh",
     description: "Track prices of Amazon Fresh products",
     image: "https://amazon.com/logo.png",
-    apiEndpoint: "/api/products/amazon-fresh"
+    apiEndpoint: "/api/amazon-fresh/products"
   },
   {
     name: "Flipkart Grocery",
     url: "https://www.flipkart.com/grocery-supermart-store",
     description: "Track prices of Flipkart Grocery products",
     image: "https://flipkart.com/logo.png",
-    apiEndpoint: "/api/products/flipkart-grocery"
+    apiEndpoint: "/api/flipkart-grocery/products"
   },
   {
     name: "JioMart",
     url: "https://www.jiomart.com",
     description: "Search and track prices of JioMart products",
     image: "https://www.jiomart.com/assets/global/new-header-logo-jm.svg",
-    apiEndpoint: "/api/products/jiomart"
+    apiEndpoint: "/api/jiomart/products"
   },
   {
     name: "Zepto",
     url: "https://zepto.com",
     description: "Track prices of Zepto products",
     image: "https://zepto.com/logo.png",
-    apiEndpoint: "/api/products/zepto"
+    apiEndpoint: "/api/zepto/products"
   },
   {
     name: "Flipkart Minutes",
     url: "https://www.flipkart.com/minutes",
     description: "Track prices of Flipkart Minutes products",
     image: "https://flipkart.com/logo.png",
-    apiEndpoint: "/api/products/flipkart-minutes"
+    apiEndpoint: "/api/flipkart-minutes/products"
   },
   {
     name: "Meesho",

@@ -25,6 +25,26 @@ const router = express.Router();
 
 // ── Inline handlers for non-controller logic ───────────────────────────────────
 
+// Factory: turns a Mongoose Model into a GET /:provider/products handler
+const makeProductsHandler = (Model) => async (req, res, next) => {
+    try {
+        const { page = "1", pageSize = PAGE_SIZE.toString(), sortOrder = "price", timePeriod = "all", notUpdated = "false", search = "" } = req.query;
+        const skip = (parseInt(page) - 1) * parseInt(pageSize);
+        const matchCriteria = buildMatchCriteria(timePeriod, notUpdated, search);
+        const totalProducts = await Model.countDocuments(matchCriteria);
+        const products = await Model.aggregate([
+            { $match: matchCriteria },
+            { $sort: buildSortCriteria(sortOrder) },
+            { $skip: skip },
+            { $limit: parseInt(pageSize) },
+            { $project: { productId: 1, productName: 1, price: 1, mrp: 1, discount: 1, quantity: 1, unit: 1, weight: 1, imageUrl: 1, inStock: 1, priceDroppedAt: 1, categoryName: 1, subcategoryName: 1, brand: 1, url: 1 } },
+        ]);
+        res.status(200).json({ data: products, totalPages: Math.ceil(totalProducts / parseInt(pageSize)), currentPage: parseInt(page), total: totalProducts, source: req.params.provider });
+    } catch (error) {
+        next(error);
+    }
+};
+
 const flipkartMinutesSearchHandler = async (req, res, next) => {
     try {
         const { location, query } = req.body;
@@ -38,85 +58,18 @@ const flipkartMinutesSearchHandler = async (req, res, next) => {
 // ── Provider registry ─────────────────────────────────────────────────────────
 // Keys are URL-safe provider names; values map action names to Express handlers.
 const PROVIDERS = {
-    "amazon-fresh": { track: amazonFreshStartTracking },
-    "bigbasket": { track: BigBasketController.startTracking, categories: BigBasketController.fetchCategories },
-    "blinkit": { track: blinkitStartTracking, search: blinkitSearch },
-    "flipkart-grocery": { track: flipkartGroceryStartTracking, "start-crawler": flipkartGroceryStartCrawler },
-    "flipkart-minutes": { track: flipkartMinutesStartTracking, search: flipkartMinutesSearchHandler },
-    "instamart": { track: InstamartController.trackPrices, search: InstamartController.search },
-    "jiomart": { track: JioMartController.startTracking },
+    "amazon-fresh": { track: amazonFreshStartTracking, products: makeProductsHandler(AmazonFreshProduct) },
+    "bigbasket": { track: BigBasketController.startTracking, categories: BigBasketController.fetchCategories, products: makeProductsHandler(BigBasketProduct) },
+    "blinkit": { track: blinkitStartTracking, search: blinkitSearch, products: makeProductsHandler(BlinkitProduct) },
+    "flipkart-grocery": { track: flipkartGroceryStartTracking, "start-crawler": flipkartGroceryStartCrawler, products: makeProductsHandler(FlipkartGroceryProduct) },
+    "flipkart-minutes": { track: flipkartMinutesStartTracking, search: flipkartMinutesSearchHandler, products: makeProductsHandler(FlipkartMinutesProduct) },
+    "instamart": { track: InstamartController.trackPrices, search: InstamartController.search, products: makeProductsHandler(InstamartProduct) },
+    "jiomart": { track: JioMartController.startTracking, products: makeProductsHandler(JiomartProduct) },
     "meesho": { search: MeeshoController.search },
-    "zepto": { track: zeptoStartTracking },
+    "zepto": { track: zeptoStartTracking, products: makeProductsHandler(ZeptoProduct) },
 };
 
-// ── Stored products routes (/api/products/*) ─────────────────────────────────
-const sourceModels = {
-    "instamart": InstamartProduct,
-    "zepto": ZeptoProduct,
-    "bigbasket": BigBasketProduct,
-    "flipkart-grocery": FlipkartGroceryProduct,
-    "amazon-fresh": AmazonFreshProduct,
-    "blinkit": BlinkitProduct,
-    "jiomart": JiomartProduct,
-    "flipkart-minutes": FlipkartMinutesProduct,
-};
-
-router.get("/products/sources", (req, res) => {
-    res.json({ sources: Object.keys(sourceModels), message: "Available product sources" });
-});
-
-router.get("/products/deals/all", async (req, res, next) => {
-    try {
-        const { page = "1", pageSize = PAGE_SIZE.toString(), minDiscount = "40" } = req.query;
-        const pageNum = parseInt(page);
-        const pageSizeNum = parseInt(pageSize);
-        const minDiscountNum = parseInt(minDiscount);
-
-        const sourcePromises = Object.entries(sourceModels).map(async ([source, Model]) => {
-            const products = await Model.find({
-                inStock: true,
-                discount: { $gte: minDiscountNum },
-                priceDroppedAt: { $exists: true, $type: "date", $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-            }).sort({ discount: -1, _id: 1 }).limit(50).lean();
-            return products.map((p) => ({ ...p, source }));
-        });
-
-        const allDeals = (await Promise.all(sourcePromises)).flat().sort((a, b) => b.discount - a.discount);
-        const skip = (pageNum - 1) * pageSizeNum;
-        res.status(200).json({
-            data: allDeals.slice(skip, skip + pageSizeNum),
-            totalPages: Math.ceil(allDeals.length / pageSizeNum),
-            currentPage: pageNum,
-            total: allDeals.length,
-        });
-    } catch (error) {
-        next(error);
-    }
-});
-
-router.get("/products/:source", async (req, res, next) => {
-    try {
-        const Model = sourceModels[req.params.source.toLowerCase()];
-        if (!Model) throw AppError.notFound(`Source '${req.params.source}' not found`);
-
-        const { page = "1", pageSize = PAGE_SIZE.toString(), sortOrder = "price", timePeriod = "all", notUpdated = "false", search = "" } = req.query;
-        const skip = (parseInt(page) - 1) * parseInt(pageSize);
-        const matchCriteria = buildMatchCriteria(timePeriod, notUpdated, search);
-        const totalProducts = await Model.countDocuments(matchCriteria);
-        const products = await Model.aggregate([
-            { $match: matchCriteria },
-            { $sort: buildSortCriteria(sortOrder) },
-            { $skip: skip },
-            { $limit: parseInt(pageSize) },
-            { $project: { productId: 1, productName: 1, price: 1, mrp: 1, discount: 1, quantity: 1, unit: 1, weight: 1, imageUrl: 1, inStock: 1, priceDroppedAt: 1, categoryName: 1, subcategoryName: 1, brand: 1, url: 1 } },
-        ]);
-        res.status(200).json({ data: products, totalPages: Math.ceil(totalProducts / parseInt(pageSize)), currentPage: parseInt(page), total: totalProducts, source: req.params.source });
-    } catch (error) {
-        next(error);
-    }
-});
-
-// ── Single dynamic provider route (/api/:provider/:action) ────────────────────
+// ── Dynamic provider route (/api/:provider/:action) ───────────────────────────
 router.all("/:provider/:action", (req, res, next) => {
     const handler = PROVIDERS[req.params.provider]?.[req.params.action];
     if (!handler) {
