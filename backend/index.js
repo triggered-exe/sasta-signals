@@ -16,7 +16,6 @@ import { startTrackingHandler as jiomartStartTrackingHandler } from "./src/contr
 import { startTrackingHandler as blinkitStartTrackingHandler } from "./src/controllers/BlinkitController.js";
 import { startTrackingHandler as flipkartMinutesStartTrackingHandler } from "./src/controllers/FlipkartMinutesController.js";
 import providersRouter from "./src/routes/api/providers.js";
-import productsRouter from "./src/routes/api/products.js";
 import searchRouter from "./src/routes/api/search.js";
 import monitoringRouter from "./src/routes/api/monitoring.js";
 import dashboardRouter from "./src/routes/api/dashboard.js";
@@ -40,20 +39,14 @@ app.get("/", (req, res) => {
   res.send("Hello World!"); // Define a simple route for the root path
 });
 
-// All provider routes (amazon-fresh, bigbasket, blinkit, flipkart-*, instamart, jiomart, meesho, zepto)
-app.use("/api", providersRouter);
-
-// Unified search across multiple providers
+// Specific routes first — must come before the dynamic /api/:provider/:action router
 app.use("/api/search", searchRouter);
-
-// Common products route that aggregates all platforms
-app.use("/api/products", productsRouter);
-
-// Monitoring routes for system health and context management
 app.use("/api/monitoring", monitoringRouter);
-
-// Dashboard route for visual monitoring
 app.use("/api/dashboard", dashboardRouter);
+
+// All provider routes (amazon-fresh, bigbasket, blinkit, flipkart-*, instamart, jiomart, meesho, zepto)
+// Mounted last so /:provider/:action doesn't shadow the routes above
+app.use("/api", providersRouter);
 
 // Global error handler
 app.use(errorHandler);
