@@ -14,7 +14,12 @@ const test = async () => {
 
     const context = await setLocation(address);
     const page = await contextManager.createPage(context, "flipkart-minutes");
-    // No navigation needed — page.context().request uses the cookie jar from setLocation
+    // Navigate to flipkart.com so page.evaluate(fetch()) runs in the correct origin
+    // and the browser can resolve regional DC URLs (e.g. 2.hyd.api.flipkart.com)
+    await page.goto("https://www.flipkart.com/flipkart-minutes-store?marketplace=HYPERLOCAL", {
+        waitUntil: "domcontentloaded",
+        timeout: 30000,
+    });
 
     console.log(`\nFetching products from: ${TEST_URL}\n`);
     const start = Date.now();

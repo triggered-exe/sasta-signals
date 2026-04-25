@@ -690,14 +690,23 @@ export const startTrackingHandler = async (address = "misri gym 500064") => {
             const categories = await extractCategories(address);
             logger.info(`FK-MINUTES: Found ${categories.length} categories to process`);
 
+            // Shuffle categories to distribute load evenly
+            const shuffledCategories = [...categories].sort(() => Math.random() - 0.5);
+
             let totalProcessedProducts = 0;
 
-            // Create a minimal page used only for its browser context (cookie jar access for API calls)
+            // Create a page on flipkart.com so page.evaluate(fetch()) runs in the correct
+            // browser origin and can resolve regional DC URLs (e.g. 2.hyd.api.flipkart.com).
+            // This also makes localStorage (including "mypin") accessible.
             let apiPage = null;
             try {
                 apiPage = await contextManager.createPage(context, "flipkart-minutes");
+                await apiPage.goto("https://www.flipkart.com/flipkart-minutes-store?marketplace=HYPERLOCAL", {
+                    waitUntil: "domcontentloaded",
+                    timeout: 30000,
+                });
             } catch (err) {
-                logger.error(`FK-MINUTES: Failed to create API page: ${err.message}`);
+                logger.error(`FK-MINUTES: Failed to create/navigate API page: ${err.message}`);
             }
 
             // Read pincode from localStorage (set by Flipkart after location confirmation),
@@ -710,8 +719,8 @@ export const startTrackingHandler = async (address = "misri gym 500064") => {
             }
 
             // Process categories one at a time
-            for (let i = 0; i < categories.length; i++) {
-                const category = categories[i];
+            for (let i = 0; i < shuffledCategories.length; i++) {
+                const category = shuffledCategories[i];
                 const categoryStartTime = new Date();
 
                 try {
@@ -769,7 +778,7 @@ export const startTrackingHandler = async (address = "misri gym 500064") => {
                 }
 
                 // Small delay between categories
-                if (i < categories.length - 1) {
+                if (i < shuffledCategories.length - 1) {
                     await new Promise((resolve) => setTimeout(resolve, 500));
                 }
             }

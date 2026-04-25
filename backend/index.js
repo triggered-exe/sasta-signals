@@ -86,7 +86,7 @@ const startServer = async () => {
       logger.info(`Server is running on port - ${port}`);
 
       // NOTE: BigBasket tracking has been re-enabled with updated headers and scraping logic to bypass bot detection.
-      flipkartMinutesStartTrackingHandler("misri gym 500064"); // For Flipkart minutes 
+      BigBasketStartTrackingHandler("500064"); // For Blinkit
       if (process.env.ENVIRONMENT === "production") {
         // setTimeout(() => startAmazonTrackingWithoutBrowswer("500064"), 0); // For Amazon Fresh
         // setTimeout(() => instamartStartTrackingHandler("500064"), 30 * 1000); // For Instamart

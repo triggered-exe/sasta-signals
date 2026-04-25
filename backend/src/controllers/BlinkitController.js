@@ -75,7 +75,7 @@ const setLocation = async (location) => {
 };
 
 // Function to extract products using API calls instead of scrolling
-const extractProductsFromPageAPI = async (page, categoryUrl) => {
+const extractProductsFromPageAPI = async (page, categoryUrl, retryCount = 0) => {
     try {
         // Extract category IDs from the URL (no navigation needed - page already has cookies)
         const splitUrl = categoryUrl.split('/');
@@ -97,8 +97,8 @@ const extractProductsFromPageAPI = async (page, categoryUrl) => {
             let pageCounter = 1;
             let errors = [];
 
-            // Fetch function with 429 retry logic
-            const fetchData = async (url, options, retryCount = 0) => {
+            // Fetch function with 429/403 handling
+            const fetchData = async (url, options, fetchRetry = 0) => {
                 const MAX_RETRIES = 3;
                 const BASE_DELAY = 10000; // 10 seconds base delay
 
@@ -107,16 +107,21 @@ const extractProductsFromPageAPI = async (page, categoryUrl) => {
 
                     // Handle 429 (Too Many Requests) with exponential backoff
                     if (response.status === 429) {
-                        if (retryCount < MAX_RETRIES) {
-                            const delay = BASE_DELAY * Math.pow(2, retryCount); // Exponential backoff: 2s, 4s, 8s
-                            console.log(`BLINKIT API: Rate limited (429). Retrying in ${delay / 1000}s (attempt ${retryCount + 1}/${MAX_RETRIES})`);
-
+                        if (fetchRetry < MAX_RETRIES) {
+                            const delay = BASE_DELAY * Math.pow(2, fetchRetry);
+                            console.log(`BLINKIT API: Rate limited (429). Retrying in ${delay / 1000}s (attempt ${fetchRetry + 1}/${MAX_RETRIES})`);
                             await new Promise(resolve => setTimeout(resolve, delay));
-                            return await fetchData(url, options, retryCount + 1);
+                            return await fetchData(url, options, fetchRetry + 1);
                         } else {
                             console.error(`BLINKIT API: Max retries (${MAX_RETRIES}) exceeded for 429 error`);
                             return null;
                         }
+                    }
+
+                    // 403 = Cloudflare bot protection triggered; signal outer code to reload page
+                    if (response.status === 403) {
+                        console.error('BLINKIT API: Got 403 Forbidden - Cloudflare protection triggered');
+                        return { __forbidden: true };
                     }
 
                     if (!response.ok) {
@@ -129,7 +134,7 @@ const extractProductsFromPageAPI = async (page, categoryUrl) => {
                         url,
                         error: error.message,
                         timestamp: new Date().toISOString(),
-                        retryCount
+                        fetchRetry
                     };
                     errors.push(errorInfo);
                     console.error(`BLINKIT API: Error fetching data from ${url}:`, error);
@@ -160,13 +165,21 @@ const extractProductsFromPageAPI = async (page, categoryUrl) => {
                 const options = {
                     method: 'POST',
                     headers: {
-                        accept: '*/*',
-                        lat: lat,
-                        lon: lon,
+                        'accept': 'application/json, text/plain, */*',
+                        'accept-language': 'en-US,en;q=0.9',
+                        'content-length': '0',
+                        'referer': 'https://blinkit.com/categories',
+                        'lat': String(lat),
+                        'lon': String(lon),
                     },
                 };
 
                 const data = await fetchData(nextUrl, options);
+
+                // 403 = Cloudflare triggered; signal caller to reload page and retry
+                if (data && data.__forbidden) {
+                    return { products: allProducts, errors, forbidden: true };
+                }
 
                 // Handle the response structure
                 if (data && data.response && data.response.snippets) {
@@ -225,8 +238,22 @@ const extractProductsFromPageAPI = async (page, categoryUrl) => {
             if (errors.length > 0) {
                 console.log(`BLINKIT API: Encountered ${errors.length} errors during fetching`);
             }
-            return { products: allProducts, errors };
+            return { products: allProducts, errors, forbidden: false };
         }, { l0_cat, l1_cat });
+
+        // Handle 403: Cloudflare bot protection — reload the page to get a fresh session cookie and retry
+        if (result.forbidden) {
+            const MAX_403_RETRIES = 2;
+            if (retryCount < MAX_403_RETRIES) {
+                logger.warn(`BLINKIT: 403 Forbidden for ${categoryUrl}, reloading page and retrying (attempt ${retryCount + 1}/${MAX_403_RETRIES})`);
+                await page.goto("https://blinkit.com/categories", { waitUntil: "networkidle", timeout: 15000 });
+                await page.waitForTimeout(3000);
+                return extractProductsFromPageAPI(page, categoryUrl, retryCount + 1);
+            } else {
+                logger.error(`BLINKIT: 403 Forbidden for ${categoryUrl} after ${MAX_403_RETRIES} retries, skipping`);
+                return [];
+            }
+        }
 
         // Extract products and errors from the result
         const { products: allProducts, errors } = result;
