@@ -73,19 +73,36 @@ const setLocation = async (pincode) => {
         // Wait for suggestions to appear
         await page.waitForTimeout(3000);
 
-        // Check if suggestions are visible with multiple selectors
-        const firstSuggestion = await page.waitForSelector('li[class*="sc-jdkBTo"]', {
-          timeout: 5000,
-        });
+        // Wait for any suggestion list item to become visible.
+        // Avoid relying on generated styled-component class names (sc-*) which change on every deploy.
+        const firstSuggestion = await page.waitForFunction(() => {
+          // Prefer a role-based selector; fall back to any visible <li> near the search input
+          const byRole = document.querySelector('[role="listbox"] [role="option"], [role="option"]');
+          if (byRole && byRole.offsetParent !== null) return byRole;
+
+          const input = document.querySelector('input[placeholder*="Search for area"]');
+          if (!input) return null;
+          let parent = input.parentElement;
+          for (let i = 0; i < 8; i++) {
+            const li = parent?.querySelector('ul li');
+            if (li && li.offsetParent !== null && li.textContent.trim().length > 0) return li;
+            parent = parent?.parentElement;
+          }
+          return null;
+        }, { timeout: 8000 }).catch(() => null);
 
         if (firstSuggestion) {
           await page.evaluate(() => {
-            const firstSuggestion = document.querySelector('li[class*="sc-jdkBTo"]');
-            if (firstSuggestion) {
-              firstSuggestion.click();
-              return true;
-            } else {
-              return false;
+            // Same multi-strategy click logic
+            const byRole = document.querySelector('[role="listbox"] [role="option"], [role="option"]');
+            if (byRole) { byRole.click(); return; }
+
+            const input = document.querySelector('input[placeholder*="Search for area"]');
+            let parent = input?.parentElement;
+            for (let i = 0; i < 8; i++) {
+              const li = parent?.querySelector('ul li');
+              if (li && li.offsetParent !== null) { li.click(); return; }
+              parent = parent?.parentElement;
             }
           });
           logger.info("BB: Selected first location suggestion");
@@ -103,8 +120,8 @@ const setLocation = async (pincode) => {
             throw AppError.badRequest(`BB: Location not set successfully or not serviceable for pincode: ${pincode}`);
           }
         } else {
-          // If no suggestion then the address is not serviceable
-          throw AppError.badRequest(`BB: Delivery not available for pincode: ${pincode}`);
+          // No suggestions found — address is not serviceable or the UI changed again
+          throw AppError.badRequest(`BB: No location suggestions found for pincode: ${pincode}`);
         }
       } else {
         throw new Error("BB: Pincode input field not found");
