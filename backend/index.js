@@ -4,17 +4,7 @@ import dotenv from "dotenv";
 import logger from "./src/utils/logger.js";
 import { errorHandler } from "./src/utils/errorHandling.js";
 import { connectDB } from "./src/database.js"; // Import the database connection function
-import { trackProductPrices as instamartStartTrackingHandler } from "./src/controllers/InstamartController.js";
-import { startTrackingHandler as BigBasketStartTrackingHandler } from "./src/controllers/BigBasketController.js";
-import { startTrackingHelper as zeptoStartTrackingHandler } from "./src/controllers/ZeptoController.js";
-import { startTrackingHandler as flipkartStartTrackingHandler } from "./src/controllers/FlipkartGroceryController.js";
-import {
-  startTrackingHandler as amazonFreshStartTrackingHandler,
-  startAmazonTrackingWithoutBrowswer,
-} from "./src/controllers/AmazonFreshController.js";
-import { startTrackingHandler as jiomartStartTrackingHandler } from "./src/controllers/jiomartController.js";
-import { startTrackingHandler as blinkitStartTrackingHandler } from "./src/controllers/BlinkitController.js";
-import { startTrackingHandler as flipkartMinutesStartTrackingHandler } from "./src/controllers/FlipkartMinutesController.js";
+import { PROVIDER_REGISTRY } from "./src/config/providers.js";
 import providersRouter from "./src/routes/api/providers.js";
 import searchRouter from "./src/routes/api/search.js";
 import monitoringRouter from "./src/routes/api/monitoring.js";
@@ -64,17 +54,11 @@ const startServer = async () => {
       // NOTE: BigBasket tracking has been re-enabled with updated headers and scraping logic to bypass bot detection.
       // BigBasketStartTrackingHandler("500064"); // For Blinkit
       if (process.env.ENVIRONMENT === "production") {
-        setTimeout(() => startAmazonTrackingWithoutBrowswer("500064"), 0); // For Amazon Fresh
-        setTimeout(() => instamartStartTrackingHandler("500064"), 30 * 1000); // For Instamart
-        setTimeout(() => flipkartStartTrackingHandler("500064"), 60 * 1000); // For Flipkart
-        setTimeout(() => BigBasketStartTrackingHandler("500064"), 90 * 1000); // For BigBasket
-        setTimeout(() => zeptoStartTrackingHandler("500064"), 120 * 1000); // For Zepto
-        setTimeout(() => blinkitStartTrackingHandler("500064"), 150 * 1000); // For Blinkit
-        setTimeout(() => jiomartStartTrackingHandler("500064"), 180 * 1000); // For JioMart
-        setTimeout(() => flipkartMinutesStartTrackingHandler("misri gym bahadurpura"), 210 * 1000); // For Flipkart minutes 
-
+        Object.entries(PROVIDER_REGISTRY)
+          .filter(([, c]) => c.trackingHandler)
+          .forEach(([, c]) => setTimeout(() => c.trackingHandler(c.trackingDefault), c.trackingDelay));
       } else {
-        // setTimeout(() => jiomartStartTrackingHandler("500064"), 0); // For BigBasket
+        // setTimeout(() => PROVIDER_REGISTRY["jiomart"].trackingHandler("500064"), 0);
       }
     });
   } catch (error) {

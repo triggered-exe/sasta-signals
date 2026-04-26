@@ -1,39 +1,17 @@
 import logger from "../utils/logger.js";
 import { AppError } from "../utils/errorHandling.js";
-import { search as zeptoSearch } from "./ZeptoController.js";
-import { search as flipkartSearch } from "./FlipkartGroceryController.js";
-import { search as jiomartSearch } from "./jiomartController.js";
-import { search as bigbasketSearch } from "./BigBasketController.js";
-import { search as amazonFreshSearch } from "./AmazonFreshController.js";
+import { PROVIDER_REGISTRY } from "../config/providers.js";
 
-// Provider registry mapping provider names to their search functions and configurations
-const providerRegistry = {
-  'zepto': {
-    name: 'Zepto',
-    searchFunction: zeptoSearch,
-    locationParam: 'location'
-  },
-  'flipkart-grocery': {
-    name: 'Flipkart Grocery',
-    searchFunction: flipkartSearch,
-    locationParam: 'pincode'
-  },
-  'jiomart': {
-    name: 'JioMart',
-    searchFunction: jiomartSearch,
-    locationParam: 'pincode'
-  },
-  'bigbasket': {
-    name: 'BigBasket',
-    searchFunction: bigbasketSearch,
-    locationParam: 'pincode'
-  },
-  'amazon-fresh': {
-    name: 'Amazon Fresh',
-    searchFunction: amazonFreshSearch,
-    locationParam: 'pincode'
-  }
-};
+// Derive unified search registry: only providers that expose a raw (location, query) searchFn
+const providerRegistry = Object.fromEntries(
+  Object.entries(PROVIDER_REGISTRY)
+    .filter(([, config]) => config.searchFn)
+    .map(([key, config]) => [key, {
+      name: config.displayName,
+      searchFunction: config.searchFn,
+      locationParam: config.locationParam || "pincode",
+    }])
+);
 
 // Unified search handler
 export const unifiedSearch = async (req, res, next) => {

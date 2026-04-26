@@ -1,31 +1,25 @@
 import express from "express";
 import { AppError } from "../../utils/errorHandling.js";
-import { InstamartProduct } from "../../models/InstamartProduct.js";
-import { ZeptoProduct } from "../../models/ZeptoProduct.js";
-import { BigBasketProduct } from "../../models/BigBasketProduct.js";
-import { FlipkartGroceryProduct } from "../../models/FlipkartGroceryProduct.js";
-import { AmazonFreshProduct } from "../../models/AmazonFreshProduct.js";
-import { BlinkitProduct } from "../../models/BlinkitProduct.js";
-import { JiomartProduct } from "../../models/JiomartProduct.js";
-import { FlipkartMinutesProduct } from "../../models/FlipkartMinutesProduct.js";
 import { buildSortCriteria, buildMatchCriteria } from "../../utils/priceTracking.js";
 import { PAGE_SIZE } from "../../utils/constants.js";
-
-import { startTracking as amazonFreshStartTracking } from "../../controllers/AmazonFreshController.js";
-import * as BigBasketController from "../../controllers/BigBasketController.js";
-import { searchQuery as blinkitSearch, startTracking as blinkitStartTracking } from "../../controllers/BlinkitController.js";
-import { startTracking as flipkartGroceryStartTracking, startTrackingHandler as flipkartGroceryStartCrawler } from "../../controllers/FlipkartGroceryController.js";
-import { startTracking as flipkartMinutesStartTracking, search as flipkartMinutesSearch } from "../../controllers/FlipkartMinutesController.js";
-import * as InstamartController from "../../controllers/InstamartController.js";
-import * as JioMartController from "../../controllers/jiomartController.js";
-import { startTracking as zeptoStartTracking } from "../../controllers/ZeptoController.js";
-import * as MeeshoController from "../../controllers/MeeshoController.js";
+import { PROVIDER_REGISTRY } from "../../config/providers.js";
 
 const router = express.Router();
 
-// ── Inline handlers for non-controller logic ───────────────────────────────────
+// ── Internal handler factories ────────────────────────────────────────────────
 
-// Factory: turns a Mongoose Model into a GET /:provider/products handler
+// Adapts a raw (location, query) domain function into an Express handler
+const makeSearchHandler = (searchFn) => async (req, res, next) => {
+    try {
+        const { location, query } = req.body;
+        const result = await searchFn(location, query);
+        res.status(200).json(result);
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Turns a Mongoose model into a paginated GET products Express handler
 const makeProductsHandler = (Model) => async (req, res, next) => {
     try {
         const { page = "1", pageSize = PAGE_SIZE.toString(), sortOrder = "price", timePeriod = "all", notUpdated = "false", search = "" } = req.query;
@@ -45,29 +39,69 @@ const makeProductsHandler = (Model) => async (req, res, next) => {
     }
 };
 
-const flipkartMinutesSearchHandler = async (req, res, next) => {
+// Registry fields that carry provider metadata — not HTTP actions
+const METADATA_KEYS = new Set([
+    "displayName", "model", "locationParam", "searchFn",
+    "trackingHandler", "trackingDefault", "trackingDelay",
+]);
+
+// Build { [provider]: { [action]: expressHandler } } from the central registry
+const PROVIDERS = Object.fromEntries(
+    Object.entries(PROVIDER_REGISTRY).map(([key, config]) => {
+        const actions = {};
+        // Copy all non-metadata fields (track, search, categories, start-crawler, …)
+        for (const [k, v] of Object.entries(config)) {
+            if (!METADATA_KEYS.has(k)) actions[k] = v;
+        }
+        // Auto-generate search handler from raw domain function when no explicit handler
+        if (config.searchFn && !actions.search) {
+            actions.search = makeSearchHandler(config.searchFn);
+        }
+        // Auto-generate products handler from Mongoose model
+        if (config.model) {
+            actions.products = makeProductsHandler(config.model);
+        }
+        return [key, actions];
+    })
+);
+
+// ── Cross-provider routes ─────────────────────────────────────────────────────
+
+// Source models for providers that persist products to the database
+const sourceModels = Object.fromEntries(
+    Object.entries(PROVIDER_REGISTRY)
+        .filter(([, config]) => config.model)
+        .map(([key, config]) => [key, config.model])
+);
+
+router.get("/deals/all", async (req, res, next) => {
     try {
-        const { location, query } = req.body;
-        const result = await flipkartMinutesSearch(location, query);
-        res.status(200).json(result);
+        const { page = "1", pageSize = PAGE_SIZE.toString(), minDiscount = "40" } = req.query;
+        const pageNum = parseInt(page);
+        const pageSizeNum = parseInt(pageSize);
+        const minDiscountNum = parseInt(minDiscount);
+
+        const sourcePromises = Object.entries(sourceModels).map(async ([source, Model]) => {
+            const products = await Model.find({
+                inStock: true,
+                discount: { $gte: minDiscountNum },
+                priceDroppedAt: { $exists: true, $type: "date", $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+            }).sort({ discount: -1, _id: 1 }).limit(50).lean();
+            return products.map((p) => ({ ...p, source }));
+        });
+
+        const allDeals = (await Promise.all(sourcePromises)).flat().sort((a, b) => b.discount - a.discount);
+        const skip = (pageNum - 1) * pageSizeNum;
+        res.status(200).json({
+            data: allDeals.slice(skip, skip + pageSizeNum),
+            totalPages: Math.ceil(allDeals.length / pageSizeNum),
+            currentPage: pageNum,
+            total: allDeals.length,
+        });
     } catch (error) {
         next(error);
     }
-};
-
-// ── Provider registry ─────────────────────────────────────────────────────────
-// Keys are URL-safe provider names; values map action names to Express handlers.
-const PROVIDERS = {
-    "amazon-fresh": { track: amazonFreshStartTracking, products: makeProductsHandler(AmazonFreshProduct) },
-    "bigbasket": { track: BigBasketController.startTracking, categories: BigBasketController.fetchCategories, products: makeProductsHandler(BigBasketProduct) },
-    "blinkit": { track: blinkitStartTracking, search: blinkitSearch, products: makeProductsHandler(BlinkitProduct) },
-    "flipkart-grocery": { track: flipkartGroceryStartTracking, "start-crawler": flipkartGroceryStartCrawler, products: makeProductsHandler(FlipkartGroceryProduct) },
-    "flipkart-minutes": { track: flipkartMinutesStartTracking, search: flipkartMinutesSearchHandler, products: makeProductsHandler(FlipkartMinutesProduct) },
-    "instamart": { track: InstamartController.trackPrices, search: InstamartController.search, products: makeProductsHandler(InstamartProduct) },
-    "jiomart": { track: JioMartController.startTracking, products: makeProductsHandler(JiomartProduct) },
-    "meesho": { search: MeeshoController.search },
-    "zepto": { track: zeptoStartTracking, products: makeProductsHandler(ZeptoProduct) },
-};
+});
 
 // ── Dynamic provider route (/api/:provider/:action) ───────────────────────────
 router.all("/:provider/:action", (req, res, next) => {
