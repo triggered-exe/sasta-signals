@@ -139,7 +139,7 @@ All platform routes share a single dynamic router. Supported combinations:
 | `amazon-fresh`     | ✅ POST | —        | —                    |
 | `bigbasket`        | ✅ POST | —        | GET `categories`     |
 | `blinkit`          | ✅ POST | ✅ POST  | —                    |
-| `flipkart-grocery` | ✅ POST | —        | POST `start-crawler` |
+| `flipkart-grocery` | ✅ POST | ✅ POST  | —                    |
 | `flipkart-minutes` | ✅ GET  | ✅ POST  | —                    |
 | `instamart`        | ✅ POST | ✅ POST  | —                    |
 | `jiomart`          | ✅ POST | —        | —                    |
@@ -151,9 +151,8 @@ All platform routes share a single dynamic router. Supported combinations:
 | Method | Path                       | Description                          |
 | ------ | -------------------------- | ------------------------------------ |
 | GET    | `/api/search?q=&location=` | Unified search across all platforms  |
-| GET    | `/api/products/:source`    | Fetch stored products for a platform |
-| GET    | `/api/products/deals/all`  | All active deals across platforms    |
-| GET    | `/api/products/sources`    | List available platform sources      |
+| GET    | `/api/:provider/products`  | Fetch stored products for a platform |
+| GET    | `/api/deals/all`           | All active deals across platforms    |
 | GET    | `/api/monitoring`          | System health & context status       |
 | GET    | `/api/dashboard`           | Visual monitoring dashboard          |
 
@@ -204,6 +203,9 @@ TELEGRAM_BOT_TOKEN=...
 TELEGRAM_CHANNEL_ID=@channelname
 
 RESEND_API_KEY=...
+
+# BigBasket session cookie (required for category fetching)
+BIGBASKET_COOKIE=your_bigbasket_cookie_string
 
 ENVIRONMENT=development   # or production
 PORT=8000
@@ -355,6 +357,9 @@ MONGO_URI=mongodb://localhost:27017/sasta-signals
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token
 TELEGRAM_CHANNEL_ID=your_telegram_channel_id
 RESEND_API_KEY=your_resend_api_key
+
+# BigBasket session cookie (required for category fetching)
+BIGBASKET_COOKIE=your_bigbasket_cookie_string
 
 # Environment
 ENVIRONMENT=development

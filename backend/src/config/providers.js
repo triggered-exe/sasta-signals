@@ -136,7 +136,6 @@ export const PROVIDER_REGISTRY = {
         locationParam: "pincode",
         searchFn: flipkartGrocerySearch,
         track: flipkartGroceryStartTracking,
-        "start-crawler": flipkartGroceryStartTrackingHandler,
         trackingHandler: flipkartGroceryStartTrackingHandler,
         trackingDefault: "500064",
         trackingDelay: 60 * 1000,
