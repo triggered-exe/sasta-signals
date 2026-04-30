@@ -39,6 +39,41 @@ const colors = {
 
 winston.addColors(colors);
 
+const CRAWLER_LOG_PREFIXES = [
+    'BLINKIT:',
+    'FK-MINUTES:',
+    'IM:',
+    'JIOMART:',
+    'ZEPTO:',
+    'BIGBASKET:',
+    'AMAZON',
+    '[ctx]:',
+];
+
+const isCrawlerLoopLog = (info) => {
+    const message = typeof info.message === 'string' ? info.message : '';
+    return CRAWLER_LOG_PREFIXES.some((prefix) => message.startsWith(prefix));
+};
+
+const fileNoiseFilter = winston.format((info) => {
+    if (process.env.DISABLE_FILE_LOGGING === 'true') return false;
+
+    const disableCrawlerFileLogs = process.env.DISABLE_CRAWLER_FILE_LOGS === 'true';
+    const reduceCrawlerFileLogs = process.env.REDUCE_CRAWLER_FILE_LOGS !== 'false';
+    const isCrawlerLog = isCrawlerLoopLog(info);
+
+    if (disableCrawlerFileLogs && isCrawlerLog) {
+        return false;
+    }
+
+    // Keep crawler warnings/errors on disk, but drop repetitive info/debug chatter by default.
+    if (reduceCrawlerFileLogs && isCrawlerLog && !['warn', 'error'].includes(info.level)) {
+        return false;
+    }
+
+    return info;
+});
+
 // Define format for console output
 const consoleFormat = winston.format.combine(
     winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
@@ -74,6 +109,7 @@ const consoleFormat = winston.format.combine(
 
 // Define format for file output (no colors)
 const fileFormat = winston.format.combine(
+    fileNoiseFilter(),
     winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
     winston.format.errors({ stack: true }),
     winston.format.json()
