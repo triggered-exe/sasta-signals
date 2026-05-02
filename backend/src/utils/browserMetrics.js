@@ -4,6 +4,54 @@ import os from "os";
 import logger from "./logger.js";
 
 const execAsync = promisify(exec);
+const BROWSER_PROCESS_PATTERN = /chrome|chromium|playwright|headless[_-]?shell|msedge/i;
+
+function parseUnixProcessTable(stdout) {
+  const processes = [];
+  const lines = stdout.split("\n");
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+
+    const match = line.match(/^(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/);
+    if (!match) continue;
+
+    processes.push({
+      pid: parseInt(match[1], 10),
+      ppid: parseInt(match[2], 10),
+      rssKB: parseInt(match[3], 10),
+      commandName: match[4],
+      command: match[5],
+    });
+  }
+
+  return processes;
+}
+
+function collectDescendantProcesses(processes, rootPid) {
+  const byParent = new Map();
+  for (const proc of processes) {
+    let bucket = byParent.get(proc.ppid);
+    if (!bucket) {
+      bucket = [];
+      byParent.set(proc.ppid, bucket);
+    }
+    bucket.push(proc);
+  }
+
+  const descendants = [];
+  const queue = byParent.get(rootPid) ? [...byParent.get(rootPid)] : [];
+  // Use an index pointer instead of Array.shift() to keep BFS at O(n).
+  for (let head = 0; head < queue.length; head++) {
+    const current = queue[head];
+    descendants.push(current);
+    const children = byParent.get(current.pid);
+    if (children) queue.push(...children);
+  }
+
+  return descendants;
+}
 
 /**
  * Get system CPU usage percentage (0-100)
@@ -41,45 +89,30 @@ export async function getBrowserProcessMetrics() {
     let processCount = 0;
 
     if (platform === "linux" || platform === "darwin") {
-      // Use ps command for Linux and macOS
-      // Look for chrome/chromium processes (Playwright launches Chromium)
-      // ps aux shows: USER PID %CPU %MEM VSZ RSS TTY STAT START TIME COMMAND
-      // We're interested in RSS (Resident Set Size) which is actual physical memory used
+      // Only count browser processes owned by this Node backend.
+      // This avoids mixing in the user's regular Chrome windows/tabs.
       try {
-        const { stdout } = await execAsync(
-          "ps aux | grep -E '[c]hrome|[c]hromium|[p]laywright'"
+        const { stdout } = await execAsync("ps -eo pid=,ppid=,rss=,comm=,args=");
+        const processes = parseUnixProcessTable(stdout);
+        const descendants = collectDescendantProcesses(processes, process.pid);
+        const browserDescendants = descendants.filter(proc =>
+          BROWSER_PROCESS_PATTERN.test(proc.commandName) || BROWSER_PROCESS_PATTERN.test(proc.command)
         );
 
-        const lines = stdout.trim().split("\n").filter(line => line.length > 0);
+        for (const proc of browserDescendants) {
+          const rssMB = Math.round(proc.rssKB / 1024);
+          totalMemoryMB += rssMB;
+          processCount++;
 
-        for (const line of lines) {
-          const parts = line.trim().split(/\s+/);
-          if (parts.length >= 11) {
-            const pid = parseInt(parts[1]);
-            const cpuPercent = parseFloat(parts[2]);
-            const memPercent = parseFloat(parts[3]);
-            const vsz = parseInt(parts[4]); // Virtual memory size in KB
-            const rss = parseInt(parts[5]); // Resident set size in KB (actual physical memory)
-            const command = parts.slice(10).join(" ");
-
-            // Convert RSS from KB to MB
-            const rssMB = Math.round(rss / 1024);
-            totalMemoryMB += rssMB;
-            processCount++;
-
-            browserProcesses.push({
-              pid,
-              cpuPercent,
-              memPercent,
-              memoryMB: rssMB,
-              vszMB: Math.round(vsz / 1024),
-              command: command.length > 100 ? command.substring(0, 100) + "..." : command
-            });
-          }
+          browserProcesses.push({
+            pid: proc.pid,
+            ppid: proc.ppid,
+            memoryMB: rssMB,
+            command: proc.command.length > 120 ? proc.command.substring(0, 120) + "..." : proc.command
+          });
         }
       } catch (error) {
-        // No browser processes found or command failed
-        logger.debug("[browserMetrics]: No browser processes found or ps command failed");
+        logger.debug(`[browserMetrics]: Could not inspect descendant browser processes: ${error.message || error}`);
       }
     } else if (platform === "win32") {
       // Use tasklist command for Windows
@@ -148,6 +181,8 @@ export async function getBrowserProcessMetrics() {
 
     return {
       platform,
+      scope: platform === "win32" ? "system-browser-processes" : "descendants-of-node-process",
+      ownerPid: process.pid,
       processCount,
       totalMemoryMB,
       averageMemoryMB: processCount > 0 ? Math.round(totalMemoryMB / processCount) : 0,
