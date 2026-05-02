@@ -105,10 +105,12 @@ export const PROVIDER_REGISTRY = {
         locationParam: "pincode",
         searchFn: bigBasketSearch,
         track: bigBasketStartTracking,
-        // bigBasketFetchCategories returns data, not Express response — wrap it here
+        // bigBasketFetchCategories requires a location arg — wrap it here
         categories: async (req, res, next) => {
             try {
-                const data = await bigBasketFetchCategories();
+                const location = req.query.location || req.body.location;
+                if (!location) return next(AppError.badRequest("location query param required"));
+                const data = await bigBasketFetchCategories(location);
                 res.status(200).json({ data });
             } catch (error) {
                 next(error);

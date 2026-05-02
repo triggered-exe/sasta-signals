@@ -1,6 +1,5 @@
 import logger from "../utils/logger.js";
 import { isNightTimeIST } from "../utils/priceTracking.js";
-import axios from "axios";
 import { BigBasketProduct } from "../models/BigBasketProduct.js";
 import { processProducts as globalProcessProducts } from "../utils/productProcessor.js";
 import contextManager from "../utils/contextManager.js";
@@ -176,166 +175,135 @@ export const search = async (location, query) => {
   }
 };
 
+const parseRawProducts = (rawProducts) => {
+  const results = [];
+  for (const p of rawProducts) {
+    const parseNum = (val) => {
+      if (!val) return 0;
+      const n = parseFloat(String(val).replace(/[^0-9.]/g, ""));
+      return Number.isFinite(n) ? n : 0;
+    };
+    const price = parseNum(p?.pricing?.discount?.prim_price?.sp || p?.pricing?.discount?.prim_price?.base_price || p?.pricing?.subscription_price);
+    const mrp = parseNum(p?.pricing?.discount?.mrp) || price;
+    const product = {
+      id: p?.id?.toString() || p?.requested_sku_id?.toString() || "",
+      name: (p?.desc || "").toString().trim(),
+      brand: p?.brand?.name || "",
+      weight: p?.w || p?.unit || p?.pack_desc || "",
+      price,
+      mrp,
+      discount: mrp > 0 && price > 0 ? parseFloat((((mrp - price) / mrp) * 100).toFixed(2)) : 0,
+      image: (p?.images?.[0] && (p.images[0].m || p.images[0].l || p.images[0].s)) || "",
+      url: p?.absolute_url ? `https://www.bigbasket.com${p.absolute_url}` : "",
+      inStock: !!(p?.availability?.avail_status === "001" && !p?.availability?.not_for_sale),
+    };
+    if (product.name && product.price > 0) results.push(product);
+  }
+  return results;
+};
+
 // Extract products from a page - can handle both category pages and search pages
 const extractProductsFromPage = async (page, category = null, searchQuery = null, maxPagesToFetch = 25) => {
   try {
-    // If category is provided, navigate to category page first
-    let baseUrl = '';
-    if (category?.url) {
+    if (category?.slug) {
       logger.info(`BB: Processing category: ${category.name}`);
-      baseUrl = `https://www.bigbasket.com/${category.url}/`;
-    } else if (searchQuery) {
-      logger.info(`BB: Processing search query: ${searchQuery}`);
-      baseUrl = `https://www.bigbasket.com/ps/?q=${encodeURIComponent(searchQuery)}`;
-    }
+      await page.goto("https://www.bigbasket.com/", { waitUntil: "domcontentloaded" });
 
-    if (!baseUrl) {
-      throw new Error("BB: No category or search query provided for product extraction");
-    }
+      const allProducts = [];
+      let currentPage = 1;
+      let totalPages = 1;
 
-    // Visit the first page once to establish session
-    const firstPageUrl = baseUrl.includes('?') ? `${baseUrl}&page=1` : `${baseUrl}?page=1`;
-    logger.info(`BB: Initial page load: ${firstPageUrl}`);
+      while (currentPage <= Math.min(totalPages, maxPagesToFetch)) {
+        const apiUrl = `https://www.bigbasket.com/listing-svc/v2/products?type=pc&slug=${category.slug}&page=${currentPage}&sort=dphtl`;
 
-    await page.goto(firstPageUrl, { waitUntil: "domcontentloaded" });
-    await new Promise(resolve => setTimeout(resolve, 3000));
-
-    // Check for Access Denied
-    const accessDenied = await page.evaluate(() => {
-      const h1 = document.querySelector('h1');
-      return h1 && h1.textContent.includes('Access Denied');
-    });
-    if (accessDenied) {
-      logger.info("BB: Access denied - IP appears to be blocked by BigBasket");
-      throw AppError.badRequest("BB: Access denied - IP appears to be blocked by BigBasket");
-    }
-
-    const allProducts = [];
-    let currentPage = 1;
-    let hasMoreProducts = true;
-
-    // Fetch products by making fetch calls inside the browser context
-    while (hasMoreProducts && currentPage <= maxPagesToFetch) {
-      try {
-        const pageUrl = baseUrl.includes('?')
-          ? `${baseUrl}&page=${currentPage}`
-          : `${baseUrl}?page=${currentPage}`;
-
-        logger.info(`BB: Fetching page ${currentPage} via fetch`);
-
-        // Make fetch call inside browser context and parse the JSON data
-        const products = await page.evaluate(async (url) => {
-          try {
-            const response = await fetch(url, { credentials: 'include' });
-            if (!response.ok) {
-              return { error: `HTTP ${response.status}` };
-            }
-
-            const html = await response.text();
-
-            // Extract JSON data from __NEXT_DATA__ script tag
-            const nextDataMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/s);
-            if (!nextDataMatch) {
-              return { error: 'No __NEXT_DATA__ found' };
-            }
-
-            const nextData = JSON.parse(nextDataMatch[1]);
-            const ssrData = nextData?.props?.pageProps?.SSRData;
-
-            if (!ssrData?.tabs?.[0]?.product_info?.products) {
-              return { products: [] };
-            }
-
-            const rawProducts = ssrData.tabs[0].product_info.products;
-            const extractedProducts = [];
-
-            rawProducts.forEach((p) => {
-              try {
-                const parseNum = (val) => {
-                  if (!val) return 0;
-                  const s = String(val).replace(/[^0-9.]/g, "");
-                  const n = parseFloat(s);
-                  return Number.isFinite(n) ? n : 0;
-                };
-
-                const priceStr = p?.pricing?.discount?.prim_price?.sp || p?.pricing?.discount?.prim_price?.base_price || p?.pricing?.subscription_price || null;
-                const mrpStr = p?.pricing?.discount?.mrp || null;
-
-                const price = parseNum(priceStr);
-                const mrp = parseNum(mrpStr) || price;
-                const discount = mrp > 0 && price > 0 ? parseFloat((((mrp - price) / mrp) * 100).toFixed(2)) : 0;
-
-                // Get image from images array (prefer medium size)
-                const image = (p?.images && p.images[0] && (p.images[0].m || p.images[0].l || p.images[0].s)) || "";
-
-                const url = p?.absolute_url ? `https://www.bigbasket.com${p.absolute_url}` : "";
-
-                const inStock = !!(
-                  p?.availability &&
-                  p.availability.avail_status === "001" &&
-                  p.availability.not_for_sale !== true
-                );
-
-                const weight = p?.w || p?.unit || p?.pack_desc || "";
-
-                const product = {
-                  id: p?.id?.toString() || p?.requested_sku_id?.toString() || "",
-                  name: (p?.desc || "").toString().trim(),
-                  brand: p?.brand?.name || "",
-                  weight: weight,
-                  price: price,
-                  mrp: mrp,
-                  discount: discount,
-                  image: image,
-                  url: url,
-                  inStock: inStock,
-                };
-
-                if (product.name && product.price > 0) {
-                  extractedProducts.push(product);
-                }
-              } catch (err) {
-                console.error('Error parsing product:', err);
-              }
-            });
-
-            return { products: extractedProducts };
-          } catch (error) {
-            return { error: String(error) };
+        let data = null;
+        for (let attempt = 0; attempt < 4; attempt++) {
+          if (attempt > 0) {
+            const delay = attempt * 30 * 1000; // 30s, 60s, 90s
+            logger.info(`BB: 429 on page ${currentPage}, retrying in ${delay / 1000}s (attempt ${attempt + 1}/4)`);
+            await new Promise(r => setTimeout(r, delay));
           }
-        }, pageUrl);
-
-        if (products.error) {
-          logger.error(`BB: Error fetching page ${currentPage}: ${products.error}`, { error: products.error });
-          hasMoreProducts = false;
-          break;
+          data = await page.evaluate(async (url) => {
+            try {
+              const res = await fetch(url, {
+                credentials: "include",
+                headers: {
+                  "accept": "*/*",
+                  "x-channel": "BB-WEB",
+                  "x-entry-context": "bbnow",
+                  "x-entry-context-id": "10",
+                  "osmos-enabled": "true",
+                },
+              });
+              if (res.status === 429) return { rateLimited: true };
+              if (!res.ok) return { error: `HTTP ${res.status}` };
+              const text = await res.text();
+              if (!text) return { error: "Empty response" };
+              return JSON.parse(text);
+            } catch (e) { return { error: String(e) }; }
+          }, apiUrl);
+          if (!data.rateLimited) break;
         }
 
-        logger.info(`BB: Extracted ${products.products.length} products from page ${currentPage}`);
+        if (data.rateLimited) { logger.error(`BB: Rate limited on page ${currentPage} after retries, stopping category`); break; }
+        if (data.error) { logger.error(`BB: API error page ${currentPage}: ${data.error}`); break; }
 
-        if (products.products.length === 0) {
-          hasMoreProducts = false;
-          break;
-        }
+        const productInfo = data.tabs?.[0]?.product_info;
+        if (!productInfo?.products?.length) break;
 
-        allProducts.push(...products.products);
+        totalPages = productInfo.number_of_pages || 1;
+        allProducts.push(...parseRawProducts(productInfo.products));
+        logger.info(`BB: Page ${currentPage}/${totalPages}: ${productInfo.products.length} products`);
         currentPage++;
-
-        // Safety: avoid hammering the server
-        await new Promise(resolve => setTimeout(resolve, 500));
-      } catch (pageError) {
-        logger.error(`BB: Error fetching products from page ${currentPage}: ${pageError?.message || pageError}`, { error: pageError });
-        hasMoreProducts = false;
+        await new Promise(r => setTimeout(r, 1000));
       }
+
+      logger.info(`BB: Extracted ${allProducts.length} products from category ${category.name}`);
+      return allProducts;
     }
 
-    const contextInfo = category ? `category ${category.name}` : "page";
-    logger.info(`BB: Successfully extracted ${allProducts.length} products from ${contextInfo}`);
-    return allProducts;
+    if (searchQuery) {
+      logger.info(`BB: Processing search query: ${searchQuery}`);
+      const baseUrl = `https://www.bigbasket.com/ps/?q=${encodeURIComponent(searchQuery)}`;
+      await page.goto(`${baseUrl}&page=1`, { waitUntil: "domcontentloaded" });
+      await new Promise(r => setTimeout(r, 3000));
+
+      const accessDenied = await page.evaluate(() => document.querySelector('h1')?.textContent.includes('Access Denied'));
+      if (accessDenied) throw AppError.badRequest("BB: Access denied - IP appears to be blocked by BigBasket");
+
+      const allProducts = [];
+      let currentPage = 1;
+
+      while (currentPage <= maxPagesToFetch) {
+        const result = await page.evaluate(async (url) => {
+          try {
+            const res = await fetch(url, { credentials: "include" });
+            if (!res.ok) return { error: `HTTP ${res.status}` };
+            const html = await res.text();
+            const match = html.match(/<script id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/s);
+            if (!match) return { products: [] };
+            const raw = JSON.parse(match[1])?.props?.pageProps?.SSRData?.tabs?.[0]?.product_info?.products;
+            return { products: raw || [] };
+          } catch (e) { return { error: String(e) }; }
+        }, `${baseUrl}&page=${currentPage}`);
+
+        if (result.error) { logger.error(`BB: Search page ${currentPage} error: ${result.error}`); break; }
+        if (!result.products.length) break;
+
+        allProducts.push(...parseRawProducts(result.products));
+        currentPage++;
+        await new Promise(r => setTimeout(r, 500));
+      }
+
+      logger.info(`BB: Extracted ${allProducts.length} products from search`);
+      return allProducts;
+    }
+
+    throw new Error("BB: No category or search query provided");
   } catch (error) {
-    const contextInfo = category ? `category ${category.name}` : "page";
-    logger.error(`BB: Error fetching products for ${contextInfo}: ${error.message || error}`, { error });
-    await new Promise((resolve) => setTimeout(resolve, 1 * 60 * 1000));
+    const ctx = category ? `category ${category.name}` : "search";
+    logger.error(`BB: Error fetching products for ${ctx}: ${error.message || error}`, { error });
+    await new Promise(r => setTimeout(r, 60 * 1000));
     return [];
   }
 };
@@ -368,7 +336,7 @@ export const startTrackingHandler = async (location) => {
         break;
       }
 
-      const categories = await fetchCategories(); // Contains all the final categories in flattened format
+      const categories = await fetchCategories(location); // Contains all the final categories in flattened format
       if (!categories || categories.length === 0) {
         logger.info("BB: No categories found");
         continue;
@@ -479,37 +447,40 @@ export const startTracking = async (req, res, next) => {
   }
 };
 
-export const fetchCategories = async () => {
+export const fetchCategories = async (location) => {
+  let page = null;
   try {
-    const response = await axios.get("https://www.bigbasket.com/ui-svc/v1/category-tree?x-channel=BB-PWA", {
-      headers: {
-        accept: "*/*",
-        cookie: process.env.BIGBASKET_COOKIE || '',
-      },
+    const context = await contextManager.getContext(location);
+    page = await contextManager.createPage(context, 'bigbasket');
+    await page.goto("https://www.bigbasket.com/", { waitUntil: "domcontentloaded", timeout: 30000 });
+
+    const categories = await page.evaluate(async () => {
+      try {
+        const res = await fetch("https://www.bigbasket.com/ui-svc/v1/category-tree?x-channel=BB-PWA", { credentials: "include" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const text = await res.text();
+        if (!text) throw new Error("Empty response");
+        const data = JSON.parse(text);
+
+        const results = [];
+        const walk = (cats) => {
+          if (!Array.isArray(cats)) return;
+          for (const cat of cats) {
+            if (cat.level === 0) results.push({ id: cat.id, name: cat.name, slug: cat.url.replace(/^\/?(cl\/)?|\/$/g, "") });
+            if (cat.children) walk(cat.children);
+          }
+        };
+        walk(data.categories);
+        return results;
+      } catch (e) { throw new Error(String(e)); }
     });
 
-    let processedCategories = [];
-
-    // Process the categories recursively
-    const processCategories = (categories) => {
-      if (!Array.isArray(categories)) return [];
-
-      categories.map((category) => {
-        if (category?.level === 1) {
-          processedCategories.push(category);
-        }
-
-        if (category?.children && Array.isArray(category?.children)) {
-          processCategories(category?.children);
-        }
-      });
-    };
-
-    processCategories(response.data?.categories);
-
-    return processedCategories;
+    logger.info(`BB: Fetched ${categories.length} categories`);
+    return categories;
   } catch (error) {
-    logger.error(`Error fetching categories: ${error.response?.data || error.message || error}`, { error });
+    logger.error(`Error fetching categories: ${error.message || error}`, { error });
     throw AppError.internalError("Failed to fetch categories");
+  } finally {
+    if (page) await page.close();
   }
 };
