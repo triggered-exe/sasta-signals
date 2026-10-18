@@ -1,5 +1,4 @@
 import logger from "../utils/logger.js";
-import axios from "axios";
 import { ZeptoProduct } from "../models/ZeptoProduct.js";
 import contextManager from "../utils/contextManager.js";
 import { AppError } from "../utils/errorHandling.js";
@@ -92,12 +91,36 @@ const setLocation = async (location) => {
 };
 
 const fetchCategories = async (location = 500064) => {
+  let page = null;
   try {
-    // Fetch the sitemap XML
-    const response = await axios.get("https://www.zepto.com/sitemap/categories/hyderabad.xml");
+    // Ensure location is set up (reuses existing context if available)
+    const context = await setLocation(location);
 
-    // Parse the URLs from the XML content
-    const unfilteredUrls = response.data.match(/https:\/\/www\.zepto\.com\/city\/[^<]+/g) || [];
+    page = await contextManager.createPage(context, 'zepto');
+
+    // Navigate to homepage where category links are rendered
+    await page.goto("https://www.zepto.com/", {
+      waitUntil: "domcontentloaded",
+    });
+
+    // Wait for category links to render
+    try {
+      await page.waitForSelector('a[href*="/cn/"]', { timeout: 10000 });
+    } catch (e) {
+      // Continue even if selector times out; we will still try to collect links
+    }
+    await page.waitForTimeout(5000);
+
+    // Collect unique category URLs from the rendered page
+    const unfilteredUrls = await page.evaluate(() => {
+      return Array.from(
+        new Set(
+          Array.from(document.querySelectorAll("a"))
+            .map((a) => a.href)
+            .filter((href) => href && href.includes("/cn/") && href.includes("/cid/") && href.includes("/scid/"))
+        )
+      );
+    });
 
     // Process URLs to extract categories and their subcategories
     const categoryMap = new Map();
@@ -145,7 +168,7 @@ const fetchCategories = async (location = 500064) => {
     urls.forEach((url) => {
       const parts = url.split("/");
 
-      // URL structure: /city/hyderabad/cn/category-name/subcategory-name/cid/category-id/scid/subcategory-id
+      // URL structure: /cn/category-name/subcategory-name/cid/category-id/scid/subcategory-id
       const categoryIndex = parts.indexOf("cn") + 1;
       const cidIndex = parts.indexOf("cid") + 1;
       const scidIndex = parts.indexOf("scid") + 1;
@@ -187,11 +210,12 @@ const fetchCategories = async (location = 500064) => {
     }));
     return categories;
   } catch (error) {
-    logger.error(`Zepto: Error fetching categories from sitemap: ${error?.response?.data || error.message || error}`, { error });
+    logger.error(`Zepto: Error fetching categories from page: ${error?.message || error}`, { error });
     throw AppError.internalError("Failed to fetch categories");
+  } finally {
+    if (page) await page.close();
   }
 };
-
 
 export const startTracking = async (req, res, next) => {
   try {
@@ -572,7 +596,7 @@ export const startTrackingHelper = async (location = "500064") => {
       logger.info(`Zepto: Starting new tracking cycle at: ${cycleStartTime.toISOString()}`);
 
       // Get all categories and flatten subcategories into a single array
-      const categories = await fetchCategories();
+      const categories = await fetchCategories(location);
       const allSubcategories = categories.reduce((acc, category) => {
         return acc.concat(category.subcategories);
       }, []);
