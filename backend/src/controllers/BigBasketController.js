@@ -45,13 +45,23 @@ const setLocation = async (pincode) => {
 
     // Try to find and click location selector
     try {
-      // Click location button
+      // Click location button — the button text is dynamic e.g. "Delivery in 45 mins Select Location"
+      // so we match on the stable "select location" substring (case-insensitive).
       const buttonClicked = await page.evaluate(() => {
-        const btn = Array.from(document.querySelectorAll('button, div[role="button"]'))
-          .find(b => b.textContent?.toLowerCase().includes('delivery in 10 mins') &&
-            b.textContent?.toLowerCase().includes('select location'));
-        if (btn) btn.click();
-        return !!btn;
+        const allButtons = Array.from(document.querySelectorAll('button, div[role="button"]'));
+        const text = (el) => el.textContent?.toLowerCase() ?? '';
+
+        // Primary: button containing 'select location' (covers all delivery-time variants)
+        let btn = allButtons.find(b => text(b).includes('select location'));
+
+        // Fallback: 'change location' (already-set state)
+        if (!btn) btn = allButtons.find(b => text(b).includes('change location'));
+
+        // Fallback: attribute-based
+        if (!btn) btn = document.querySelector('[aria-label*="location" i], [data-qa*="location" i], [data-testid*="location" i]');
+
+        if (btn) { btn.click(); return true; }
+        return false;
       });
 
       if (buttonClicked) {
@@ -205,16 +215,32 @@ const parseRawProducts = (rawProducts) => {
 // Extract products from a page - can handle both category pages and search pages
 const extractProductsFromPage = async (page, category = null, searchQuery = null, maxPagesToFetch = 25) => {
   try {
-    if (category?.slug) {
+    if (category?.path || category?.slug) {
       logger.info(`BB: Processing category: ${category.name}`);
       await page.goto("https://www.bigbasket.com/", { waitUntil: "domcontentloaded" });
+
+      // The category HTML pages and /listing-svc/v2/products are blocked by
+      // Akamai, but the Next.js data route remains reachable and supports
+      // the same server-rendered product listing with pagination.
+      // See backend/BIGBASKET_README.md for the endpoint/anti-bot details.
+      if (!bigBasketBuildId) {
+        await page.waitForFunction(() => !!window.__NEXT_DATA__?.buildId, null, { timeout: 15000 }).catch(() => {});
+        const freshBuildId = await page.evaluate(() => window.__NEXT_DATA__?.buildId || null);
+        if (freshBuildId) bigBasketBuildId = freshBuildId;
+      }
+      const buildId = bigBasketBuildId;
+      if (!buildId) {
+        logger.error("BB: Could not determine Next.js buildId");
+        return [];
+      }
 
       const allProducts = [];
       let currentPage = 1;
       let totalPages = 1;
 
       while (currentPage <= Math.min(totalPages, maxPagesToFetch)) {
-        const apiUrl = `https://www.bigbasket.com/listing-svc/v2/products?type=pc&slug=${category.slug}&page=${currentPage}&sort=dphtl`;
+        const categoryPath = category.path || `cl/${category.slug}`;
+        const apiUrl = `https://www.bigbasket.com/_next/data/${buildId}/${categoryPath}.json?page=${currentPage}`;
 
         let data = null;
         for (let attempt = 0; attempt < 4; attempt++) {
@@ -248,7 +274,7 @@ const extractProductsFromPage = async (page, category = null, searchQuery = null
         if (data.rateLimited) { logger.error(`BB: Rate limited on page ${currentPage} after retries, stopping category`); break; }
         if (data.error) { logger.error(`BB: API error page ${currentPage}: ${data.error}`); break; }
 
-        const productInfo = data.tabs?.[0]?.product_info;
+        const productInfo = data?.pageProps?.SSRData?.tabs?.[0]?.product_info || data?.tabs?.[0]?.product_info;
         if (!productInfo?.products?.length) break;
 
         totalPages = productInfo.number_of_pages || 1;
@@ -309,6 +335,7 @@ const extractProductsFromPage = async (page, category = null, searchQuery = null
 };
 
 let isBigBasketCrawlerRunning = false;
+let bigBasketBuildId = null;
 export const startTrackingHandler = async (location) => {
   if (isBigBasketCrawlerRunning) {
     throw AppError.badRequest("BigBasket crawler is already running");
@@ -360,7 +387,7 @@ export const startTrackingHandler = async (location) => {
             try {
               page = await contextManager.createPage(context, 'bigbasket');
 
-              const products = await extractProductsFromPage(page, category, null, 25);
+              const products = await extractProductsFromPage(page, category, null, 500);
 
               if (products.length > 0) {
                 const transformedProducts = products.map((product) => ({
@@ -454,6 +481,12 @@ export const fetchCategories = async (location) => {
     page = await contextManager.createPage(context, 'bigbasket');
     await page.goto("https://www.bigbasket.com/", { waitUntil: "domcontentloaded", timeout: 30000 });
 
+    // Cache the Next.js build id used by the data route. Reading it here avoids
+    // relying on a fresh homepage navigation for every category.
+    await page.waitForFunction(() => !!window.__NEXT_DATA__?.buildId, null, { timeout: 15000 }).catch(() => {});
+    const freshBuildId = await page.evaluate(() => window.__NEXT_DATA__?.buildId || null);
+    if (freshBuildId) bigBasketBuildId = freshBuildId;
+
     const categories = await page.evaluate(async () => {
       try {
         const res = await fetch("https://www.bigbasket.com/ui-svc/v1/category-tree?x-channel=BB-PWA", { credentials: "include" });
@@ -463,10 +496,18 @@ export const fetchCategories = async (location) => {
         const data = JSON.parse(text);
 
         const results = [];
+        const seenPaths = new Set();
         const walk = (cats) => {
           if (!Array.isArray(cats)) return;
           for (const cat of cats) {
-            if (cat.level === 0) results.push({ id: cat.id, name: cat.name, slug: cat.url.replace(/^\/?(cl\/)?|\/$/g, "") });
+            if (cat.level === 0 && cat.url) {
+              // Keep the full category path for the Next.js data route
+              const path = cat.url.replace(/^\/+|\/+$/g, "");
+              if (path && !seenPaths.has(path)) {
+                seenPaths.add(path);
+                results.push({ id: cat.id, name: cat.name, slug: path.split("/").pop(), path });
+              }
+            }
             if (cat.children) walk(cat.children);
           }
         };
@@ -475,8 +516,23 @@ export const fetchCategories = async (location) => {
       } catch (e) { throw new Error(String(e)); }
     });
 
-    logger.info(`BB: Fetched ${categories.length} categories`);
-    return categories;
+    const unwantedCategories = [
+      "baby", "kids", "child", "toys",
+      "women", "woman", "girls", "feminine", "maternity",
+      "jewellery", "jewelry", "fashion",
+      "meat", "fish", "egg", "chicken", "mutton", "seafood", "non-veg", "non veg",
+    ];
+    const isUnwantedCategory = (category) => {
+      const name = (category.name || "").toLowerCase();
+      return unwantedCategories.some((unwanted) => name.includes(unwanted));
+    };
+    const filteredCategories = categories.filter((category) => !isUnwantedCategory(category));
+    const removedCategories = categories.filter((category) => isUnwantedCategory(category));
+    if (removedCategories.length) {
+      logger.info(`BB: Filtered out categories: ${removedCategories.map((category) => category.name).join(", ")}`);
+    }
+    logger.info(`BB: Fetched ${filteredCategories.length} categories`);
+    return filteredCategories;
   } catch (error) {
     logger.error(`Error fetching categories: ${error.message || error}`, { error });
     throw AppError.internalError("Failed to fetch categories");

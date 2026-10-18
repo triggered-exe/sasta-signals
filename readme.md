@@ -468,10 +468,10 @@ cd backend && pnpm start
 
 ### Platform-Specific Features
 
-- **Instamart**: Category-based tracking with subcategory support
-- **BigBasket**: API-based product fetching with location validation
+- **Instamart**: Category/subcategory discovery from the current `instamart.in` client state
+- **BigBasket**: Full paginated product fetching via the Next.js data route — see [BigBasket notes](backend/BIGBASKET_README.md)
 - **Blinkit**: Infinite scroll handling for complete product discovery
-- **Zepto**: Sitemap-based category discovery
+- **Zepto**: Category discovery by scraping the rendered homepage (the sitemap endpoint is blocked)
 - **Amazon Fresh**: Search-based product tracking
 - **Flipkart Grocery**: Query-based product search
 - **Meesho**: Social commerce product tracking
