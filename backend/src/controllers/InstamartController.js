@@ -633,7 +633,7 @@ const fetchProductCategories = async (location = "500064") => {
         }
 
         // Extract browser data (cookies, storeId, lat/lng)
-        const { cookies, storeId } = await extractBrowserData(location, true);
+        await extractBrowserData(location, true);
 
         // Get the context for this location to make API calls
         const context = await contextManager.getContext(location);
@@ -641,70 +641,21 @@ const fetchProductCategories = async (location = "500064") => {
 
         try {
             page = await contextManager.createPage(context, 'instamart');
-            let retryCount = 0;
-            const MAX_RETRIES = 3;
-            let widgets = [];
 
-            while (retryCount < MAX_RETRIES) {
-                try {
-                    // Navigate to the API URL directly in the browser
-                    await page.goto(`https://www.swiggy.com/api/instamart/layout?layoutId=3742&limit=40&pageNo=0&serviceLine=INSTAMART&customerPage=STORES_MENU&hasMasthead=false&storeId=${storeId}&primaryStoreId=${storeId}&secondaryStoreId=`, {
-                        waitUntil: "networkidle"
-                    });
+            // The old /api/instamart/layout?customerPage=STORES_MENU endpoint now
+            // returns 403. Instamart's standalone site exposes the category menu
+            // and per-category subcategory tabs through its client-side state.
+            await page.goto("https://instamart.in/", { waitUntil: "domcontentloaded", timeout: 30000 });
+            await page.waitForFunction(
+                () => !!(window.___INITIAL_STATE___?.instamart?.footerData?.categories?.length),
+                null,
+                { timeout: 20000 }
+            );
 
-                    // Extract the JSON data from the page
-                    const jsonData = await page.evaluate(() => {
-                        try {
-                            return JSON.parse(document.body.textContent);
-                        } catch (e) {
-                            return null;
-                        }
-                    });
-
-                    if (!jsonData?.data?.widgets) {
-                        logger.info(`IM: Attempt ${retryCount + 1}/${MAX_RETRIES} - No widgets found in response, refreshing...`);
-                        await page.reload({ waitUntil: "networkidle" });
-                        retryCount++;
-                        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before retry
-                        continue;
-                    }
-
-                    widgets = jsonData.data.widgets.filter(
-                        (widget) => widget.widgetInfo?.widgetType === "TAXONOMY"
-                    );
-
-                    if (widgets.length > 0) {
-                        break; // Successfully got widgets, exit retry loop
-                    }
-
-                    retryCount++;
-                    await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before retry
-                } catch (error) {
-                    logger.error(`IM: Attempt ${retryCount + 1}/${MAX_RETRIES} failed: ${error.message || error}`, { error });
-                    retryCount++;
-                    if (retryCount === MAX_RETRIES) {
-                        throw new Error("Failed to fetch categories after max retries");
-                    }
-                    await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before retry
-                }
-            }
-
-            if (widgets.length === 0) {
-                throw new Error("No taxonomy widgets found after all retries");
-            }
-
-            // From widgets get the categories
-            const allCategoriesWithSubCategories = widgets.flatMap((widget) =>
-                widget.data.map((category) => ({
-                    nodeId: category.nodeId,
-                    name: category.displayName,
-                    taxonomyType: widget.widgetInfo.taxonomyType,
-                    subCategories: category.nodes.map((node) => ({
-                        nodeId: node.nodeId,
-                        name: node.displayName,
-                        image: node.imageId,
-                        productCount: node.productCount,
-                    })),
+            const topCategories = await page.evaluate(() =>
+                window.___INITIAL_STATE___.instamart.footerData.categories.map((category) => ({
+                    name: category.text,
+                    url: category.link,
                 }))
             );
 
@@ -713,13 +664,85 @@ const fetchProductCategories = async (location = "500064") => {
                 "fish", "kids", "boys", "toys", "unlisted", "books", "pet-care", "elderly", "cleaning-essentials",
                 "home-needs", "makeup", "home",
                 "lips", "face", "eyes", "nail", "beauty", "gardening"]
-            const filteredCategories = allCategoriesWithSubCategories.filter((category => {
-                // Check if the category name contains any unwanted keywords
-                if (unwantedCategories.some(unwanted => category.name.toLowerCase().includes(unwanted))) {
-                    return false;
+
+            const filteredTopCategories = topCategories.filter((category) => {
+                return !unwantedCategories.some(unwanted => category.name.toLowerCase().includes(unwanted));
+            });
+
+            const allCategoriesWithSubCategories = [];
+
+            for (const topCategory of filteredTopCategories) {
+                try {
+                    // Each category page exposes its subcategory tabs, including the
+                    // filterId and taxonomyType required by the listing API.
+                    await page.goto(topCategory.url, { waitUntil: "domcontentloaded", timeout: 30000 });
+                    await page.waitForFunction(() => {
+                        const navigationTabs = window.___INITIAL_STATE___?.categoryListingV2?.navigationTabs;
+                        if (!navigationTabs) return false;
+                        return Array.isArray(navigationTabs)
+                            ? navigationTabs.length > 0
+                            : Object.keys(navigationTabs).length > 0;
+                    }, null, { timeout: 15000 });
+
+                    const categoryData = await page.evaluate(() => {
+                        const listing = window.___INITIAL_STATE___?.categoryListingV2;
+                        const navigationTabs = listing?.navigationTabs;
+                        if (!navigationTabs) return null;
+
+                        const tabs = Array.isArray(navigationTabs)
+                            ? navigationTabs
+                            : navigationTabs[Object.keys(navigationTabs)[0]] || [];
+
+                        if (!tabs.length) return null;
+
+                        const parseDeepLink = (deepLink) => {
+                            try {
+                                return new URL(deepLink, "https://instamart.in").searchParams;
+                            } catch (e) {
+                                return new URLSearchParams();
+                            }
+                        };
+
+                        const firstParams = parseDeepLink(tabs[0].deepLink || "");
+                        const subCategories = tabs
+                            .map((tab) => {
+                                const params = parseDeepLink(tab.deepLink || "");
+                                const nodeId = params.get("filterId") || "";
+                                if (!nodeId) return null;
+                                return {
+                                    nodeId,
+                                    name: params.get("filterName") || tab.name,
+                                    image: tab.imageId || "",
+                                    productCount: 0,
+                                };
+                            })
+                            .filter(Boolean);
+
+                        if (!subCategories.length) return null;
+
+                        return {
+                            nodeId: listing.selectedSubCategoryId || firstParams.get("filterId") || "",
+                            name: firstParams.get("categoryName") || tabs[0].name,
+                            taxonomyType: firstParams.get("taxonomyType") || "",
+                            subCategories,
+                        };
+                    });
+
+                    if (categoryData && categoryData.taxonomyType) {
+                        allCategoriesWithSubCategories.push(categoryData);
+                    } else {
+                        logger.info(`IM: Skipping category ${topCategory.name} - no usable subcategories found`);
+                    }
+                } catch (error) {
+                    logger.error(`IM: Error fetching subcategories for ${topCategory.name}: ${error.message || error}`, { error });
                 }
-                return true
-            })).map((category) => {
+            }
+
+            if (allCategoriesWithSubCategories.length === 0) {
+                throw new Error("No categories found on instamart.in");
+            }
+
+            const filteredCategories = allCategoriesWithSubCategories.map((category) => {
                 // Filter subcategories for unwanted keywords
                 const filteredSubCategories = category.subCategories.filter(subCategory => {
                     return !unwantedCategories.some(unwanted => subCategory.name.toLowerCase().includes(unwanted));
@@ -737,7 +760,7 @@ const fetchProductCategories = async (location = "500064") => {
                 categories: filteredCategories,
             };
 
-            logger.info(`IM: Successfully cached categories for location ${location}`);
+            logger.info(`IM: Successfully cached ${filteredCategories.length} categories for location ${location}`);
             return placesData[location];
 
         } finally {
