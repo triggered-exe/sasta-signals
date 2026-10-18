@@ -80,7 +80,7 @@ flowchart TD
 ## 🚀 Features
 
 - **9 platforms** — Amazon Fresh, BigBasket, Blinkit, Flipkart Grocery, Flipkart Minutes, Instamart, JioMart, Meesho, Zepto
-- **Browser-side API calls** — `page.evaluate(fetch())` for platforms that use CDN-routed or session-authenticated APIs (Blinkit, Flipkart Minutes)
+- **Browser-side API calls** — `page.evaluate(fetch())` for CDN-routed/session-authenticated APIs (Blinkit); Playwright `page.request` for Flipkart Minutes to share cookies and bypass CORS
 - **Cloudflare 403 handling** — automatic page reload + retry on rate-limited responses
 - **Smart context reuse** — one Playwright `BrowserContext` per location, single page reused across all categories per cycle
 - **Night guard** — tracking pauses 12 AM – 6 AM IST
@@ -470,6 +470,7 @@ cd backend && pnpm start
 
 - **Instamart**: Category/subcategory discovery from the current `instamart.in` client state
 - **BigBasket**: Full paginated product fetching via the Next.js data route — see [BigBasket notes](backend/BIGBASKET_README.md)
+- **Flipkart Minutes**: Homepage category-card discovery + paginated page JSON API — see [Flipkart Minutes notes](backend/FLIPKART_MINUTES_README.md)
 - **Blinkit**: Infinite scroll handling for complete product discovery
 - **Zepto**: Category discovery by scraping the rendered homepage (the sitemap endpoint is blocked)
 - **Amazon Fresh**: Search-based product tracking

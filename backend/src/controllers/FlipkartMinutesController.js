@@ -30,51 +30,59 @@ export const setLocation = async (address) => {
             timeout: 30000,
         });
 
-        await page.waitForTimeout(3000);
+        // Give the checkout page time to initialize the Google autocomplete.
+        await page.waitForTimeout(5000);
 
         // Type address in the search box
         const searchInputSelector = '#search';
-        await page.waitForSelector(searchInputSelector, { timeout: 10000 });
-        await page.focus(searchInputSelector);
+        await page.waitForSelector(searchInputSelector, { timeout: 15000 });
 
-        // Use keyboard type to be safe
-        await page.keyboard.type(address);
-        logger.info(`FK-MINUTES: Typed address: ${address}`);
-
-        await page.waitForTimeout(3000);
-
-        // Click the first suggestion - Use image-based detection as requested
-        const selectionDone = await page.evaluate(() => {
-            const iconPart = 'LocationDrop-2c16dee9.svg';
-            const allImages = [...document.querySelectorAll('img')];
-            const locationIcon = allImages.find(img => img.src && img.src.includes(iconPart));
-
-            if (locationIcon) {
-                // Find the parent item (usually an li or a div)
-                let parent = locationIcon.parentElement;
-                while (parent && parent.tagName !== 'LI' && !parent.className.includes('_') && parent.tagName !== 'DIV') {
-                    parent = parent.parentElement;
-                }
-                if (parent) {
-                    parent.click();
-                    return true;
-                }
+        const typeAddress = async () => {
+            await page.fill(searchInputSelector, "");
+            await page.focus(searchInputSelector);
+            // Small delay between keystrokes so the autocomplete request fires reliably
+            await page.keyboard.type(address, { delay: 60 });
+            logger.info(`FK-MINUTES: Typed address: ${address}`);
+            try {
+                await page.waitForSelector('img[src*="LocationDrop"]', { timeout: 15000 });
+                return true;
+            } catch (e) {
+                return false;
             }
+        };
 
-            return false;
+        let suggestionsVisible = await typeAddress();
+        if (!suggestionsVisible) {
+            logger.warn("FK-MINUTES: Address suggestions not found, retrying...");
+            await page.waitForTimeout(3000);
+            suggestionsVisible = await typeAddress();
+        }
+
+        if (!suggestionsVisible) {
+            throw AppError.badRequest(`Location ${address} is not serviceable by Flipkart Minutes (address suggestion not found)`);
+        }
+
+        const selectionDone = await page.evaluate(() => {
+            const locationIcon = [...document.querySelectorAll('img')]
+                .find(img => img.src && img.src.includes('LocationDrop'));
+            const suggestion = locationIcon?.closest('li');
+            if (!suggestion) return false;
+            suggestion.click();
+            return true;
         });
 
         if (!selectionDone) {
-            logger.warn(`FK-MINUTES: Image-based suggestion click failed, trying coordinate-based click as ultimate fallback`);
-            await page.mouse.click(400, 200);
+            throw AppError.badRequest(`Location ${address} is not serviceable by Flipkart Minutes (address suggestion not found)`);
         }
+
+        await page.waitForTimeout(2000);
 
         // Check for Confirm button - it only appears if serviceable
         const confirmSelector = '.sVrZD1, input[type="submit"][value="Confirm"]';
         try {
-            await page.waitForSelector(confirmSelector, { timeout: 10000 });
+            await page.waitForSelector(confirmSelector, { timeout: 15000 });
         } catch (e) {
-            logger.warn("FK-MINUTES: Confirm button did not appear within 10s");
+            logger.warn("FK-MINUTES: Confirm button did not appear within 15s");
         }
 
         const isConfirmVisible = await page.evaluate((sel) => {
@@ -89,7 +97,7 @@ export const setLocation = async (address) => {
 
         // Click Confirm
         logger.info("FK-MINUTES: Location is serviceable, clicking Confirm...");
-        await page.click(confirmSelector);
+        await page.locator(confirmSelector).first().click();
 
         // Wait for page to close or redirect
         await page.waitForTimeout(3000);
@@ -113,29 +121,29 @@ export const setLocation = async (address) => {
     }
 };
 
-// Grid category selector class (shared by all category grid items on the Minutes home page)
-const GRID_CATEGORY_SELECTOR = 'a._3n8fna1co._3n8fna10j._3n8fnaod._3n8fna1._3n8fnac7._1i2djtb9._1i2djtk9._1i2djtir._1i2djtja._1i2djtjb';
-
 // Cached Flipkart API data center base URL — auto-updated on 406 DC Change responses
 let cachedDcBaseUrl = "https://1.rome.api.flipkart.com";
 
 // Read the pincode from the browser's localStorage ("mypin" key set by Flipkart after location is confirmed).
 // Falls back to parsing a 6-digit number from the address string.
 const extractPincode = async (page, address) => {
-    try {
-        const fromStorage = await page.evaluate(() => {
-            const val = localStorage.getItem("mypin");
-            return val ? parseInt(val, 10) : null;
-        });
-        if (fromStorage && !isNaN(fromStorage)) return fromStorage;
-    } catch (e) { /* page may not be on a flipkart.com origin yet */ }
+    for (let attempt = 0; attempt < 5; attempt++) {
+        try {
+            const fromStorage = await page.evaluate(() => {
+                const val = localStorage.getItem("mypin");
+                return val ? parseInt(val, 10) : null;
+            });
+            if (fromStorage && !isNaN(fromStorage)) return fromStorage;
+        } catch (e) { /* page may not be on a flipkart.com origin yet */ }
+        await page.waitForTimeout(1000);
+    }
     const m = String(address).match(/\b(\d{6})\b/);
     return m ? parseInt(m[1]) : null;
 };
 
 // One call to the Flipkart Minutes JSON API (/api/4/page/fetch).
-// Runs fetch() inside page.evaluate so the browser handles DNS, cookies, and DC routing.
-// Handles 406 DC Change by retrying on the correct regional DC and caching the new base URL.
+// Uses Playwright's request context so cookies are shared and CORS is bypassed.
+// Handles 406 DC Change by retrying across the public *.rome API hosts.
 const fkApiPageFetch = async (page, pageUri, pincode, paginationCtx = null, pageNum = 1) => {
     const requestContext = {
         type: "BROWSE_PAGE",
@@ -169,48 +177,65 @@ const fkApiPageFetch = async (page, pageUri, pincode, paginationCtx = null, page
             locationContext: { pincode, changed: false },
         };
 
-    const result = await page.evaluate(async ({ body, baseUrl }) => {
-        const postApi = async (url, b) => {
-            const res = await fetch(url + "?cacheFirst=false", {
-                method: "POST",
-                credentials: "include",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Accept": "*/*",
-                    "X-User-Agent": navigator.userAgent + " FKUA/msite/0.0.4/msite/Mobile",
-                    "flipkart_secure": "true",
-                    "Origin": "https://www.flipkart.com",
-                    "Referer": "https://www.flipkart.com/",
-                },
-                body: JSON.stringify(b),
+    const headers = {
+        "Content-Type": "application/json",
+        "Accept": "*/*",
+        "X-User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 FKUA/msite/0.0.4/msite/Mobile",
+        "flipkart_secure": "true",
+        "Origin": "https://www.flipkart.com",
+        "Referer": "https://www.flipkart.com/",
+    };
+
+    try {
+        // Use Playwright's request context instead of page.evaluate(fetch()).
+        // The API blocks cross-origin browser fetch in some sessions, but the
+        // request context shares cookies and is not subject to CORS.
+        const fetchPage = async (baseUrl) => {
+            const res = await page.request.post(`${baseUrl}/api/4/page/fetch?cacheFirst=false`, {
+                data: body,
+                headers,
             });
             const data = await res.json().catch(() => ({}));
-            return { status: res.status, data };
+            return { status: res.status(), data };
         };
 
-        try {
-            let apiUrl = baseUrl + "/api/4/page/fetch";
-            let { status, data } = await postApi(apiUrl, body);
+        // Try the cached base first, then known working public DC hosts.
+        // The 406 response can point at a regional host (e.g. *.hyd.*) that
+        // isn't resolvable from every network, so fall back to *.rome.*.
+        const candidates = [cachedDcBaseUrl, "https://2.rome.api.flipkart.com", "https://1.rome.api.flipkart.com"];
+        const seen = new Set();
+        let lastError = null;
 
-            // On DC Change (406), retry on the correct regional DC
-            if (status === 406 && data.RESPONSE?.id && data.RESPONSE?.dc) {
-                const newBase = `https://${data.RESPONSE.id}.${String(data.RESPONSE.dc).toLowerCase()}.api.flipkart.com`;
-                ({ status, data } = await postApi(newBase + "/api/4/page/fetch", body));
-                return { ok: true, status, data, newBaseUrl: newBase };
+        for (const baseUrl of candidates) {
+            if (seen.has(baseUrl)) continue;
+            seen.add(baseUrl);
+
+            try {
+                const { status, data } = await fetchPage(baseUrl);
+
+                if (status === 406) {
+                    if (data.RESPONSE?.id) {
+                        const next = `https://${data.RESPONSE.id}.rome.api.flipkart.com`;
+                        if (!seen.has(next)) candidates.push(next);
+                    }
+                    continue;
+                }
+
+                if (status === 200) {
+                    cachedDcBaseUrl = baseUrl;
+                    return { ok: true, status, data };
+                }
+
+                return { ok: true, status, data };
+            } catch (e) {
+                lastError = e.message;
             }
-
-            return { ok: true, status, data, newBaseUrl: null };
-        } catch (e) {
-            return { ok: false, error: e.message };
         }
-    }, { body, baseUrl: cachedDcBaseUrl });
 
-    if (result.newBaseUrl) {
-        cachedDcBaseUrl = result.newBaseUrl;
-        logger.info(`FK-MINUTES API: DC updated to ${cachedDcBaseUrl}`);
+        return { ok: false, error: lastError || "All Flipkart API hosts failed" };
+    } catch (e) {
+        return { ok: false, error: e.message };
     }
-
-    return result;
 };
 
 // Parse product objects from a /api/4/page/fetch JSON response.
@@ -232,11 +257,12 @@ const parseProductsFromApiResponse = (data) => {
             seen.add(pid);
 
             const price = value.pricing?.finalPrice?.value ?? 0;
-            const mrp = value.pricing?.mrp?.value ?? price;
+            const mrpEntry = value.pricing?.prices?.find(p => p.priceType === "MRP");
+            const mrp = mrpEntry?.value ?? value.pricing?.mrp?.value ?? price;
             if (price === 0) continue;
 
-            const discount = mrp > price && mrp > 0
-                ? Math.round((1 - price / mrp) * 100) : 0;
+            const discount = value.pricing?.totalDiscount
+                ?? (mrp > price && mrp > 0 ? Math.round((1 - price / mrp) * 100) : 0);
 
             // Product name from the SEO-friendly URL slug (e.g. /veeba-instant-noodles.../p/...)
             const slugMatch = actionUrl.match(/^\/([^/]+)\/p\//);
@@ -254,6 +280,8 @@ const parseProductsFromApiResponse = (data) => {
             products.push({
                 productId: pid,
                 productName,
+                categoryName: value.analyticsData?.category || "",
+                subcategoryName: value.analyticsData?.subCategory || "",
                 price,
                 mrp,
                 discount,
@@ -277,8 +305,9 @@ export const extractProductsViaAPI = async (page, categoryUrl, pincode) => {
         const allProducts = [];
         let paginationCtx = null;
         let pageNum = 1;
+        const maxPages = Number(process.env.FK_MINUTES_MAX_PAGES) || (pageUri.includes("sid=all") ? 500 : 30);
 
-        while (pageNum <= 30) {
+        while (pageNum <= maxPages) {
             const result = await fkApiPageFetch(page, pageUri, pincode, paginationCtx, pageNum);
 
             if (!result.ok || result.status !== 200) {
@@ -314,216 +343,101 @@ export const extractProductsViaAPI = async (page, categoryUrl, pincode) => {
     }
 };
 
-// Get a dedup key from a category URL using the sid param
-const getDedupeKey = (url) => {
-    try {
-        const urlObj = new URL(url);
-        const sid = urlObj.searchParams.get('sid') || '';
-        if (sid) return `sid:${sid}`;
-        const collectionTab = urlObj.searchParams.get('collection-tab-name') || '';
-        if (collectionTab) return `col:${collectionTab}`;
-        return `url:${url}`;
-    } catch (e) { }
-    return `url:${url}`;
-};
-
-// Extract a readable category name from a grid link URL
-const getCategoryNameFromUrl = (url) => {
-    try {
-        const urlObj = new URL(url);
-        // 1. collection-tab-name (e.g., "Tablets", "Mobiles", "Fragrances")
-        const collectionTab = urlObj.searchParams.get('collection-tab-name');
-        if (collectionTab) return collectionTab;
-
-        // 2. Readable path segment from /hyperlocal/{Name}/pr
-        const pathMatch = urlObj.pathname.match(/\/hyperlocal\/([^/]+)\/pr/);
-        if (pathMatch) {
-            const raw = decodeURIComponent(pathMatch[1]).replace(/-/g, ' ');
-            // Skip coded slugs like "hloc", short codes, or pure digits
-            if (raw !== 'hloc' && !/^[a-z0-9]{2,5}$/i.test(raw)) {
-                return raw;
-            }
-        }
-
-        // 3. Store pages: hyperlocal-gifting-nornal-at-store → "Gifting"
-        const storeMatch = urlObj.pathname.match(/hyperlocal-(.+?)-(?:at-)?store/);
-        if (storeMatch) {
-            return storeMatch[1].replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-        }
-    } catch (e) { }
-    return null;
-};
-
-// Extract all categories from Flipkart Minutes home page grid:
-// 1. Scroll home page to load the category grid
-// 2. Select grid links using exact class selector
-// 3. Use fetch() from page context to get sub-nav links from each grid URL (no page navigation needed)
+// Extract the category cards from the Flipkart Minutes homepage. The sections
+// are rendered lazily as the page is scrolled. Per-product categories are also
+// read from analyticsData, which is more specific than the card path.
 export const extractCategories = async (address) => {
     let page = null;
     try {
         const context = await setLocation(address);
-
-        if (!contextManager.getWebsiteServiceabilityStatus(address, "flipkart-minutes")) {
-            throw AppError.badRequest(`Location ${address} is not serviceable by Flipkart Minutes`);
-        }
-
         page = await contextManager.createPage(context, "flipkart-minutes");
-
-        // Step 1: Navigate to a known hyperlocal product page and open the Categories sidebar
-        const HYPERLOCAL_PRODUCT_URL = "https://www.flipkart.com/7up-soft-drink-pet-bottle/p/itma5d9c8df05d05?pid=ARDEUATW3MZWKR2H&lid=LSTARDEUATW3MZWKR2HKDI2SC&marketplace=HYPERLOCAL";
-        logger.info("FK-MINUTES: Navigating to product page to open categories sidebar...");
-        await page.goto(HYPERLOCAL_PRODUCT_URL, { waitUntil: "domcontentloaded", timeout: 30000 });
+        await page.goto("https://www.flipkart.com/flipkart-minutes-store?marketplace=HYPERLOCAL", {
+            waitUntil: "domcontentloaded",
+            timeout: 60000,
+        });
         await page.waitForTimeout(3000);
 
-        // Click the Categories button in the nav bar (identified by img[alt="Categories"])
-        logger.info("FK-MINUTES: Opening categories sidebar...");
-        const clickResult = await page.evaluate(() => {
-            const imgs = Array.from(document.querySelectorAll('img[alt="Categories"]'));
-            if (imgs.length === 0) return { ok: false, reason: "no Categories img found" };
-            const btn = imgs[0].closest("div");
-            if (!btn) return { ok: false, reason: "no parent div found" };
-            btn.click();
-            return { ok: true };
+        // Scroll until the lazily loaded category sections stop growing.
+        await page.evaluate(async () => {
+            const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            let previousHeight = 0;
+            for (let round = 0; round < 3; round++) {
+                const height = document.body.scrollHeight;
+                if (height === previousHeight) break;
+                previousHeight = height;
+                for (let y = 0; y < height; y += 700) {
+                    window.scrollTo(0, y);
+                    await sleep(300);
+                }
+                window.scrollTo(0, document.body.scrollHeight);
+                await sleep(1500);
+            }
         });
-        if (!clickResult.ok) {
-            logger.warn(`FK-MINUTES: Categories button click issue: ${clickResult.reason}`);
-        }
-        await page.waitForTimeout(3000);
+        await page.waitForTimeout(1000);
 
-        // Step 2: Collect category links from the sidebar (#msite-bottomsheet)
-        const listingLinks = await page.evaluate(() => {
-            const sidebar = document.getElementById("msite-bottomsheet");
-            if (!sidebar) return [];
-            return Array.from(sidebar.querySelectorAll("a"))
-                .map(a => a.href)
-                .filter(href => href && href.includes("www.flipkart.com") && href.includes("/pr?") && href.includes("marketplace=HYPERLOCAL"));
-        });
+        const categories = await page.evaluate(() => {
+            let section = "Flipkart Minutes";
+            const results = [];
+            const seen = new Set();
+            const nodes = document.querySelectorAll('div._58bkzqq, a[href*="/pr?sid="]');
 
-        // Deduplicate by sid
-        const seenKeys = new Set();
-        const uniqueGridLinks = listingLinks.filter(url => {
-            const key = getDedupeKey(url);
-            if (seenKeys.has(key)) return false;
-            seenKeys.add(key);
-            return true;
-        });
-
-        logger.info(`FK-MINUTES: Found ${listingLinks.length} sidebar links → ${uniqueGridLinks.length} unique by sid`);
-
-        // Track how many times each path name is used (to detect "Fruits" reuse)
-        const pathNameCounts = {};
-        for (const url of uniqueGridLinks) {
-            const name = getCategoryNameFromUrl(url);
-            if (name) pathNameCounts[name] = (pathNameCounts[name] || 0) + 1;
-        }
-
-        // Step 3: Use fetch() from page context to extract sub-nav from each grid URL
-        const allCategories = [];
-        const seenSubKeys = new Set();
-
-        for (let i = 0; i < uniqueGridLinks.length; i++) {
-            const gridUrl = uniqueGridLinks[i];
-
-            try {
-                // Fetch HTML and parse sub-nav links inside the browser (has cookies/session)
-                const fetchResult = await page.evaluate(async (fetchUrl) => {
-                    try {
-                        const res = await fetch(fetchUrl, { credentials: 'include', headers: { 'Accept': 'text/html' } });
-                        const html = await res.text();
-
-                        const parser = new DOMParser();
-                        const doc = parser.parseFromString(html, 'text/html');
-                        const anchors = Array.from(doc.querySelectorAll('a'));
-
-                        const subNavLinks = anchors
-                            .filter(a => {
-                                const href = a.getAttribute('href') || '';
-                                const text = a.innerText?.trim() || '';
-                                return (href.includes('/hyperlocal/') || href.includes('/all/') || href.includes('/eat/')) &&
-                                    href.includes('/pr?') &&
-                                    href.includes('marketplace=HYPERLOCAL') &&
-                                    text.length > 2 &&
-                                    text.length < 50 &&
-                                    !text.includes('\u20B9') &&
-                                    !text.includes('%') &&
-                                    text !== 'More';
-                            })
-                            .map(a => ({
-                                name: a.innerText.trim(),
-                                href: a.getAttribute('href'),
-                            }))
-                            .filter((item, idx, self) =>
-                                self.findIndex(t => t.href === item.href) === idx
-                            );
-
-                        return { ok: true, subNavLinks };
-                    } catch (err) {
-                        return { ok: false, error: err.message };
-                    }
-                }, gridUrl);
-
-                if (!fetchResult.ok) {
-                    logger.warn(`FK-MINUTES: Fetch failed for grid page ${i + 1}: ${fetchResult.error}`);
+            for (const el of nodes) {
+                if (el.classList && el.classList.contains("_58bkzqq")) {
+                    section = (el.innerText || "").trim();
                     continue;
                 }
 
-                const subNavLinks = fetchResult.subNavLinks;
-
-                // Determine category name
-                let categoryName = getCategoryNameFromUrl(gridUrl);
-                const isReusedName = categoryName && pathNameCounts[categoryName] > 1;
-
-                if ((!categoryName || isReusedName) && subNavLinks.length > 0) {
-                    categoryName = subNavLinks[0].name;
-                } else if (!categoryName) {
-                    categoryName = `Category ${i + 1}`;
+                const href = el.getAttribute("href") || "";
+                let url;
+                try {
+                    url = new URL(href, window.location.origin);
+                } catch (e) {
+                    continue;
                 }
 
-                if (subNavLinks.length > 0) {
-                    let addedCount = 0;
-                    for (const sub of subNavLinks) {
-                        // Convert relative href to absolute URL
-                        const subUrl = sub.href.startsWith('http') ? sub.href : `https://www.flipkart.com${sub.href}`;
-                        const subKey = getDedupeKey(subUrl);
-                        if (!seenSubKeys.has(subKey)) {
-                            seenSubKeys.add(subKey);
-                            allCategories.push({
-                                category: categoryName,
-                                subcategory: sub.name,
-                                url: subUrl,
-                            });
-                            addedCount++;
-                        }
-                    }
-                    if (addedCount > 0) {
-                        logger.info(`FK-MINUTES: [${i + 1}/${uniqueGridLinks.length}] "${categoryName}" → ${addedCount} subcategories`);
-                    }
-                } else {
-                    // No sub-nav — leaf listing
-                    const dedupeKey = getDedupeKey(gridUrl);
-                    if (!seenSubKeys.has(dedupeKey)) {
-                        seenSubKeys.add(dedupeKey);
-                        allCategories.push({
-                            category: categoryName,
-                            subcategory: categoryName,
-                            url: gridUrl,
-                        });
-                        logger.info(`FK-MINUTES: [${i + 1}/${uniqueGridLinks.length}] "${categoryName}" → leaf listing`);
-                    }
-                }
-            } catch (error) {
-                logger.warn(`FK-MINUTES: Error processing grid page ${i + 1}: ${error.message}`);
+                if (url.searchParams.get("marketplace") !== "HYPERLOCAL") continue;
+                const match = url.pathname.match(/^\/hyperlocal\/([^/]+)\/pr$/);
+                if (!match) continue;
+
+                const sid = decodeURIComponent(url.searchParams.get("sid") || "");
+                // Main category cards use numeric hloc IDs. Ad/recommendation
+                // cards use random IDs (e.g. hloc/8l5j) and are skipped.
+                if (!/^hloc\/\d{4}$/.test(sid)) continue;
+                if (seen.has(sid)) continue;
+                seen.add(sid);
+
+                const name = decodeURIComponent(match[1]).replace(/-/g, " ");
+                // Some cards (notably Beauty) reuse the generic /hyperlocal/Fruits/
+                // path, so keep the sid in the label. Product analyticsData still
+                // provides the real category for stored products.
+                const isGenericFruits = name.toLowerCase() === "fruits" && section.toLowerCase() !== "grocery";
+                const subcategory = isGenericFruits ? `${name} (${sid.split("/")[1]})` : name;
+                results.push({
+                    category: section,
+                    subcategory,
+                    url: `https://www.flipkart.com${url.pathname}${url.search}`,
+                });
             }
-        }
 
-        logger.info(`FK-MINUTES: Total unique categories/subcategories: ${allCategories.length}`);
-        await page.close();
-        return allCategories;
+            return results;
+        });
+
+        logger.info(`FK-MINUTES: Extracted ${categories.length} homepage categories`);
+        if (categories.length > 0) {
+            return categories;
+        }
     } catch (error) {
-        logger.error(`FK-MINUTES: Error extracting categories: ${error.message || error}`, { error });
+        logger.error(`FK-MINUTES: Error extracting categories: ${error.message || error}`);
+    } finally {
         if (page) await page.close();
-        throw error;
     }
+
+    logger.warn("FK-MINUTES: Category extraction failed; using the All listing");
+    return [{
+        category: "All",
+        subcategory: "All",
+        url: "https://www.flipkart.com/all/pr?sid=all&marketplace=HYPERLOCAL",
+    }];
 };
 
 // Function to extract products from a Flipkart Minutes listing page
@@ -761,8 +675,8 @@ export const startTrackingHandler = async (address = "misri gym 500064") => {
                     // Add category information to products
                     const productsWithCategory = uniqueCategoryProducts.map(product => ({
                         ...product,
-                        categoryName: category.category,
-                        subcategoryName: category.subcategory,
+                        categoryName: product.categoryName || category.category,
+                        subcategoryName: product.subcategoryName || category.subcategory,
                     }));
 
                     // Process and save products for this category
