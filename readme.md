@@ -471,6 +471,7 @@ cd backend && pnpm start
 - **Instamart**: Category/subcategory discovery from the current `instamart.in` client state
 - **BigBasket**: Full paginated product fetching via the Next.js data route — see [BigBasket notes](backend/BIGBASKET_README.md)
 - **Flipkart Minutes**: Homepage category-card discovery + paginated page JSON API — see [Flipkart Minutes notes](backend/FLIPKART_MINUTES_README.md)
+- **JioMart**: New location modal + localStorage category tree + `productCard`/`gtmEvents` scraping — see [JioMart notes](backend/JIOMART_README.md)
 - **Blinkit**: Infinite scroll handling for complete product discovery
 - **Zepto**: Category discovery by scraping the rendered homepage (the sitemap endpoint is blocked)
 - **Amazon Fresh**: Search-based product tracking
