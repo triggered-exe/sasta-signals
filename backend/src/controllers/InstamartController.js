@@ -433,44 +433,50 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, location) => {
 
                                 logger.warn(`IM: API error ${response.status} for ${subCategory.name}: ${response.statusText}`);
 
-                                if (response.status === 403 || response.status === 404) {
-                                    if (response.status === 403) {
-                                        logger.warn("IM: 403 Forbidden inside browser. Deleting deviceId cookie and refreshing page...");
-                                        try {
-                                            // Dynamically find and delete deviceId and aws-waf-token cookie(s)
-                                            const cookies = await page.context().cookies("https://www.swiggy.com");
-                                            const cookiesToDelete = cookies.filter(c => c.name === 'deviceId' || c.name === 'aws-waf-token');
+                                if (response.status === 404) {
+                                    break;
+                                }
 
-                                            if (cookiesToDelete.length > 0) {
-                                                logger.info(`IM: Found ${cookiesToDelete.length} cookies to delete. Deleting...`);
-                                                for (const cookie of cookiesToDelete) {
-                                                    logger.info(`IM: Deleting cookie ${cookie.name} (Domain: ${cookie.domain}, Path: ${cookie.path})`);
-                                                    await page.context().clearCookies({ name: cookie.name, domain: cookie.domain, path: cookie.path });
-                                                }
+                                if (response.status === 403) {
+                                    logger.warn("IM: 403 Forbidden inside browser. Deleting deviceId cookie and refreshing page...");
+                                    try {
+                                        // Dynamically find and delete deviceId and aws-waf-token cookie(s)
+                                        const cookies = await page.context().cookies("https://www.swiggy.com");
+                                        const cookiesToDelete = cookies.filter(c => c.name === 'deviceId' || c.name === 'aws-waf-token');
 
-                                                // Verify deletion
-                                                const afterDeletion = await page.context().cookies("https://www.swiggy.com");
-                                                const remaining = afterDeletion.filter(c => c.name === 'deviceId' || c.name === 'aws-waf-token');
-                                                if (remaining.length > 0) {
-                                                    logger.warn(`IM: Failed to delete some cookies. Remaining: ${remaining.length}`);
-                                                } else {
-                                                    logger.info("IM: Successfully deleted all target cookies");
-                                                }
-                                            } else {
-                                                logger.warn("IM: No target cookies (deviceId, aws-waf-token) found to delete");
+                                        if (cookiesToDelete.length > 0) {
+                                            logger.info(`IM: Found ${cookiesToDelete.length} cookies to delete. Deleting...`);
+                                            for (const cookie of cookiesToDelete) {
+                                                logger.info(`IM: Deleting cookie ${cookie.name} (Domain: ${cookie.domain}, Path: ${cookie.path})`);
+                                                await page.context().clearCookies({ name: cookie.name, domain: cookie.domain, path: cookie.path });
                                             }
 
-                                            const categoryUrl = `https://www.swiggy.com/instamart/category-listing?categoryName=${encodeURIComponent(category.name)}&storeId=${storeId}&offset=0&filterName=&taxonomyType=${encodeURIComponent(category.taxonomyType)}&showAgeConsent=false`;
-                                            await page.goto(categoryUrl, { waitUntil: "domcontentloaded" });
-
-                                            // Update matcher after reload
-                                            const newMatcher = await page.evaluate(() => window.App?.initialMatcher);
-                                            if (newMatcher) matcher = newMatcher;
-                                        } catch (e) {
-                                            logger.error(`IM: Error reloading page: ${e.message}`);
+                                            // Verify deletion
+                                            const afterDeletion = await page.context().cookies("https://www.swiggy.com");
+                                            const remaining = afterDeletion.filter(c => c.name === 'deviceId' || c.name === 'aws-waf-token');
+                                            if (remaining.length > 0) {
+                                                logger.warn(`IM: Failed to delete some cookies. Remaining: ${remaining.length}`);
+                                            } else {
+                                                logger.info("IM: Successfully deleted all target cookies");
+                                            }
+                                        } else {
+                                            logger.warn("IM: No target cookies (deviceId, aws-waf-token) found to delete");
                                         }
+
+                                        await page.goto("https://www.swiggy.com/instamart", { waitUntil: "domcontentloaded" });
+                                        // Without the WAF token, the first load is AWS WAF's challenge page, which navigates
+                                        // again once it sets a new token. Wait for the real page before making more API calls.
+                                        await ensurePageLoaded(page);
+
+                                        // Update matcher after reload
+                                        const newMatcher = await page.evaluate(() => window.App?.initialMatcher);
+                                        if (newMatcher) matcher = newMatcher;
+                                    } catch (e) {
+                                        logger.error(`IM: Error reloading page: ${e.message}`);
                                     }
-                                    break;
+                                    // Retry the same page with the fresh session
+                                    retryCount++;
+                                    continue;
                                 }
 
                                 // Handling for custom error code simulation or rate limits
@@ -496,8 +502,16 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, location) => {
                             const hasMore = !!nextOffset;
 
                             if (!response?.data?.data) {
-                                logger.info(`IM: No data in response for ${subCategory.name}`);
-                                break;
+                                // A status message means the API rejected this filter (e.g. brand tabs); don't retry those
+                                if (response?.data?.statusMessage) {
+                                    logger.info(`IM: No data in response for ${subCategory.name}: ${response.data.statusMessage}`);
+                                    break;
+                                }
+                                // Empty responses without a reason are intermittent, so retry the same page after a pause
+                                retryCount++;
+                                logger.info(`IM: Empty response for ${subCategory.name} page ${offset}, retrying (${retryCount}/${MAX_RETRIES}): ${JSON.stringify(response?.data).slice(0, 200)}`);
+                                await new Promise((resolve) => setTimeout(resolve, 5000));
+                                continue;
                             }
 
                             // Extract products
@@ -512,9 +526,11 @@ const fetchProductsForCategoriesChunk = async (categoryChunk, location) => {
 
                             allProducts = [...allProducts, ...products];
 
-                            const hasOutOfStock = products.some(p => p.inStock === false);
-                            if (hasOutOfStock) {
-                                logger.info(`IM: Found out of stock products in ${subCategory.name}, stopping further pages`);
+                            // Out-of-stock items are listed last, but stray ones also appear among in-stock items,
+                            // so only stop once a whole page is out of stock (the listing has reached its sold-out tail)
+                            const allOutOfStock = products.every(p => p.inStock === false);
+                            if (allOutOfStock) {
+                                logger.info(`IM: Reached out of stock products in ${subCategory.name}, stopping further pages`);
                                 break;
                             }
 
