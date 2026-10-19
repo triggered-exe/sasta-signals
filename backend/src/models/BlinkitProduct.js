@@ -63,14 +63,9 @@ const blinkitProductSchema = new mongoose.Schema(
     }
 );
 
-blinkitProductSchema.index({ productName: 'text', brand: 'text', categoryName: 'text', subcategoryName: 'text' });
-blinkitProductSchema.index({ inStock: 1 });
 blinkitProductSchema.index({ productId: 1 });
-blinkitProductSchema.index({ categoryName: 1 });
 blinkitProductSchema.index({ priceDroppedAt: 1 });
 blinkitProductSchema.index({ discount: 1 });
-blinkitProductSchema.index({ inStock: 1, price: 1 });
-blinkitProductSchema.index({ categoryName: 1, inStock: 1 });
 
 
 export const BlinkitProduct = mongoose.model("blinkit_products", blinkitProductSchema);
