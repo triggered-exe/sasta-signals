@@ -5,168 +5,164 @@ import { isNightTimeIST } from "../utils/priceTracking.js";
 import { processProducts as globalProcessProducts } from "../utils/productProcessor.js";
 import contextManager from "../utils/contextManager.js";
 
+// One attempt at choosing the delivery location on a fresh page. Throws if any step fails.
+const selectLocationOnPage = async (page, pincode) => {
+  // Navigate to Flipkart
+  logger.info("FK: Navigating to Flipkart...");
+  await page.goto("https://www.flipkart.com", {
+    waitUntil: "domcontentloaded",
+    timeout: 30000, // 30 second timeout
+  });
+
+  await page.waitForTimeout(4000); // Increased timeout
+
+  // Set location
+  logger.info(`FK: Setting location for ${pincode}...`);
+
+  // Close login modal — Escape first, then look for any close button
+  await page.keyboard.press('Escape').catch(() => { });
+  await page.waitForTimeout(400);
+  // .b3wTlE is a generated class that changes per deploy, so also try generic modal/close selectors
+  const loginModalClose = await page.$(
+    '.b3wTlE, button[class*="CloseIcon"], button[class*="close-btn"], [data-testid*="close"]'
+  ).catch(() => null);
+  if (loginModalClose && await loginModalClose.isVisible().catch(() => false)) {
+    await loginModalClose.click().catch(() => { });
+    await page.waitForTimeout(400);
+    logger.info("FK: Closed login modal");
+  }
+
+  // Click "Select delivery location" — try text/xpath variants
+  const deliveryLocSelectors = [
+    'xpath=//div[text()="Select delivery location"]',
+    'xpath=//span[text()="Select delivery location"]',
+    'text=Select delivery location',
+  ];
+  let locationOpened = false;
+  for (const sel of deliveryLocSelectors) {
+    try {
+      await page.click(sel, { timeout: 5000 });
+      locationOpened = true;
+      break;
+    } catch (_) { }
+  }
+  if (!locationOpened) {
+    logger.warn("FK: Could not click 'Select delivery location', proceeding anyway...");
+  }
+
+  await page.waitForTimeout(1500);
+
+  // Find and focus the pincode input — try multiple placeholder patterns
+  const inputSelectors = [
+    'input[placeholder*="Search by area, street name, pin code"]',
+    'input[placeholder*="Search by area"]',
+    'input[placeholder*="pin code"]',
+    'input[placeholder*="pincode"]',
+    'input[placeholder*="Enter pincode"]',
+  ];
+  // Wait for any of them at once: the modal can take over 5s to open, and waiting on each pattern
+  // in turn would give up on the first (matching) one before it appears
+  const focusedInput = await page.waitForSelector(inputSelectors.join(", "), { timeout: 15000, state: 'visible' }).catch(() => null);
+  if (focusedInput) {
+    await focusedInput.focus();
+    logger.info(`FK: Found location input with placeholder: ${await focusedInput.getAttribute("placeholder")}`);
+  } else {
+    const visibleInputs = await page.$$eval("input", (inputs) =>
+      inputs.filter((input) => input.offsetParent !== null).map((input) => input.placeholder || input.name || input.type)
+    ).catch(() => []);
+    throw new Error(`FK: Could not find the location search input field (url: ${page.url()}, visible inputs: ${JSON.stringify(visibleInputs)})`);
+  }
+
+  await page.keyboard.type(pincode);
+
+  // Click the suggestion row that matches what was typed.
+  // Works for both exact pincodes (e.g. 500064) and free-text places.
+  const searchTerm = pincode.trim();
+  const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // Target only suggestion rows (they contain location icon svg width=16 + text),
+  // avoiding modal/input close buttons that are also cursor:pointer.
+  const suggestionRows = page.locator('div[style*="cursor: pointer;"]').filter({
+    has: page.locator('svg[width="16"]'),
+    has: page.locator('div[dir="auto"]'),
+  });
+  const matchedSuggestion = suggestionRows.filter({
+    hasText: new RegExp(escapeRegex(searchTerm), "i"),
+  }).first();
+
+  // Suggestions for a partially typed term can show first, so wait for a matching row specifically
+  try {
+    await matchedSuggestion.waitFor({ state: "visible", timeout: 10000 });
+  } catch (err) {
+    const shownSuggestions = await suggestionRows.allInnerTexts().catch(() => []);
+    throw new Error(`FK: No location suggestion matching "${searchTerm}" (shown: ${JSON.stringify(shownSuggestions.slice(0, 3))})`);
+  }
+  await matchedSuggestion.click({ force: true });
+  logger.info(`FK: Clicked matching location suggestion for "${searchTerm}"`);
+
+  await page.waitForTimeout(3000); // Wait for the map page to load
+
+  // After clicking suggestion, a "Confirm" button/div appears
+  // FK renders this as a styled div, not an input[type=submit]
+  // Try input[type=submit] (old web) first, then styled-div variants (new web)
+  const confirmLocator = page.locator(
+    'input[type="submit"][value="Confirm"], button:has-text("Confirm"), div[style*="cursor: pointer;"]:has-text("Confirm")'
+  ).first();
+  try {
+    await confirmLocator.waitFor({ state: "visible", timeout: 7000 });
+  } catch (err) {
+    throw new Error(`FK: Confirm button not found after choosing location ${pincode}`);
+  }
+  await confirmLocator.click({ force: true });
+  logger.info(`FK: Successfully set up for location: ${pincode}`);
+
+  await page.waitForTimeout(2000); // Wait for location to be set
+};
+
 // Set location for Flipkart Grocery
 const setLocation = async (pincode) => {
-  let page = null;
-  try {
-    // Get or create context
-    const context = await contextManager.getContext(pincode);
+  // Get or create context
+  const context = await contextManager.getContext(pincode);
 
-    // Return existing context if already set up and serviceable
-    if (contextManager.getWebsiteServiceabilityStatus(pincode, "flipkart-grocery")) {
-      logger.info(`FK: Using existing serviceable context for ${pincode}`);
-      return context;
-    }
-
-    // Set up Flipkart Grocery for this context
-    page = await context.newPage();
-
-    // Navigate to Flipkart
-    logger.info("FK: Navigating to Flipkart...");
-    await page.goto("https://www.flipkart.com", {
-      waitUntil: "domcontentloaded",
-      timeout: 30000, // 30 second timeout
-    });
-
-    await page.waitForTimeout(4000); // Increased timeout
-
-    // Set location
-    logger.info(`FK: Setting location for ${pincode}...`);
-
-    // Close login modal — Escape first, then look for any close button
-    await page.keyboard.press('Escape').catch(() => { });
-    await page.waitForTimeout(400);
-    // .b3wTlE is a generated class that changes per deploy, so also try generic modal/close selectors
-    const loginModalClose = await page.$(
-      '.b3wTlE, button[class*="CloseIcon"], button[class*="close-btn"], [data-testid*="close"]'
-    ).catch(() => null);
-    if (loginModalClose && await loginModalClose.isVisible().catch(() => false)) {
-      await loginModalClose.click().catch(() => { });
-      await page.waitForTimeout(400);
-      logger.info("FK: Closed login modal");
-    }
-
-    // Click "Select delivery location" — try text/xpath variants
-    const deliveryLocSelectors = [
-      'xpath=//div[text()="Select delivery location"]',
-      'xpath=//span[text()="Select delivery location"]',
-      'text=Select delivery location',
-    ];
-    let locationOpened = false;
-    for (const sel of deliveryLocSelectors) {
-      try {
-        await page.click(sel, { timeout: 5000 });
-        locationOpened = true;
-        break;
-      } catch (_) { }
-    }
-    if (!locationOpened) {
-      logger.warn("FK: Could not click 'Select delivery location', proceeding anyway...");
-    }
-
-    await page.waitForTimeout(1500);
-
-    // Find and focus the pincode input — try multiple placeholder patterns
-    const inputSelectors = [
-      'input[placeholder*="Search by area, street name, pin code"]',
-      'input[placeholder*="Search by area"]',
-      'input[placeholder*="pin code"]',
-      'input[placeholder*="pincode"]',
-      'input[placeholder*="Enter pincode"]',
-    ];
-    let focusedInput = null;
-    for (const sel of inputSelectors) {
-      focusedInput = await page.waitForSelector(sel, { timeout: 5000, state: 'visible' }).catch(() => null);
-      if (focusedInput) {
-        await focusedInput.focus();
-        logger.info(`FK: Found location input with selector: ${sel}`);
-        break;
-      }
-    }
-    if (!focusedInput) {
-      throw new Error("FK: Could not find the location search input field");
-    }
-
-    await page.keyboard.type(pincode);
-    await page.waitForTimeout(1500); // Wait for suggestions to load
-
-    // Click the best matching suggestion row after typing.
-    // Works for both exact pincodes (e.g. 500064) and free-text places.
-    try {
-      const searchTerm = pincode.trim();
-      const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      // Target only suggestion rows (they contain location icon svg width=16 + text),
-      // avoiding modal/input close buttons that are also cursor:pointer.
-      const suggestionRows = page.locator('div[style*="cursor: pointer;"]').filter({
-        has: page.locator('svg[width="16"]'),
-        has: page.locator('div[dir="auto"]'),
-      });
-
-      await suggestionRows.first().waitFor({ state: "visible", timeout: 7000 });
-
-      const matchedSuggestion = suggestionRows.filter({
-        hasText: new RegExp(escapeRegex(searchTerm), "i"),
-      }).first();
-
-      if (await matchedSuggestion.isVisible().catch(() => false)) {
-        await matchedSuggestion.click({ force: true });
-        logger.info(`FK: Clicked matching location suggestion for "${searchTerm}"`);
-      }
-    } catch (err) {
-      logger.warn(`FK: Proceeding without clicking suggestion for "${pincode}" (timeout or not found)`);
-    }
-
-    await page.waitForTimeout(3000); // Wait for the map page to load
-
-    // After clicking suggestion, a "Confirm" button/div appears
-    // FK renders this as a styled div, not an input[type=submit]
-    try {
-      // Try input[type=submit] (old web) first, then styled-div variants (new web)
-      const confirmLocator = page.locator(
-        'input[type="submit"][value="Confirm"], button:has-text("Confirm"), div[style*="cursor: pointer;"]:has-text("Confirm")'
-      ).first();
-
-      await confirmLocator.waitFor({ state: "visible", timeout: 7000 });
-      await confirmLocator.click({ force: true });
-      logger.info(`FK: Successfully set up for location: ${pincode}`);
-    } catch (err) {
-      // If the Confirm button is not found, assume it is not serviceable
-      logger.info(`FK: Confirm button not found. Location ${pincode} might not be serviceable.`);
-      // Mark as not serviceable and clean up
-      contextManager.markServiceability(pincode, "flipkart-grocery", false);
-      throw AppError.badRequest(`Location ${pincode} is not serviceable by Flipkart Grocery`);
-    }
-
-    await page.waitForTimeout(2000); // Wait for location to be set
-
-    // Flipkart have two platform grocery and  minutes. minutes is a new 10 min delivery platform. if the minutes is available then the flipkart-grocery is not availabe. so we need to check whether or not its available
-    const isMinutesAvailable = await page.$("a[href*='/grocery-xtra-saver-at-store?marketplace=HYPERLOCAL']").catch(() => null);
-
-    if (isMinutesAvailable) {
-      logger.info(`FK: Minutes is available for ${pincode}, so classic Grocery is not. Marking as unserviceable.`);
-      contextManager.markServiceability(pincode, "flipkart-grocery", false);
-      throw AppError.badRequest(`Location ${pincode} is not serviceable by Flipkart Grocery (Minutes is active)`);
-    }
-
-    // Location is serviceable - mark it as such
-    contextManager.markServiceability(pincode, "flipkart-grocery", true);
-
-    await page.close();
+  // Return existing context if already set up and serviceable
+  if (contextManager.getWebsiteServiceabilityStatus(pincode, "flipkart-grocery")) {
+    logger.info(`FK: Using existing serviceable context for ${pincode}`);
     return context;
-  } catch (error) {
-    // Mark location as not serviceable for any initialization errors too
-    try {
-      if (page) await page.close();
-      // Mark as not serviceable and clean up
-      contextManager.markServiceability(pincode, "flipkart-grocery", false);
-    } catch (cleanupError) {
-      // Don't let cleanup errors override the original error
-      logger.error(`FK: Error during cleanup for ${pincode}: ${cleanupError.message || cleanupError}`, { error: cleanupError });
-    }
-
-    logger.error(`FK: Error initializing context for ${pincode}: ${error.message || error}`, { error });
-    throw error;
   }
+
+  // The location modal is flaky (suggestions sometimes load late or not at all), so retry on a fresh page
+  const MAX_ATTEMPTS = 3;
+  let lastError = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    let page = null;
+    try {
+      page = await context.newPage();
+      await selectLocationOnPage(page, pincode);
+
+      // Flipkart have two platform grocery and  minutes. minutes is a new 10 min delivery platform. if the minutes is available then the flipkart-grocery is not availabe. so we need to check whether or not its available
+      const isMinutesAvailable = await page.$("a[href*='/grocery-xtra-saver-at-store?marketplace=HYPERLOCAL']").catch(() => null);
+      if (isMinutesAvailable) {
+        logger.info(`FK: Minutes is available for ${pincode}, so classic Grocery is not. Marking as unserviceable.`);
+        lastError = AppError.badRequest(`Location ${pincode} is not serviceable by Flipkart Grocery (Minutes is active)`);
+        break;
+      }
+
+      // Location is serviceable - mark it as such
+      contextManager.markServiceability(pincode, "flipkart-grocery", true);
+      await page.close();
+      return context;
+    } catch (error) {
+      lastError = error;
+      logger.warn(`FK: Location setup attempt ${attempt}/${MAX_ATTEMPTS} for ${pincode} failed: ${error.message || error}`);
+      if (attempt < MAX_ATTEMPTS) await new Promise((resolve) => setTimeout(resolve, 3000));
+    } finally {
+      if (page && !page.isClosed()) await page.close().catch(() => { });
+    }
+  }
+
+  // Mark as not serviceable so the next cycle starts the location flow again
+  contextManager.markServiceability(pincode, "flipkart-grocery", false);
+  logger.error(`FK: Error initializing context for ${pincode}: ${lastError?.message || lastError}`, { error: lastError });
+  throw lastError;
 };
 
 // Function to extract products from a page
@@ -430,23 +426,41 @@ export const startTrackingHandler = async (pincode = "500064") => {
   }
 };
 
+const GROCERY_STORE_URL = "https://www.flipkart.com/grocery-supermart-store?marketplace=GROCERY";
+const GROCERY_ROOT_URL = "https://www.flipkart.com/grocery/pr?sid=73z&marketplace=GROCERY";
+
+const decodeHtmlUrls = (html) => html.replace(/&#x3D;/g, '=').replace(/&amp;/g, '&');
+
 /**
- * Parse /grocery/category/subcategory/pr URLs from raw HTML text (view-source body).
- * Returns an array of unique category objects.
+ * Parse /grocery/<category>/<subcategory>/pr links (relative or absolute) from page HTML
+ * into categoriesByPath, keeping one entry per subcategory.
  */
-const parseCategoriesFromHtml = (html) => {
-  const categorySet = new Set();
-  // Match any grocery /pr URL — with or without otracker param
-  const urlRegex = /https?:\/\/www\.flipkart\.com\/grocery\/([^\/\s"']+)\/([^\/\s"']+)\/pr[^"'\s]*/g;
-  let m;
-  while ((m = urlRegex.exec(html)) !== null) {
-    const rawUrl = m[0];
-    const category = m[1].replace(/-/g, ' ');
-    const subcategory = m[2].replace(/-/g, ' ');
-    const decodedUrl = rawUrl.replace(/&#x3D;/g, '=').replace(/&amp;/g, '&');
-    categorySet.add(JSON.stringify({ category, subcategory, url: decodedUrl, name: subcategory }));
+const parseCategoriesFromHtml = (html, categoriesByPath = new Map()) => {
+  const urlRegex = /(?:https?:\/\/www\.flipkart\.com)?\/grocery\/([a-z0-9-]+)\/([a-z0-9-]+)\/pr\?[^"'\s<>]*/g;
+  for (const [rawUrl, categorySlug, subcategorySlug] of decodeHtmlUrls(html).matchAll(urlRegex)) {
+    const key = `${categorySlug}/${subcategorySlug}`;
+    if (categoriesByPath.has(key)) continue;
+
+    const url = new URL(rawUrl, "https://www.flipkart.com");
+    // Some links point at a later page of the listing; always start from page 1
+    url.searchParams.delete("page");
+    const category = categorySlug.replace(/-/g, ' ');
+    const subcategory = subcategorySlug.replace(/-/g, ' ');
+    categoriesByPath.set(key, { category, subcategory, url: url.toString(), name: subcategory });
   }
-  return Array.from(categorySet).map(item => JSON.parse(item));
+  return categoriesByPath;
+};
+
+// Parse top-level /grocery/<category>/pr links from page HTML
+const parseTopCategoriesFromHtml = (html) => {
+  const topCategories = new Map();
+  const urlRegex = /(?:https?:\/\/www\.flipkart\.com)?\/grocery\/([a-z0-9-]+)\/pr\?[^"'\s<>]*/g;
+  for (const [rawUrl, categorySlug] of decodeHtmlUrls(html).matchAll(urlRegex)) {
+    if (!topCategories.has(categorySlug)) {
+      topCategories.set(categorySlug, new URL(rawUrl, "https://www.flipkart.com").toString());
+    }
+  }
+  return topCategories;
 };
 
 // Function to extract categories from Flipkart Grocery
@@ -462,66 +476,36 @@ const extractCategories = async (pincode = "500064") => {
     }
 
     page = await context.newPage();
+    const getPageHtml = async (url) => {
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+      await page.waitForTimeout(3000);
+      return page.content();
+    };
 
-    // Navigate to the main grocery page and let JS render
+    // The grocery store page only links a handful of subcategories, so walk the category tree too:
+    // the grocery root page links every top-level category, and each top-level page links all of its subcategories
     logger.info("FK: Navigating to main grocery page...");
-    await page.goto("https://www.flipkart.com/grocery-supermart-store?marketplace=GROCERY", {
-      waitUntil: "networkidle",
-      timeout: 45000,
-    });
-    await page.waitForTimeout(2000);
+    const categoriesByPath = parseCategoriesFromHtml(await getPageHtml(GROCERY_STORE_URL));
 
-    // --- Strategy 1: extract /grocery/.../pr links directly from the live DOM ---
-    const domCategories = await page.evaluate(() => {
-      const anchors = Array.from(document.querySelectorAll("a[href]"));
-      const categorySet = new Set();
-      anchors.forEach(a => {
-        const href = a.getAttribute("href") || "";
-        const match = href.match(/\/grocery\/([^\/\s?#]+)\/([^\/\s?#]+)\/pr/);
-        if (match) {
-          const category = match[1].replace(/-/g, ' ');
-          const subcategory = match[2].replace(/-/g, ' ');
-          const fullUrl = href.startsWith("http") ? href : "https://www.flipkart.com" + href;
-          categorySet.add(JSON.stringify({ category, subcategory, url: fullUrl, name: subcategory }));
-        }
-      });
-      return Array.from(categorySet).map(item => JSON.parse(item));
-    });
+    const rootHtml = await getPageHtml(GROCERY_ROOT_URL);
+    parseCategoriesFromHtml(rootHtml, categoriesByPath);
+    const topCategories = parseTopCategoriesFromHtml(rootHtml);
+    logger.info(`FK: Found ${topCategories.size} top-level categories: ${[...topCategories.keys()].join(", ")}`);
 
-    if (domCategories.length > 0) {
-      logger.info(`FK: Extracted ${domCategories.length} categories from live DOM`);
-      return domCategories;
+    for (const [topCategory, topCategoryUrl] of topCategories) {
+      try {
+        parseCategoriesFromHtml(await getPageHtml(topCategoryUrl), categoriesByPath);
+      } catch (error) {
+        logger.error(`FK: Error reading subcategories of ${topCategory}: ${error.message || error}`, { error });
+      }
     }
 
-    logger.info("FK: No /grocery/.../pr links in DOM, trying view-source fallback...");
-
-    // --- Strategy 2: view-source of any grocery category page ---
-    // Find ANY /grocery/ link to use as seed, broadening pattern considerably
-    const seedHref = await page.evaluate(() => {
-      const a = Array.from(document.querySelectorAll("a[href*='/grocery/']"))
-        .find(el => /\/grocery\/[^\/]+\/[^\/]+/.test(el.getAttribute("href") || ""));
-      return a ? a.getAttribute("href") : null;
-    });
-
-    // If no seed found on grocery home, try a known stable category URL
-    const seedUrl = seedHref
-      ? (seedHref.startsWith("http") ? seedHref : "https://www.flipkart.com" + seedHref)
-      : "https://www.flipkart.com/grocery/fruits-vegetables/fresh-vegetables/pr?sid=Jwl%2Cpwm%2C0if&marketplace=GROCERY&otracker=categorytree";
-
-    logger.info(`FK: Using seed URL for view-source: ${seedUrl}`);
-    await page.goto("view-source:" + seedUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
-    await page.waitForTimeout(2000);
-
-    const html = await page.evaluate(() => document.body.innerText || document.body.textContent || "");
-    const viewSourceCategories = parseCategoriesFromHtml(html);
-
-    logger.info(`FK: Extracted ${viewSourceCategories.length} categories from view-source`);
-
-    if (viewSourceCategories.length === 0) {
-      logger.warn("FK: No categories found via any strategy; returning empty array");
+    const categories = [...categoriesByPath.values()];
+    if (categories.length === 0) {
+      logger.warn("FK: No categories found on the grocery pages; returning empty array");
     }
-
-    return viewSourceCategories;
+    logger.info(`FK: Extracted ${categories.length} subcategories from the category tree`);
+    return categories;
 
   } catch (error) {
     logger.error(`FK: Error extracting categories: ${error.message || error}`, { error });
