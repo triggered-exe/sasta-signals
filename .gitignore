@@ -3,9 +3,11 @@ node_modules/
 .pnp
 .pnp.js
 .yarn/install-state.gz
-pnpm-lock.yaml
+# Lockfiles: backend/ and frontend/ use pnpm, so their pnpm-lock.yaml files are tracked.
+# npm/yarn lockfiles and root-level ones (there is no root package.json) are leftovers.
 package-lock.json
 yarn.lock
+/pnpm-lock.yaml
 
 # Environment variables
 .env
