@@ -69,7 +69,7 @@ import {
 import {
     trackPrices as instamartStartTracking,
     trackProductPrices as instamartStartTrackingHandler,
-    search as instamartSearchHandler,
+    search as instamartSearch,
 } from "../controllers/InstamartController.js";
 
 import {
@@ -156,8 +156,8 @@ export const PROVIDER_REGISTRY = {
     "instamart": {
         displayName: "Instamart",
         model: InstamartProduct,
-        // instamartSearchHandler is an Express handler — no raw (location, query) fn exposed
-        search: instamartSearchHandler,
+        locationParam: "pincode",
+        searchFn: instamartSearch,
         track: instamartStartTracking,
         trackingHandler: instamartStartTrackingHandler,
         trackingDefault: "500064",
