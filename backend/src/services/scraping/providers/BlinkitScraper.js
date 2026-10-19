@@ -1,5 +1,6 @@
 import logger from "../../../utils/logger.js";
 import contextManager from "../../../utils/contextManager.js";
+import { AppError } from "../../../utils/errorHandling.js";
 
 /**
  * BlinkitScraper - Handles all Blinkit-specific scraping operations
@@ -86,10 +87,15 @@ class BlinkitScraper {
             page = await contextManager.createPage(context, 'blinkit');
 
             await page.goto("https://blinkit.com/categories", { waitUntil: "domcontentloaded", timeout: 15000 });
-            await page.waitForSelector(".Category__Temp-sc-1k4awti-1", { timeout: 10000 });
+            // The page first renders only a few store links, then hydrates the full category tree
+            await page.waitForFunction(
+                () => document.querySelectorAll('[class*="Category__Temp"] a').length > 20,
+                null,
+                { timeout: 15000 }
+            );
 
             const { allCategories } = await page.evaluate(() => {
-                const containers = document.querySelectorAll(".Category__Temp-sc-1k4awti-1");
+                const containers = document.querySelectorAll('[class*="Category__Temp"]');
                 const allCategories = [];
 
                 containers.forEach((container) => {
@@ -129,20 +135,20 @@ class BlinkitScraper {
      */
     async extractProducts(page, categoryUrl, retryCount = 0) {
         try {
-            // Extract category IDs from the URL (no navigation needed - page already has cookies)
-            const splitUrl = categoryUrl.split('/');
-            const l0_cat = splitUrl[splitUrl.length - 2];
-            const l1_cat = splitUrl[splitUrl.length - 1];
-
-            if (!l0_cat || !l1_cat) {
-                logger.error("BLINKIT: Could not extract category IDs from URL");
+            // Build the listing API query from the category URL (no navigation needed - page already has cookies).
+            // Category URLs look like /dc/<cat>/<sub>/?collection_uuid=...&collection_group_id=...
+            // and the API accepts the same query params. The old l0_cat/l1_cat (/cn/.../cid/) form no longer returns data.
+            const parsedUrl = new URL(categoryUrl, this.baseURL);
+            if (!parsedUrl.searchParams.has("collection_uuid")) {
+                logger.info(`BLINKIT: Skipping non-listing category URL: ${categoryUrl}`);
                 return [];
             }
+            const query = parsedUrl.search;
 
             // Use page.evaluate to make API calls from the browser context
-            const result = await page.evaluate(async ({ l0_cat, l1_cat, baseURL }) => {
+            const result = await page.evaluate(async ({ query, baseURL }) => {
                 const apiDomain = baseURL;
-                const initialUrl = `${baseURL}/v1/layout/listing_widgets?l0_cat=${l0_cat}&l1_cat=${l1_cat}`;
+                const initialUrl = `${baseURL}/v1/layout/listing_widgets${query}`;
 
                 let allProducts = [];
                 let nextUrl = initialUrl;
@@ -235,12 +241,10 @@ class BlinkitScraper {
 
                     // Handle the response structure
                     if (data && data.response && data.response.snippets) {
-                        // Extract products and append the l0 and l1 category IDs
-                        const products = data.response.snippets.map(snippet => ({
-                            ...snippet.data, // Copy all existing product data
-                            l0_cat: l0_cat,  // Append the l0 category ID
-                            l1_cat: l1_cat   // Append the l1 category ID
-                        }));
+                        // Keep only product cards (listings also contain filter pills and banners)
+                        const products = data.response.snippets
+                            .filter(snippet => snippet.data?.normal_price)
+                            .map(snippet => snippet.data);
 
                         if (products.length > 0) {
                             allProducts.push(...products);
@@ -291,7 +295,7 @@ class BlinkitScraper {
                     console.log(`BLINKIT API: Encountered ${errors.length} errors during fetching`);
                 }
                 return { products: allProducts, errors, forbidden: false };
-            }, { l0_cat, l1_cat, baseURL: this.baseURL });
+            }, { query, baseURL: this.baseURL });
 
             // Handle 403: Cloudflare bot protection — reload the page to get a fresh session cookie and retry
             if (result.forbidden) {
@@ -358,10 +362,6 @@ class BlinkitScraper {
                 if (productData.variant_list && Array.isArray(productData.variant_list)) {
                     for (const variantItem of productData.variant_list) {
                         if (variantItem.data) {
-                            // Copy l0_cat and l1_cat to variant data
-                            variantItem.data.l0_cat = productData.l0_cat;
-                            variantItem.data.l1_cat = productData.l1_cat;
-
                             const variantProduct = this.parseSingleProduct(variantItem.data);
                             if (variantProduct) {
                                 // Add variant-specific information
@@ -425,9 +425,7 @@ class BlinkitScraper {
                 mrp,
                 discount: discount,
                 inStock,
-                brand,
-                l0_cat: productData.l0_cat,
-                l1_cat: productData.l1_cat
+                brand
             };
 
             // Validate required fields

@@ -47,7 +47,7 @@ export const startTrackingHandler = async (location = "bahadurpura police statio
 
                 const FILTERING_SUBCATEGORY_KEYWORDS = [
                     "eggs", "vegan", "flower", "Meat", "pesticide", "cosmetics", "women", "jewellery", "hair colour", "veggies",
-                    "tea", "salt", "beauty", "toy", "games", "books", "clocks", "diy", "decor", "herbs", "stationary",
+                    "beauty", "toy", "games", "books", "clocks", "diy", "decor", "herbs", "stationary",
                     "fresh juice & dips", "cake", "conditioner", "serum", "hand & foot care", "mushroom", "diapers", "smoking", "wellness"
                 ];
 
