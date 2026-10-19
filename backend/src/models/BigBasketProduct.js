@@ -29,7 +29,6 @@ const bigBasketProductSchema = new mongoose.Schema({
     timestamps: true
 });
 
-bigBasketProductSchema.index({ productId: 1 });
 bigBasketProductSchema.index({ priceDroppedAt: 1 });
 bigBasketProductSchema.index({ discount: 1 });
 bigBasketProductSchema.index({ price: 1 });

@@ -64,7 +64,6 @@ const jiomartProductSchema = new mongoose.Schema(
   }
 );
 
-jiomartProductSchema.index({ productId: 1 });
 jiomartProductSchema.index({ priceDroppedAt: 1 });
 jiomartProductSchema.index({ discount: 1 });
 jiomartProductSchema.index({ price: 1 });

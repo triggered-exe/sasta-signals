@@ -65,7 +65,6 @@ const flipkartMinutesProductSchema = new mongoose.Schema({
     timestamps: true
 });
 
-flipkartMinutesProductSchema.index({ productId: 1 });
 flipkartMinutesProductSchema.index({ priceDroppedAt: 1 });
 flipkartMinutesProductSchema.index({ discount: 1 });
 

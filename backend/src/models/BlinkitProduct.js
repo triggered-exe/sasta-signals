@@ -63,7 +63,6 @@ const blinkitProductSchema = new mongoose.Schema(
     }
 );
 
-blinkitProductSchema.index({ productId: 1 });
 blinkitProductSchema.index({ priceDroppedAt: 1 });
 blinkitProductSchema.index({ discount: 1 });
 

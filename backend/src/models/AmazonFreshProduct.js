@@ -44,7 +44,6 @@ const amazonFreshProductSchema = new mongoose.Schema({
     subcategoryName: String,
 });
 
-amazonFreshProductSchema.index({ productId: 1 });
 amazonFreshProductSchema.index({ priceDroppedAt: 1 });
 amazonFreshProductSchema.index({ discount: 1 });
 amazonFreshProductSchema.index({ price: 1 });
