@@ -21,8 +21,11 @@ const getRandomUserAgent = () => {
 class ContextManager {
   constructor() {
     this.browser = null;
+    this.browserLaunchPromise = null; // Shared by concurrent initBrowser calls so only one browser is launched
     this.contextMap = new Map(); // Map to store contexts by address
-    this.MAX_CONTEXTS = 3; // Reduced from 5 to 3 for memory efficiency - critical for t1.micro instances
+    // Tracking alone keeps 3 locations open, so 3 left no room for searches. Idle contexts are still reclaimed.
+    this.MAX_CONTEXTS = 5;
+    this.IDLE_CONTEXT_GRACE_MS = 5 * 60 * 1000; // Only reclaim contexts with no pages that have been idle this long
   }
 
   // Function to clean and normalize address to create a consistent key
@@ -55,6 +58,16 @@ class ContextManager {
   }
 
   async initBrowser() {
+    if (this.browser) return this.browser;
+    if (!this.browserLaunchPromise) {
+      this.browserLaunchPromise = this.launchBrowser().finally(() => {
+        this.browserLaunchPromise = null;
+      });
+    }
+    return this.browserLaunchPromise;
+  }
+
+  async launchBrowser() {
     logger.info(`[ctx]: Environment: ${process.env.ENVIRONMENT}`);
     if (!this.browser) {
       const isDevMode = process.env.ENVIRONMENT === "development";
@@ -105,10 +118,21 @@ class ContextManager {
         chromiumArgs.push('--start-maximized');
       }
 
-      this.browser = await chromium.launch({
+      const browser = await chromium.launch({
         headless: !isDevMode,
         args: chromiumArgs,
       });
+
+      // If Chromium crashes or is closed, every cached context is dead. Drop them so the next
+      // getContext() launches a fresh browser instead of handing out closed contexts forever.
+      browser.on("disconnected", () => {
+        if (this.browser !== browser) return;
+        logger.warn("[ctx]: Browser disconnected, dropping all contexts; it will be relaunched on the next request");
+        this.browser = null;
+        this.contextMap.clear();
+      });
+
+      this.browser = browser;
     }
     return this.browser;
   }
@@ -118,21 +142,17 @@ class ContextManager {
     try {
       const addressKey = this.cleanAddressKey(address);
 
-      // Return existing context if available
+      // Return existing context if available. Closed contexts are removed from the map by their
+      // "close" handler (and all of them when the browser disconnects), so a cached context is live.
       if (this.contextMap.has(addressKey)) {
         const contextData = this.contextMap.get(addressKey);
-        // Check if context is still valid before using it - prevents the "Target closed" error
-        try {
-          const pages = await contextData.context.pages();
-          logger.info(`[ctx]: Using cached context for address: ${address} (${pages.length} pages)`);
+        if (contextData.context) {
+          contextData.lastActivityAt = Date.now();
+          logger.info(`[ctx]: Using cached context for address: ${address} (${contextData.context.pages().length} pages)`);
           return contextData.context;
-        } catch (error) {
-          // If context is invalid, clean it up and create a new one
-          logger.info(
-            `[ctx]: Context for address ${address} is invalid, creating new one`
-          );
-          await this.cleanupAddress(addressKey);
         }
+        // Serviceability-only entry without a browser context: replace it with a fresh context below
+        this.contextMap.delete(addressKey);
       }
 
       // Memory management: prevent exceeding context limit
@@ -151,7 +171,7 @@ class ContextManager {
             }));
 
           throw new Error(
-            `All ${this.MAX_CONTEXTS} contexts are active with open pages. ` +
+            `All ${this.MAX_CONTEXTS} contexts are in use or were used in the last ${this.IDLE_CONTEXT_GRACE_MS / 60000} minutes. ` +
             `Active contexts: ${activeContexts.map(c => `${c.address} (${c.serviceableWebsites} serviceable)`).join(', ')}. ` +
             `Please wait for operations to complete.`
           );
@@ -326,12 +346,26 @@ class ContextManager {
       }, userAgent);
 
       // Store context with metadata including tracking when it was last used
-      this.contextMap.set(addressKey, {
+      const contextData = {
         context,
         createdAt: getCurrentIST(),
         lastUsed: getCurrentIST(), // Track last usage for better cleanup decisions
+        lastActivityAt: Date.now(), // Epoch ms of the last getContext/new page, used by idle cleanup
         serviceability: {}, // Track which websites are serviceable for this location
         originalAddress: address, // Store original address for reference
+      };
+      this.contextMap.set(addressKey, contextData);
+
+      // Every new page (from createPage or context.newPage) counts as activity
+      context.on("page", () => {
+        contextData.lastActivityAt = Date.now();
+      });
+      // Forget the context as soon as it closes, so it is never handed out again
+      context.on("close", () => {
+        if (this.contextMap.get(addressKey)?.context === context) {
+          this.contextMap.delete(addressKey);
+          logger.info(`[ctx]: Context for address ${address} closed (remaining contexts: ${this.contextMap.size})`);
+        }
       });
 
       logger.info(`[ctx]: Created new context for address: ${address} (total contexts: ${this.contextMap.size})`);
@@ -350,15 +384,16 @@ class ContextManager {
     }
   }
 
-  // Mark a website as serviceable or not for an address
-  async markServiceability(address, website, isServiceable) {
+  // Mark a website as serviceable or not for an address.
+  // Synchronous on purpose: callers don't await it, and it used to trigger idle cleanup, which could
+  // close another provider's context in the gap between two of its pages.
+  markServiceability(address, website, isServiceable) {
     const addressKey = this.cleanAddressKey(address);
     if (this.contextMap.has(addressKey)) {
       const contextData = this.contextMap.get(addressKey);
       contextData.serviceability[website] = isServiceable;
 
       this.updateLastUsed(address);
-      await contextManager.cleanupIdleContexts();
       logger.info(`[ctx]: Marked ${website} as ${isServiceable ? 'serviceable' : 'not serviceable'} for address: ${address}`);
     } else {
       // If context doesn't exist, create a minimal entry for serviceability tracking
@@ -450,36 +485,20 @@ class ContextManager {
         return 0;
       }
 
-      // Find contexts to cleanup (idle or non-serviceable)
+      // Find contexts to cleanup: entries without a browser context, and contexts with no open pages
+      // that have been idle past the grace period. A context with 0 pages may just be between two pages
+      // of a tracking loop (or freshly created), so "no pages" alone is not enough.
+      const now = Date.now();
       for (const [addressKey, data] of this.contextMap.entries()) {
-        let shouldCleanup = false;
-        let reason = '';
-
-        // Check if context has no serviceable websites
-        const serviceability = data.serviceability;
-        const hasAnyServiceable = Object.values(serviceability).some(isServiceable => isServiceable === true);
-
-        if (!hasAnyServiceable) {
-          shouldCleanup = true;
-          reason = 'non-serviceable';
+        if (!data.context) {
+          addressesToCleanup.push({ addressKey, reason: 'no browser context' });
+          continue;
         }
 
-        // Check if context has no open pages (idle from completed searches)
-        if (data.context) {
-          try {
-            const pages = await data.context.pages();
-            if (pages.length === 0) {
-              shouldCleanup = true;
-              reason = reason ? `${reason} + no pages` : 'no pages';
-            }
-          } catch (error) {
-            // Context is invalid, should be cleaned up
-            shouldCleanup = true;
-            reason = reason ? `${reason} + invalid` : 'invalid';
-          }
-        }
-
-        if (shouldCleanup) {
+        const idleMs = now - (data.lastActivityAt || 0);
+        if (data.context.pages().length === 0 && idleMs >= this.IDLE_CONTEXT_GRACE_MS) {
+          const hasAnyServiceable = Object.values(data.serviceability).some(isServiceable => isServiceable === true);
+          const reason = `no pages, idle ${Math.round(idleMs / 60000)}m${hasAnyServiceable ? '' : ', non-serviceable'}`;
           addressesToCleanup.push({ addressKey, reason });
         }
       }
